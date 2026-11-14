@@ -1,0 +1,8 @@
+{
+  "name": "V.2Remix APEX",
+  "description": "High-fidelity Formula 1 team principal and engineering simulator built on the official 2026 Hybrid regulations, Cost Cap physics pipeline, active aerodynamics, wind tunnel correlation, and real-time Grand Prix telemetry strategy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

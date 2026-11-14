@@ -1,0 +1,1448 @@
+# APEX F1 2026 — Diretriz Mestre de Engenharia, Física e Concepção Veicular
+
+
+
+Documento de arquitetura proposto
+
+Engineering & Physics
+
+Versão 1.0
+
+
+
+Minha proposta é transformar o APEX F1 em um simulador de concepção automotiva no qual cada decisão de projeto tenha uma fundamentação física, consequências mensuráveis e dependências com outros componentes do carro.
+
+Não quero que o desenvolvimento se limite a escolher entre três opções de peças, ajustar sliders e receber pontos de desempenho.
+
+Quero que o jogador consiga desenvolver um conceito de carro, escolher sua arquitetura, dimensionar componentes, definir materiais, executar simulações, identificar problemas e aperfeiçoar o projeto.
+
+E quero preservar a interface que você já possui.
+
+As três telas que apresentou anteriormente serão nossa referência visual e funcional:
+
+- Painéis técnicos com parâmetros ajustáveis.
+- Sliders e seletores para escolhas de engenharia.
+- Briefings de engenheiros e fornecedores.
+- Indicadores de custo, prazo e harmonia.
+- Relatórios de CFD, FEA, dinamômetro e homologação.
+- Comparação entre configurações e versões de componentes.
+
+Não vamos substituir sua interface por outra. Vamos aprofundar o motor de engenharia que alimenta os elementos existentes.
+
+## 1. Princípios fundamentais do APEX
+
+Antes de definir os componentes, precisamos estabelecer as regras que governarão todo o sistema.
+
+### 1.1 Toda decisão precisa ter uma origem física
+
+Exemplo: o jogador escolhe um assoalho com túneis Venturi mais agressivos.
+
+O sistema não deve simplesmente aplicar:
+
+`+12% Downforce / -5% Estabilidade`
+
+Ele precisa interpretar as consequências da geometria escolhida:
+
+1. Alteração da seção transversal dos canais.
+2. Alteração da velocidade local do escoamento.
+3. Alteração da distribuição de pressão.
+4. Modificação da força vertical produzida.
+5. Alteração da sensibilidade à altura do solo.
+6. Possibilidade de separação do escoamento.
+7. Alteração da estabilidade aerodinâmica em diferentes velocidades.
+
+O resultado final deve surgir dessas relações.
+
+### 1.2 A física precisa produzir efeitos positivos e negativos
+
+Uma solução não será intrinsecamente boa ou ruim.
+
+Ela será adequada ou inadequada dependendo de:
+
+- Filosofia do carro.
+- Geometria dos componentes.
+- Condições de operação.
+- Características do circuito.
+- Configuração de suspensão.
+- Temperatura e densidade do ar.
+- Pneus.
+- Velocidade.
+- Regulamento.
+
+### 1.3 O carro deve ser tratado como um único sistema
+
+O assoalho depende da suspensão.
+
+A suspensão depende da estrutura.
+
+A estrutura depende do packaging.
+
+O packaging depende da unidade de potência e da transmissão.
+
+A aerodinâmica depende de todos esses elementos.
+
+Portanto, o jogo deve possuir uma rede de dependências entre componentes, não apenas uma lista de atributos isolados.
+
+### 1.4 Diferenciar fenômenos físicos de soluções de engenharia
+
+Essa distinção será muito importante.
+
+Por exemplo:
+
+| Categoria             | Exemplo                 |
+| --------------------- | ----------------------- |
+| Fenômeno físico       | Efeito Venturi          |
+| Fenômeno físico       | Efeito Coandă           |
+| Fenômeno físico       | Camada limite           |
+| Fenômeno físico       | Separação do escoamento |
+| Fenômeno físico       | Transferência de carga  |
+| Fenômeno físico       | Flambagem               |
+| Solução de engenharia | Túnel Venturi           |
+| Solução de engenharia | Push-Rod                |
+| Solução de engenharia | Difusor                 |
+| Solução de engenharia | Radiador                |
+| Resultado físico      | Downforce               |
+| Resultado físico      | Arrasto                 |
+| Resultado físico      | Temperatura             |
+| Resultado físico      | Deformação estrutural   |
+
+O efeito Venturi não é uma peça. É um fenômeno que pode ser explorado por determinadas geometrias.
+
+Essa distinção permitirá criar um sistema muito mais rico.
+
+# 2. Arquitetura geral do sistema de engenharia
+
+Minha proposta é dividir a engenharia em 12 módulos, todos conectados.
+
+# APEX Engineering Architecture
+
+12 MÓDULOS DE CONCEPÇÃO E VALIDAÇÃO
+
+01
+
+Filosofia do veículo
+
+Objetivos e requisitos
+
+02
+
+Packaging
+
+Dimensões e arquitetura
+
+03
+
+Unidade de potência
+
+ICE, MGU-K e bateria
+
+04
+
+Transmissão
+
+Câmbio e diferencial
+
+05
+
+Estruturas
+
+Monocoque e materiais
+
+06
+
+Suspensão
+
+Cinemática e dinâmica
+
+07
+
+Aerodinâmica
+
+Assoalho, asas e carroceria
+
+08
+
+Refrigeração
+
+Gestão térmica
+
+09
+
+Freios e rodas
+
+Frenagem e contato
+
+10
+
+Pneumáticos
+
+Aderência e degradação
+
+11
+
+Simulação
+
+CFD, FEA e dinâmica
+
+12
+
+Otimização
+
+Integração e validação
+
+Motor central de física
+
+Todas as decisões alimentam modelos físicos compartilhados. Os resultados retornam aos módulos de concepção e à simulação de corrida.
+
+Os módulos não precisam ser desenvolvidos nessa ordem. Essa é a organização lógica do sistema. A execução do projeto seguirá as dependências de engenharia.
+
+# 3. Catálogo de fenômenos físicos — Biblioteca central
+
+Esta será uma das partes mais importantes do APEX.
+
+Quero construir uma biblioteca de fenômenos físicos que possa ser consultada por todos os módulos de engenharia.
+
+Você mencionou o efeito Venturi, o efeito solo e o "efeito coala". Acredito que esteja se referindo ao efeito Coandă. Ele é relevante para compreender como um escoamento pode acompanhar uma superfície curva, embora sua aplicação específica em um carro de F1 dependa da geometria e das condições do fluxo.
+
+Não devemos confundir os três:
+
+- Venturi: relação entre a seção de passagem, velocidade do escoamento e pressão estática, sob determinadas hipóteses de escoamento.
+- Efeito solo: interação aerodinâmica entre o veículo e a proximidade da superfície da pista.
+- Coandă: tendência de um jato de fluido aderir a uma superfície próxima e curva, sob determinadas condições.
+
+O efeito solo pode explorar canais com comportamento semelhante ao de um difusor Venturi, mas não é sinônimo do efeito Venturi.
+
+A biblioteca deverá conter fenômenos fundamentais, efeitos derivados e mecanismos de falha.
+
+## 3.1 Aerodinâmica externa e escoamento
+
+[\[Formula 1\] #29 - 폴포싱(Porpoising)이란 무엇인가 (2) : 벤츄리 터널(Venturi Tunnel), 그라운드 이펙트(Ground Effect), 서스펜션의 단단함](https://images.openai.com/static-rsc-4/ueEcF8lsn4oPjTapyR_tG3jPpcaaTEdx0uqP-MVnPy9ubOsmg2du7anGRqrqRlsCk6lED-zgS9_ZgOB7X18Omc4VTcilnJlc5PL80VSreb1T4hxTqr0mh1nKpbdi96HQJLwg2KiJHdktWFyaUSvAnAqImA_TBIUbWPqk20vKKDk?purpose=inline)
+
+[File:Lotus Modell 79 under-body.svg - Wikimedia Commons](https://images.openai.com/static-rsc-4/C0L-QW2F5vS95b42qCgwJrScmiaZm4-NcKmRPN3ogHkttmQ5wfOQcWp8VyURzR0tGgIVAUMmzihA23otoIgAIw2JWBluxTp5mV6NtIJ8vnmgbMWtrBp4TN-i5lyfT2bWs5Ya7WrR-GPegR-i7iAqZTlF4eTPw7Omkhw6wPnfhqw?purpose=inline)
+
+[Banned: The Coanda-effect exhaust](https://images.openai.com/static-rsc-4/qZa9TaMy4R5fq_92WrIoM6yrMj_yKnxyXpel2EdOuoolTGpYi_y3xz7tm_m5GZnsirj64FY9A_5usPksYa0-WVtmdkLsJOwh5wNvqQ_nIVvwRvGQwQ5xYclhjq1YNqUADgMW_glCaDXqEbe4GBiQaXCDU3DP-8qh4tES7Vnv1Uo?purpose=inline)
+
+12
+
+| ID      | Fenômeno                      | Onde atua                                   | Variáveis físicas                                            |
+| ------- | ----------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| AER-001 | Efeito Venturi                | Túneis do assoalho e dutos                  | Área, velocidade, pressão e densidade                        |
+| AER-002 | Efeito solo                   | Assoalho e proximidade da pista             | Altura, velocidade, geometria e pressão                      |
+| AER-003 | Efeito Coandă                 | Superfícies curvas e gerenciamento de fluxo | Curvatura, velocidade, viscosidade e pressão                 |
+| AER-004 | Camada limite                 | Superfícies aerodinâmicas                   | Reynolds, espessura e gradiente de pressão                   |
+| AER-005 | Separação do escoamento       | Asas, difusor e carroceria                  | Gradiente adverso de pressão e energia do fluxo              |
+| AER-006 | Vórtices                      | Bordas do assoalho, asas e junções          | Circulação, vorticidade e pressão                            |
+| AER-007 | Vórtices de ponta             | Asas                                        | Distribuição de sustentação negativa e arrasto induzido      |
+| AER-008 | Esteira turbulenta            | Traseira e região dos pneus                 | Turbulência e déficit de velocidade                          |
+| AER-009 | Interferência aerodinâmica    | Componentes próximos                        | Pressão, velocidade e orientação do fluxo                    |
+| AER-010 | Efeito de bloqueio            | Túneis e passagens estreitas                | Razão de bloqueio e distribuição de pressão                  |
+| AER-011 | Arrasto de pressão            | Carroceria e rodas                          | Diferenças de pressão e área projetada                       |
+| AER-012 | Arrasto viscoso               | Superfícies do carro                        | Viscosidade, Reynolds e rugosidade                           |
+| AER-013 | Arrasto induzido              | Asas                                        | Carga aerodinâmica, alongamento e distribuição de circulação |
+| AER-014 | Compressibilidade             | Regiões de alta velocidade                  | Número de Mach e densidade                                   |
+| AER-015 | Gradiente de pressão          | Assoalho, asas e difusor                    | Variação espacial da pressão                                 |
+| AER-016 | Efeito de proximidade do solo | Asas e carroceria                           | Distância ao solo e distribuição de pressão                  |
+| AER-017 | Interação pneu-escoamento     | Rodas e carroceria                          | Rotação, velocidade e turbulência                            |
+| AER-018 | Difusão aerodinâmica          | Difusor traseiro                            | Expansão, pressão e recuperação de pressão                   |
+| AER-019 | Perda de carga                | Dutos e refrigeração                        | Atrito, mudanças de seção e acessórios                       |
+| AER-020 | Sensibilidade ao yaw          | Conjunto aerodinâmico                       | Ângulo de guinada e assimetria do fluxo                      |
+
+### Como esses fenômenos serão utilizados?
+
+Vamos considerar o assoalho.
+
+O jogador poderá modificar:
+
+- Comprimento dos túneis.
+- Largura dos canais.
+- Altura de entrada.
+- Altura mínima.
+- Expansão do difusor.
+- Ângulo de expansão.
+- Curvatura das superfícies.
+- Distribuição dos canais.
+- Geometria das bordas.
+
+Essas variáveis alimentarão modelos físicos.
+
+Uma primeira aproximação para o escoamento incompressível utiliza a equação de continuidade:
+
+\\[ A_1V_1=A_2V_2 \\]
+
+E a equação de Bernoulli, sob suas hipóteses de validade:
+
+\\[ P+\frac{1}{2}\rho V^2+\rho gh=C \\]
+
+Isso permite representar a relação entre área de passagem, velocidade e pressão estática.
+
+Mas existe um detalhe importante: um assoalho de F1 não é um Venturi ideal. Há viscosidade, turbulência, separação, movimento relativo em relação ao solo e interações tridimensionais.
+
+Portanto, o modelo do jogo precisa considerar perdas e limites de validade.
+
+### Resultados que o jogo deverá calcular
+
+- Downforce total.
+- Distribuição de downforce entre os eixos.
+- Arrasto.
+- Eficiência aerodinâmica.
+- Sensibilidade à altura do solo.
+- Sensibilidade ao yaw.
+- Margem até a separação do fluxo.
+- Estabilidade aerodinâmica em diferentes velocidades.
+
+Uma decisão de geometria pode aumentar a carga máxima e, ao mesmo tempo, reduzir a faixa de operação estável.
+
+Esse é um trade-off muito mais interessante do que um simples bônus de downforce.
+
+## 3.2 Dinâmica dos fluidos e gerenciamento de fluxo
+
+Além dos fenômenos aerodinâmicos externos, o carro precisa controlar os fluxos internos.
+
+[Gary Anderson: Red Bull’s sidepod change bigger than it let on](https://images.openai.com/static-rsc-4/g_-JwOEzgNSmAv-roliFLV6_WqPdMpd57P0MwVLKHeQW2Jz4gREUDLUWi3FopOocVUWvadzvscs_yQThIcDYPkXGcjiZ-FrIIBgfD_px6P3bqk39u_n_mnc7Nvn5y5DCDBC3e__jc7svfNH6O1TxXD7DePGBLi0vTbzBM9a-VYI?purpose=inline)
+
+[Flow and Thermal Analysis of a Racing Car Braking System](https://images.openai.com/static-rsc-4/00ZV1iINblM1hnhFU66VwVLJcnnfk5zOLicWEvtL9seu18k2IqriifH04bIgvKDnxSUrMZFgns6LydktjGvz9tGkZNX8o3xRFpibu5QDx6F62rrWNc5z0CfzrCYiIzHmOPR9zzduq_U7ebD04dbIim9EBLqCxL6urQC3w0O3Wxo?purpose=inline)
+
+[Ferrari F1-75 - Page 72 - F1technical.net](https://images.openai.com/static-rsc-4/Lzg-gLIGwPJEj6oB7hFzF8bMoXMKX7up_ekd1mmi9KE6p6GtxBYZluMuhb2yRosZbr5c2TsjppW7hGTJLXzOyMcOX7KOrEIzYma8QeImjy4pj6zwgH-PWXd-HSEWlmEy-nIP1dCtTFbWwaNKtlZqlpsH33_zSaaIewQxcbFSmc8?purpose=inline)
+
+12
+
+| ID      | Fenômeno                  | Aplicação                     | Consequência                            |
+| ------- | ------------------------- | ----------------------------- | --------------------------------------- |
+| FLU-001 | Continuidade              | Dutos e entradas de ar        | Relação entre área e velocidade         |
+| FLU-002 | Bernoulli                 | Entradas e passagens          | Distribuição de pressão                 |
+| FLU-003 | Perda de carga            | Dutos e radiadores            | Redução de pressão disponível           |
+| FLU-004 | Turbulência               | Dutos e carroceria            | Mistura e dissipação de energia         |
+| FLU-005 | Camada limite interna     | Dutos                         | Redução da seção efetiva                |
+| FLU-006 | Escoamento secundário     | Curvas e mudanças de direção  | Distribuição não uniforme de velocidade |
+| FLU-007 | Cavitação                 | Circuitos líquidos aplicáveis | Formação de vapor e risco de dano       |
+| FLU-008 | Golpe de aríete           | Circuitos hidráulicos         | Picos de pressão                        |
+| FLU-009 | Efeito de estrangulamento | Passagens restritas           | Limitação de vazão                      |
+| FLU-010 | Número de Reynolds        | Todos os sistemas de fluxo    | Caracterização do regime de escoamento  |
+
+## 3.3 Termodinâmica e transferência de calor
+
+[F1 Cooling: Aerodynamics and Trade-offs](https://images.openai.com/static-rsc-4/rB2l1lR3AZTL9vHvDcR7_ASJvRaB8Pg2BfjQBleJPvs4vN-UaeBIOU-2IQYBd6LfakPaEZz6r_vnZ2lGjLk3aZDw5u-k1uJVxPE-t2fzIVWtRCWNnAvKZXV14orjTxiLoR4QKS4s8plziVEcSVZthjBKwRH4JeHmsK7zfyyiStc?purpose=inline)
+
+[F1 Technical (@f1technical) on X](https://images.openai.com/static-rsc-4/ckWpmicaTtalW5PqmdKt_Jw1lEr6zEQ2Ru3xgI2MFd1-TdUZwsn2Qffn1N8js8FIy_4xcY6YgMyxHOf5ru64F-sZ9ktVwupwBdKNLRk9Pe1ZaXOuvwXJro3RvrQjK0h-hiQqWFnsjtgiHipw0KJuk_i-i5PiNeFMpveIX08H_Eo?purpose=inline)
+
+[Caterham CT-05 Renault - Page 25 - F1technical.net](https://images.openai.com/static-rsc-4/4ukIhG0WFsRJE9p0WIR9rfiHfaojxLpdraipPt-iiTaSq_p8udg22lvDwCMK61v648PfhvTXKeUkcYx42gaMDbwOwuqhKmRRJBgiQTicPRzOn_bJS-AN83RonpFGPfR1QV_-Rz_V4XOS5qSuGp8NFI2Xcl9sIXxxhPrQZ4Bpc6g?purpose=inline)
+
+7
+
+| ID      | Fenômeno                    | Aplicação                    | Variáveis                            |
+| ------- | --------------------------- | ---------------------------- | ------------------------------------ |
+| THE-001 | Condução                    | Bloco, cabeçote e estruturas | Condutividade e gradiente térmico    |
+| THE-002 | Convecção                   | Radiadores e dutos           | Coeficiente de transferência e vazão |
+| THE-003 | Radiação                    | Componentes quentes          | Emissividade e temperatura           |
+| THE-004 | Capacidade térmica          | Bateria e componentes        | Massa e calor específico             |
+| THE-005 | Resistência térmica         | Circuitos de refrigeração    | Resistências em série e paralelo     |
+| THE-006 | Expansão térmica            | Bloco e componentes          | Coeficiente de expansão              |
+| THE-007 | Choque térmico              | Materiais e componentes      | Variação rápida de temperatura       |
+| THE-008 | Ciclagem térmica            | Motor e eletrônica           | Amplitude e frequência térmica       |
+| THE-009 | Dissipação térmica          | Radiadores e trocadores      | Área e diferença de temperatura      |
+| THE-010 | Eficiência de troca térmica | Radiadores                   | Efetividade e vazão térmica          |
+
+A capacidade de remoção de calor de um radiador, por exemplo, não pode ser definida apenas pelo tamanho.
+
+Ela depende da área, da geometria dos canais, do fluxo de ar, do fluxo do líquido refrigerante e da diferença de temperatura.
+
+O jogo deverá calcular a capacidade térmica do sistema e compará-la à geração de calor da unidade de potência.
+
+## 3.4 Mecânica estrutural e resistência dos materiais
+
+[Formula One World Championship](https://images.openai.com/static-rsc-4/kDmWE0AqYMR-owrJaJEdClW63ZoadXnqVFsA0Yh2giuok2vcua8VnXPSuC4Iqf8h6gHKyZvWm9z5XPP7OllT7fPEIYqZGa8lkKWS8oQg63JVuygLIrYuurMk2JB7XD1KWAZ1pO6Ke-VE2ml3RECts79GotIotnyTcyw52MmUJRdzE5s8sGn3yRVTRKKAhjQG?purpose=inline)
+
+[Laminate Composite Stacking Sequence at Conrad Martinez blog](https://images.openai.com/static-rsc-4/1NNwSIS31bXRlUm80HaF6k-pl7WW-Upv9-Mzs7GeqXk0PUXk2Ej7q4YMx2dSjSTiHgAZz7LSQfKSafK1iShOcGgTH730V_rMcCHdM0g6Cp1f51cxbaJAAwxDspKZyhHc1cwwcrqkJVc-h72H_mYeRBVTTSWh6c_vlgnJLaQK-58?purpose=inline)
+
+[Dynamic Response & Dynamic Shock Analysis in FEA | SimScale](https://images.openai.com/static-rsc-4/LG8z3IZBneizWUyTEeHaH4Rpgvwe0HcSEV4C-2PKldabm2hu7joWoAr4En5IC1R8fHXk3lc3x5ygfgKGr2VnY7huQO7Tas7HLt4A5xYOv1RbDqfPYbVN51jRQD0y6ErthJ9-LMQzIc9g-hgSE8Y1b0K2WOMSr3m-jegO4LNKwNg?purpose=inline)
+
+10
+
+| ID      | Fenômeno               | Aplicação               | Variáveis                               |
+| ------- | ---------------------- | ----------------------- | --------------------------------------- |
+| STR-001 | Elasticidade           | Monocoque e suspensão   | Módulo de Young                         |
+| STR-002 | Lei de Hooke           | Componentes estruturais | Tensão e deformação                     |
+| STR-003 | Rigidez torcional      | Chassi                  | Torque e ângulo de torção               |
+| STR-004 | Rigidez flexional      | Chassi e asas           | Momento e curvatura                     |
+| STR-005 | Flambagem              | Estruturas comprimidas  | Comprimento, seção e condições de apoio |
+| STR-006 | Fadiga                 | Suspensão e transmissão | Ciclos e amplitude de tensão            |
+| STR-007 | Mecânica da fratura    | Estruturas compostas    | Trincas e tenacidade                    |
+| STR-008 | Anisotropia            | Fibra de carbono        | Orientação das fibras                   |
+| STR-009 | Delaminação            | Laminados               | Tensões interlaminares                  |
+| STR-010 | Deformação térmica     | Componentes estruturais | Temperatura e expansão                  |
+| STR-011 | Concentração de tensão | Furos e fixações        | Geometria e fator de concentração       |
+| STR-012 | Energia de impacto     | Estruturas de segurança | Massa, velocidade e absorção de energia |
+
+Aqui entra uma mecânica especialmente interessante: a fibra de carbono não deve ser representada como um material com uma única propriedade de resistência.
+
+O jogador poderá definir:
+
+- Orientação das lâminas.
+- Sequência de empilhamento.
+- Espessura.
+- Tipo de fibra.
+- Matriz de resina.
+- Reforços locais.
+
+O resultado dependerá da direção das cargas e da arquitetura do laminado.
+
+Uma monocoque leve pode ser muito resistente em determinada direção e apresentar uma margem estrutural insuficiente em outra.
+
+## 3.5 Dinâmica veicular
+
+[F1 Chassis: Weight Transfer & Load Control](https://images.openai.com/static-rsc-4/xfYEQkJBWvBP7qwgV2Riu1fuXwnHVYJSH-cvlgre9xZlcjO3FzwFTmNoeADum5ZSfTI7mFLzmewOCS1Z_FFcvy_k80wmim1ytHPvCfohqXbZ0uQHtyneYPajpQw3tQTVx961eS1oon4gdurTJJhaVqPVrzUzQXEeiqlOvcBF5MQ?purpose=inline)
+
+[F1 Suspension Geometry Infographic | LivePhysics™](https://images.openai.com/static-rsc-4/LWoZ6KicIXagttZYPOBS04nlEx2c2dSxFvzi0ZbaU7VN74g07f1QGn-mmDtlk24_k6INU755aRDD9YjH6pFD5nxySg25Xsxv8Wul4-dQndD0ZSNy2ktAzwX3vFUJwmt9e274jZVgPTmSvaPriMJ3swHYzzW8UEM8nDvJY79zYpg?purpose=inline)
+
+[Hydraulic decoupled suspension – the journey starts with a bold idea » Student Lounge - MATLAB & Simulink](https://images.openai.com/static-rsc-4/tRYtilvFnh8LihfRdyzTx128rwUwhdrlbaqy0mB2AbwoQiTqBjClAsGdjL-Rxp5fsvuyki4OBK1X1P6__vtv3Lhg53gw5gigAaQcsK5N7foBve4x75VnkW-gdwPJx7Ak3E-6K5vF8hJ_B1S1Z01k3JM4tQp1uIgOHv1_caRlv0w?purpose=inline)
+
+14
+
+| ID      | Fenômeno                            | Aplicação             | Efeito                                            |
+| ------- | ----------------------------------- | --------------------- | ------------------------------------------------- |
+| DYN-001 | Transferência longitudinal de carga | Frenagem e aceleração | Redistribuição entre eixos                        |
+| DYN-002 | Transferência lateral de carga      | Curvas                | Redistribuição entre rodas                        |
+| DYN-003 | Rolagem                             | Curvas                | Inclinação da carroceria                          |
+| DYN-004 | Arfagem                             | Frenagem e aceleração | Alteração da altura dianteira/traseira            |
+| DYN-005 | Guinada                             | Direcionamento        | Rotação do veículo em torno do eixo vertical      |
+| DYN-006 | Frequência natural                  | Suspensão             | Resposta a excitações                             |
+| DYN-007 | Amortecimento                       | Suspensão             | Controle dos movimentos                           |
+| DYN-008 | Cambagem                            | Rodas                 | Orientação do pneu                                |
+| DYN-009 | Toe                                 | Rodas                 | Estabilidade e resposta direcional                |
+| DYN-010 | Anti-dive                           | Suspensão dianteira   | Controle da arfagem na frenagem                   |
+| DYN-011 | Anti-squat                          | Suspensão traseira    | Controle da arfagem na aceleração                 |
+| DYN-012 | Jacking                             | Suspensão             | Forças verticais geradas pela geometria           |
+| DYN-013 | Compliance                          | Suspensão e estrutura | Deformações sob carga                             |
+| DYN-014 | Sensibilidade à carga               | Pneus                 | Variação de aderência com carga vertical          |
+| DYN-015 | Acoplamento aeroelástico            | Suspensão e aero      | Interação entre deformação e forças aerodinâmicas |
+
+Um ponto importante: transferência de carga não significa necessariamente perda de carga total nos pneus. O que importa é como a carga é redistribuída e como os pneus respondem a ela.
+
+## 3.6 Pneus, aderência e contato com o solo
+
+[Tire Contact Pressure Distribution and Dynamic Analysis Under Rolling Conditions | MDPI](https://images.openai.com/static-rsc-4/4IWkonnZUs8uOPalavrnzbpzSgwhDEhNxV0LI3ruZ-jCUrVKtSBz-py4K8DqJ-Ef9CSjVPCb6WCI7XpuPgFOND9iziaCL52Fy7aIe_-PFAhKeUoKtvB4ANq5ZPBcNb1xV524enR68eMHeC5_TOQ9-NZTxjkxAzlt3GNwBmZr2Z8?purpose=inline)
+
+[F1 Tyre Operating Window Infographic | LivePhysics™](https://images.openai.com/static-rsc-4/pJ8Lf86e-AUlGzXUClH4d_t3xSaR4KNkxcUB_78bHRhguZmry5tO0M4s9umC5KRzaTcrt_h523jEv-XwadXM7NQZ3DLAd3qnHgiq9xEOPpPrlP1cRIqYaKiGKa83wLSKqGHZgQwQjNVYbcrUKqwZZg41oejqJFRbAi827RQMl8Y?purpose=inline)
+
+[Tyre Science; “Breaking barriers around F1 technology”](https://images.openai.com/static-rsc-4/Dt7cOIp_87wpP7pcChTnZOEKN9e0oH3hsm_ruchGy8AvFJ85YUnzpudt0Rf0FN1kfyzWuv3t9F2sNSTd6GPzpLHinY4GfczsYJNEEYIHuu3hp9Tce9UoHwX4ONNfuuAjyUI1DJeP9EQhFoIZr2F_vrUF_DhNZi9Ni4p7bBbzTUM?purpose=inline)
+
+10
+
+| ID      | Fenômeno              | Variáveis                                     |
+| ------- | --------------------- | --------------------------------------------- |
+| TIR-001 | Atrito longitudinal   | Carga vertical e escorregamento               |
+| TIR-002 | Atrito lateral        | Ângulo de deriva                              |
+| TIR-003 | Slip ratio            | Velocidade periférica e velocidade do veículo |
+| TIR-004 | Slip angle            | Orientação da roda e direção do movimento     |
+| TIR-005 | Sensibilidade à carga | Força vertical e capacidade de aderência      |
+| TIR-006 | Histerese             | Deformação e dissipação de energia            |
+| TIR-007 | Geração de calor      | Escorregamento e deformação                   |
+| TIR-008 | Degradação térmica    | Temperatura e tempo de exposição              |
+| TIR-009 | Pressão interna       | Pressão e temperatura                         |
+| TIR-010 | Rigidez de deriva     | Força lateral e ângulo de deriva              |
+| TIR-011 | Deformação do contato | Distribuição de pressão no contato            |
+| TIR-012 | Aquaplanagem          | Água, velocidade e pressão de contato         |
+
+O modelo de pneus merece atenção especial.
+
+Eu utilizaria a família de modelos de atrito e forças conhecida como Pacejka Magic Formula como referência conceitual, com uma implementação reduzida e calibrável.
+
+Assim, o pneu não terá simplesmente 90 pontos de aderência.
+
+Ele terá curvas de força longitudinal e lateral em função de carga, slip, cambagem e temperatura.
+
+# 4. Aplicação dos fenômenos nos componentes do carro
+
+Agora precisamos transformar o catálogo físico em decisões concretas de concepção.
+
+Vou utilizar a estrutura que considero ideal para cada componente:
+
+1. O que o jogador pode modificar.
+2. Quais parâmetros físicos são afetados.
+3. Quais fenômenos entram no cálculo.
+4. Quais benefícios podem surgir.
+5. Quais problemas podem surgir.
+6. Quais outros componentes serão afetados.
+7. Quais simulações deverão ser executadas.
+
+## 4.1 Assoalho — Floor Assembly
+
+[F1 2026 – Motorsport Tech’s Ultimate Guide to the new F1 rules - Motorsport Technology](https://images.openai.com/static-rsc-4/UsXco2uSI8g8gUTmn-fQZibe_7LJEV5i07P40Jrcd6gK5m1feP-RN7cHQrjXRUOD3MbZznSmv_urqIduRPM4wJllwAYx718dUXwxGw-E7dlxxGkyFtbzjjhPIDiLtrQ941boNbDK-R-m7pLEPMC_LazfCIJXPXCCzIy_XuKaDQI?purpose=inline)
+
+[Fully CFD Analysis on F1 2022 aero, focus on Redbull & Ferrari - F1technical.net](https://images.openai.com/static-rsc-4/y_vwY4gVet5ah04cjbQaHdW_s5s_hzm7cfZN758nG9xjdSESplaRSXKwPYTjpAf826pFVj2cyb1U2BjXTKUO6l5LZ00kqPW3A40AyLs7pQRXNRvR82036WsuFVqWxcTvJt81gcCk65k87ycL-4aT9vxIEIscCmiEe16Dij6BWJ4?purpose=inline)
+
+[Red Bull's incredible aero feature EXPLAINED by F1 expert - GPFans.com](https://images.openai.com/static-rsc-4/Hu43Qy_dtfRpVZVdW4aCVLGBiidpxic9T9a6FlDoJI_96mmfI1ZXuYoUw2R9vAaN8UC5voq3Ht2Tn_yY66rSnAo9ssaf7AcHYk9d8sRU7eIeAVaypbZyrtRLT2LCn2ErfByHeh8fup0WyvI1JZSt8Uzix8ZkhR51QMhgG_gIwWI?purpose=inline)
+
+10
+
+Uma observação regulamentar essencial: não devemos transportar diretamente a arquitetura de túneis Venturi agressivos dos carros de 2022–2025 para 2026. A regulamentação de 2026 alterou significativamente o assoalho, com uma configuração mais plana e difusor traseiro maior. O jogo precisa reproduzir a geometria permitida em 2026, não simplesmente oferecer túneis livres de qualquer dimensão.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://www.formula1.com\&sz=32)
+
+Formula 1® - The Official F1® Website+1
+
+
+
+A. Variáveis de concepção
+
+| Parâmetro                     | Unidade       | Influência                          |
+| ----------------------------- | ------------- | ----------------------------------- |
+| Comprimento do assoalho       | mm            | Área e distribuição aerodinâmica    |
+| Largura útil                  | mm            | Área de interação com o fluxo       |
+| Altura de rodagem dianteira   | mm            | Sensibilidade ao solo               |
+| Altura de rodagem traseira    | mm            | Recuperação de pressão e equilíbrio |
+| Ângulo de expansão do difusor | graus         | Recuperação de pressão              |
+| Comprimento do difusor        | mm            | Desenvolvimento do escoamento       |
+| Curvatura do assoalho         | mm            | Distribuição do fluxo               |
+| Geometria das bordas          | Parâmetro CAD | Controle de fluxo lateral           |
+| Rigidez estrutural            | N/mm          | Preservação da geometria sob carga  |
+| Rugosidade superficial        | µm            | Perdas viscosas                     |
+
+Os intervalos disponíveis serão definidos por três filtros: regulamento FIA, viabilidade de fabricação e limites físicos do modelo.
+
+B. Fenômenos envolvidos
+
+- Efeito solo.
+- Efeito Venturi, onde a geometria permitida efetivamente produz comportamento de aceleração em canal.
+- Camada limite.
+- Separação do escoamento.
+- Recuperação de pressão.
+- Vorticidade.
+- Arrasto de pressão.
+- Sensibilidade à altura de rodagem.
+- Interação aeroelástica.
+
+C. Resultados calculados
+
+\\[ F_z=\frac{1}{2}\rho V^2 A C_L \\]
+
+Aqui, \\(C_L\\) representa o coeficiente com convenção de sustentação positiva para cima. Para downforce, o sinal da força será negativo.
+
+O sistema deverá calcular:
+
+- Carga aerodinâmica.
+- Arrasto.
+- Centro de pressão.
+- Distribuição dianteira/traseira.
+- Sensibilidade à altura.
+- Sensibilidade ao yaw.
+- Estabilidade do difusor.
+- Margem de separação do fluxo.
+
+D. Trade-offs
+
+| Decisão                   | Possível benefício                                               | Possível penalidade                    |
+| ------------------------- | ---------------------------------------------------------------- | -------------------------------------- |
+| Maior expansão do difusor | Recuperação de pressão                                           | Separação prematura                    |
+| Maior área de assoalho    | Potencial de força aerodinâmica                                  | Massa e restrições geométricas         |
+| Menor altura de rodagem   | Melhor exploração de determinados efeitos de proximidade do solo | Maior sensibilidade e risco de contato |
+| Maior rigidez             | Geometria mais consistente                                       | Massa adicional                        |
+| Bordas mais elaboradas    | Maior controle do fluxo lateral                                  | Complexidade e sensibilidade ao yaw    |
+
+E. Dependências
+
+Assoalho → suspensão → monocoque → rigidez → pneus → dinâmica veicular.
+
+A aerodinâmica também retroalimenta a suspensão: quanto maior a carga, maiores podem ser as forças transmitidas aos elementos mecânicos.
+
+## 4.2 Sidepods e carroceria
+
+[F1 2026, Mercedes W17: pance inedite e primi indizi dal debutto in pista](https://images.openai.com/static-rsc-4/lVEEGrRxN1QB7mqGCdpUrJ4LY6RKzNXdhfex9kIluu5RsIbdOS4iPlXihYkR0xPGE3GxkpWDdmxD8csyez26dQLT65IaJoQsOA760TAS50W82XoqbZOeFqORUPTHi7ITrk-Cgva-Wltt4qjEtP-DInslhNDr1w3lS5PdpfbOg0s?purpose=inline)
+
+[Gary Anderson: Red Bull’s sidepod change bigger than it let on](https://images.openai.com/static-rsc-4/g_-JwOEzgNSmAv-roliFLV6_WqPdMpd57P0MwVLKHeQW2Jz4gREUDLUWi3FopOocVUWvadzvscs_yQThIcDYPkXGcjiZ-FrIIBgfD_px6P3bqk39u_n_mnc7Nvn5y5DCDBC3e__jc7svfNH6O1TxXD7DePGBLi0vTbzBM9a-VYI?purpose=inline)
+
+[Craig Scarborough (@ScarbsTech) on X](https://images.openai.com/static-rsc-4/ROuUfZAUn_fBs9aZkCa464coQmRMreESGPz08M11ptjSiCBFOX5LKv50TZKTyQsKlj6sw4_Zs4kSVQs1E7rY97W5fWnoD4f__opaS3yHjxkqvVMoDGHLwC3RFUPtXfwymjH2Zax3I3NAUNpJFScsGVXycfMD5vtYl7Sl568OWlw?purpose=inline)
+
+12
+
+O sidepod precisa ser desenvolvido como um sistema aerodinâmico e térmico integrado.
+
+Variáveis ajustáveis:
+
+- Área da entrada de ar.
+- Altura e largura da entrada.
+- Profundidade dos dutos.
+- Volume disponível para radiadores.
+- Geometria do undercut.
+- Geometria da região superior.
+- Saída de ar quente.
+- Inclinação da superfície externa.
+- Área de passagem interna.
+- Posição dos trocadores de calor.
+
+Fenômenos físicos:
+
+- Camada limite.
+- Efeito Coandă, quando aplicável.
+- Separação.
+- Esteira turbulenta.
+- Perda de carga.
+- Convecção.
+- Transferência de calor.
+- Interferência aerodinâmica.
+
+Exemplo de decisão:
+
+O jogador reduz a área da entrada de ar.
+
+O sistema calcula:
+
+1. Nova vazão mássica de ar.
+2. Alteração da pressão de entrada.
+3. Nova perda de carga nos dutos.
+4. Capacidade térmica dos radiadores.
+5. Temperatura prevista da unidade de potência.
+6. Modificação do escoamento externo.
+7. Alteração do arrasto e das forças aerodinâmicas.
+
+Uma redução da entrada pode favorecer a embalagem e a aerodinâmica, mas, se a vazão se tornar insuficiente, o sistema pode ultrapassar sua margem térmica.
+
+Indicadores na interface:
+
+- Eficiência de refrigeração.
+- Vazão mássica.
+- Temperatura de saída.
+- Margem térmica.
+- Arrasto associado à refrigeração.
+- Eficiência aerodinâmica externa.
+
+## 4.3 Asas dianteira e traseira
+
+[Mercedes and Aston Martin among outlier F1 2026 active aero choices](https://images.openai.com/static-rsc-4/HztHSWUd-QE6gH_XBtS-cl3gFDWBes1-_hqkS07SFpF2wAxIl-AtFYDQSAGqa3CN7w59RJIWLs7PCdeOdU15hNIDI6QGZvFHmq5vjfe83HXHMPDSnUlFOawxFdcmpNSnGleWosF-ZPmPxdEkFQEzxP4yUcxPIpRd1H3ziqlgTVE?purpose=inline)
+
+[Formula 1 2026: il pilota perfetto per le nuove regole (e chi è avvantaggiato) - Formula 1 - Automoto.it](https://images.openai.com/static-rsc-4/WFCzrCAoGxASAZVOobfMtST9mcuUXkLT8CBZzrcxjPc0iFL3Ony_dPUE9GHnDSlBUbYMu1XZ5kXEpQS03fsv-k_gL92XPDYt_HvdsBAA6_sPYAUjjwA5nyQKoZxsXX1oeihflLIHEc0HtTvoUU5F8OYerMItf2bJkzAMw-IlBQA?purpose=inline)
+
+[#cfd #starccm #openfoam #aerodynamics #engineering #simulation #f1 #frontwing #postprocessing #simulationresults #learningbydoing | Alvaro Lleonart Moix](https://images.openai.com/static-rsc-4/Uic5QYUlsSSaR2fT5fzF0kkajja2AGbhIehSspjj7bFTupcTsoE3Gzz3Jq1s3FIFk8xWnuh2k9m6l1WsTXfwbAOQoz5Q2YrbUD94Ev6Nl_m8kGW06RajKiUoVQFNAdceoJajbtV1AsABht4ajwOJQxy7L0dezuhpx5yjs2O4F9Y?purpose=inline)
+
+11
+
+Variáveis de concepção:
+
+- Geometria do perfil.
+- Corda.
+- Envergadura.
+- Curvatura.
+- Distribuição de carga.
+- Ângulo de incidência.
+- Geometria dos elementos.
+- Folgas e espaçamentos permitidos.
+- Rigidez estrutural.
+- Configuração dos atuadores ativos.
+
+Fenômenos:
+
+- Diferença de pressão.
+- Circulação.
+- Camada limite.
+- Separação.
+- Arrasto induzido.
+- Vórtices de ponta.
+- Interferência entre elementos.
+- Efeito solo.
+- Aeroelasticidade.
+
+Resultados:
+
+- Downforce dianteiro.
+- Downforce traseiro.
+- Arrasto.
+- Eficiência.
+- Sensibilidade ao yaw.
+- Equilíbrio aerodinâmico.
+- Estabilidade em diferentes ângulos de incidência.
+
+### Aero ativa 2026
+
+Precisamos implementar separadamente:
+
+- Corner Mode.
+- Straight Mode.
+- Atuação da asa dianteira.
+- Atuação da asa traseira.
+- Transição entre modos.
+- Conformidade com os comandos e limites regulamentares.
+
+O jogador poderá otimizar a arquitetura e o funcionamento dos mecanismos, mas não poderá simplesmente escolher ângulos arbitrários fora das condições regulamentares.
+
+A aero ativa também deve modificar o comportamento do carro de forma coordenada: reduzir arrasto nas retas significa reduzir simultaneamente parte da carga aerodinâmica.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://www.formula1.com\&sz=32)
+
+Formula 1® - The Official F1® Website+1
+
+
+
+## 4.4 Unidade de potência
+
+[Wiadomości - List - Top Racing Shop](https://images.openai.com/static-rsc-4/lnCgP-kQ63ff70Qp4bZyAhhBDnqQaboFgam6S2XvGugTGs-RGZIxGbFPttYPBMtnTi5ZSZryTbswFU_bSCSEDTAElF0k7rtGezfMWeI_FfD1CxCVK8PKc82ltWT0cs3EGaeMaujTpPjUss2kbfKbNwIEH5BtCVEp3_cGUe3jGao?purpose=inline)
+
+[Schema PU 2026: il flusso di energia sostituisce quello del carburante  - Formula 1 - Motorsport](https://images.openai.com/static-rsc-4/2n8mvAP9N-T4ym_BnOnpcXTYt2K1BEda995G0bRDdArxJA5M41XW5PwDWPkZibKa3h_zTeLun19c8KkKw0hZ8I9ZdnULywrJv5CjF_uf1__UVcO9qDbm1jDwM1UkkO6Y3Ig4dXK8yC6Bx_8VEK4rZAZXINZYAh0RRefUNrWxLIA?purpose=inline)
+
+[La F1 Power Unit es el reflejo de la sabiduría de cada integrante del equipo.](https://images.openai.com/static-rsc-4/vQcSGogKTUdDgEfCc0I46_uyOqIH4u9Ri2VOuysUZzI1R4yh-VEMH0SA-K-Ht89CG-qHyuiLvXjB3Eb6MvunrR1j-88aV14LenwZ1stxUQ34hnDMn_6UEuS-oIq9LD7fp8DIcTd_omB6x5QT7paUePoo4zXQYW_cRH9PXwNP6cQ?purpose=inline)
+
+7
+
+Aqui eu faria uma divisão em seis subsistemas:
+
+1. ICE.
+2. Turbocharger.
+3. MGU-K.
+4. Energy Store.
+5. Control Electronics.
+6. Sistemas auxiliares e refrigeração.
+
+Cada um terá seus próprios parâmetros.
+
+| Subsistema   | Parâmetros                                    | Fenômenos                                         |
+| ------------ | --------------------------------------------- | ------------------------------------------------- |
+| ICE          | Cilindrada, geometria, combustão e eficiência | Termodinâmica, combustão e transferência de calor |
+| Turbo        | Geometria regulamentar e eficiência           | Compressibilidade, turbomáquinas e inércia        |
+| MGU-K        | Potência, torque e eficiência                 | Eletromagnetismo e conversão de energia           |
+| Bateria      | Capacidade, resistência e temperatura         | Eletroquímica e transferência de calor            |
+| Eletrônica   | Estratégias de controle e eficiência          | Eletrônica de potência e controle                 |
+| Refrigeração | Vazão e capacidade térmica                    | Convecção e condução                              |
+
+Uma observação: a geometria do motor, os materiais, a taxa de compressão e os sistemas de combustão estão sujeitos às restrições específicas da PU de 2026. O jogador deve trabalhar dentro desses limites.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://www.fia.com\&sz=32)
+
+2026-02-27+1
+
+
+
+### Exemplo: bateria
+
+O jogador modifica o projeto térmico da bateria.
+
+O sistema deverá avaliar:
+
+- Resistência interna.
+- Corrente.
+- Potência elétrica.
+- Perdas por efeito Joule.
+- Temperatura das células.
+- Capacidade disponível.
+- Limites de operação.
+- Degradação ao longo dos ciclos.
+
+Uma aproximação para as perdas resistivas:
+
+\\[ P\_{\text{perdas}}=I^2R \\]
+
+Quanto maior a corrente, maiores podem ser as perdas térmicas.
+
+Isso significa que um modo de implantação elétrica agressivo pode aumentar a potência disponível, mas também a exigência térmica e o consumo energético.
+
+O modelo deverá considerar os limites regulamentares de potência e energia, em vez de permitir que o jogador aumente livremente a potência do MGU-K.
+
+## 4.5 Câmbio e transmissão
+
+[Guía Técnica de Fórmula 1 VAVEL || Capítulo 6: la caja de cambios - VAVEL España](https://images.openai.com/static-rsc-4/nGyrLhka8AOFynJnTboOBUPhYQ-MotX0iUHhGVMpa59FmDbGV18i5AxKCQLaByuh3mmwvpVwzp0TTtxspYB72r2hc8HbNSnMSQCVU-rn7i43g_sAbDSXwZq_gvRfqd9OTp1Bm8TzCsBN3urM6ezqI2jwKm7dJx8_2MOzjy4jYps?purpose=inline)
+
+[Câmbio: a ultima grande área de ganho de desempenho na F1](https://images.openai.com/static-rsc-4/9-GKRG4Dnwo2m_1DvR0JzDehwL8Te5FN-2o7iKeqXxpZDOLy1tr2NRAcB0obHQBl6fdzXZVFEU7Dixgc2eFXfrmcsHxBMmRVk43Rr_IWUuQ4_Imc0jA_dXNOaAm7Cwr5NxH8gyFa9cchsMDvvSR-XT7s6P__ppvNNlsS4pZSxeI?purpose=inline)
+
+[Honda’s paradigm shifter that flew in the face of convention - Motor Sport Magazine](https://images.openai.com/static-rsc-4/cwC19BXdverXfoYE13yOEak-TIpB5v3-xWzuVS2fXqt9h-nDzSSLt72UAQ6PM3I5KiWzAZAZ_IgL6owCG0suQ2V9IOSuXUbhUgVPhZEqIkqXfB3qvHXnGRKoDaIThm4sR0HXpzVG_YARsSDJD-9nfPpb8qDjSvt-DicCF9cKSks?purpose=inline)
+
+11
+
+Variáveis de concepção:
+
+- Relações de transmissão.
+- Geometria das engrenagens.
+- Diâmetro dos eixos.
+- Largura dos dentes.
+- Material.
+- Lubrificação.
+- Sistema de refrigeração.
+- Carcaça estrutural.
+- Posicionamento do diferencial.
+- Rigidez dos pontos de fixação.
+
+Fenômenos físicos:
+
+- Atrito.
+- Contato entre engrenagens.
+- Fadiga superficial.
+- Fadiga por flexão.
+- Vibração torsional.
+- Transferência térmica.
+- Lubrificação hidrodinâmica.
+- Resistência estrutural.
+
+Resultados:
+
+- Eficiência de transmissão.
+- Perdas mecânicas.
+- Temperatura do óleo.
+- Massa.
+- Resistência.
+- Vida útil.
+- Tempo de troca de marcha.
+- Compatibilidade com a suspensão.
+
+Uma correção em relação ao documento anterior: a compacidade do câmbio não deve gerar automaticamente um pit stop 0,4 segundo mais lento. A velocidade de troca dos pneus depende da acessibilidade, do projeto dos componentes, dos procedimentos e da equipe de pit stop. A dificuldade de manutenção pode ser simulada separadamente.
+
+## 4.6 Monocoque e estrutura traseira
+
+[F1 The Survival Cell and Crash Safety Infographic | LivePhysics™](https://images.openai.com/static-rsc-4/8RfzM7gldsuQXz6tfNmReHYY52rsl0fCi7pQloM93vgB6ytkQuDTYqYxBQW8TaA92CFlze9L9bRG3Uxzkf6Mfxh49qU1nCrWfjwNLA84qS7buvPLiNOtc__6X2C7M5HnUa_bWTLXirD91V09N4zJTpNNu9xo2AQABVksyuNxCUc?purpose=inline)
+
+[Formula One World Championship](https://images.openai.com/static-rsc-4/kDmWE0AqYMR-owrJaJEdClW63ZoadXnqVFsA0Yh2giuok2vcua8VnXPSuC4Iqf8h6gHKyZvWm9z5XPP7OllT7fPEIYqZGa8lkKWS8oQg63JVuygLIrYuurMk2JB7XD1KWAZ1pO6Ke-VE2ml3RECts79GotIotnyTcyw52MmUJRdzE5s8sGn3yRVTRKKAhjQG?purpose=inline)
+
+[Rear suspension and gearbox casing | Rear suspension and gea… | Flickr](https://images.openai.com/static-rsc-4/N0ictv8OyUy_6b7Ydyy6zXMi6-vmlU8-DrEOMMS6SIiWi0uHokF7mGU69c3TY9XOD-KiiC8kAtoDrx1XZfn4ARP4uahqPN659BDsjNE3cowzoe_EBkU76cEcQ7wPNWHdYCb_Racluu0rkz65BHc739aFQNf55gWvDPldxUm9hjc?purpose=inline)
+
+8
+
+Variáveis de concepção:
+
+- Geometria da célula de sobrevivência.
+- Espessura dos laminados.
+- Orientação das fibras.
+- Materiais.
+- Rigidez torcional.
+- Rigidez flexional.
+- Pontos de fixação.
+- Distribuição de reforços.
+- Estrutura de impacto.
+- Interfaces com a transmissão.
+
+Fenômenos:
+
+- Elasticidade.
+- Anisotropia.
+- Flambagem.
+- Fadiga.
+- Delaminação.
+- Concentração de tensões.
+- Absorção de energia.
+- Deformação térmica.
+
+Resultados:
+
+- Massa estrutural.
+- Rigidez.
+- Deformações.
+- Tensões máximas.
+- Margem de segurança.
+- Comportamento sob impacto.
+- Compatibilidade geométrica.
+
+A segurança e os ensaios regulamentares não poderão ser substituídos por uma pontuação genérica de resistência.
+
+## 4.7 Suspensão e geometria cinemática
+
+[F1 Ride Height: Suspension Tuning for Downforce Control](https://images.openai.com/static-rsc-4/5duYI0_r3DtZZFIyvo1kSzxypljYUCy3hHkRa86SK6IKQPsJdvFEHfj43SV61rspHhdN3Io22aa42P2x4k9-5f6IsDToQkFNrm10ERkDKmteEJlySrniuL2darM0wzK5xR9E0_P3gy7u2uTOgWRtqjDN--2qSef8k268W-OzZSY?purpose=inline)
+
+[F1 Suspension Geometry Infographic | LivePhysics™](https://images.openai.com/static-rsc-4/LWoZ6KicIXagttZYPOBS04nlEx2c2dSxFvzi0ZbaU7VN74g07f1QGn-mmDtlk24_k6INU755aRDD9YjH6pFD5nxySg25Xsxv8Wul4-dQndD0ZSNy2ktAzwX3vFUJwmt9e274jZVgPTmSvaPriMJ3swHYzzW8UEM8nDvJY79zYpg?purpose=inline)
+
+[Multidisciplinary Engineering in F1 Car\[v1\] | Preprints.org](https://images.openai.com/static-rsc-4/GETun0DUw20S8-yzdhRNEceUmmq1opnhOUieiEQ55uxQNrFC0wHYXpf9yF8LVNC9ihrMR80hbiEGDubcYD6dUlBx1cwSRwiWv1DicUUmYcUScS8ZeES0XXpUCW2mwfGA-o_3eqAZ1KhUgoUZL0WEBdro3RHNaabi8M9iMaSlcnQ?purpose=inline)
+
+12
+
+O jogador deve escolher mais do que Push-Rod ou Pull-Rod.
+
+Precisamos oferecer controle sobre:
+
+- Comprimento dos braços.
+- Posição dos pontos de fixação.
+- Inclinação dos braços.
+- Geometria dos rockers.
+- Relação de movimento.
+- Rigidez das molas.
+- Amortecimento.
+- Barras estabilizadoras.
+- Altura de rodagem.
+- Geometria de direção.
+- Configuração dos elementos internos.
+
+Fenômenos físicos:
+
+- Transferência de carga.
+- Frequência natural.
+- Amortecimento.
+- Cinemática.
+- Cambagem dinâmica.
+- Variação de toe.
+- Anti-dive.
+- Anti-squat.
+- Compliance.
+- Interferência aerodinâmica.
+
+Um exemplo:
+
+O jogador altera a posição do braço superior da suspensão dianteira.
+
+Isso pode modificar a curva de ganho de cambagem durante o curso da suspensão.
+
+O resultado depende da geometria tridimensional dos braços, não de um bônus fixo por escolher determinado layout.
+
+A alteração também pode afetar a posição dos elementos no escoamento de ar ao redor das rodas.
+
+# 5. O modelo matemático central do APEX
+
+Agora precisamos estabelecer como todas essas informações serão processadas.
+
+Minha recomendação é utilizar uma arquitetura híbrida com quatro níveis.
+
+## Hierarquia de modelos físicos
+
+Nível 1 — Equações fundamentais
+
+Conservação de massa, momento e energia; mecânica clássica; termodinâmica; resistência dos materiais.
+
+Nível 2 — Modelos de engenharia
+
+Modelos de pneus, aerodinâmica reduzida, transferência térmica, cinemática e resistência estrutural.
+
+Nível 3 — Modelos calibrados
+
+Curvas de desempenho, mapas de resposta, dados experimentais e correlações.
+
+Nível 4 — Simulação do jogo
+
+Tempo de volta, consumo, confiabilidade, desgaste, comportamento por circuito e decisões estratégicas.
+
+A vantagem dessa arquitetura é que podemos começar com modelos relativamente simples e aumentar sua fidelidade sem reescrever toda a lógica do jogo.
+
+# 6. Banco de dados técnico: utilizar conhecimento e dados reais da comunidade
+
+Aqui está uma das partes mais importantes da sua solicitação.
+
+Sim, podemos utilizar bases de dados reais, projetos open-source, pesquisas acadêmicas e trabalhos de comunidades de engenharia automotiva e automobilismo.
+
+Inclusive, eu recomendo isso.
+
+Mas precisamos entender que existem diferentes tipos de dados. Uma telemetria de Fórmula 1, uma curva de pneu de Formula Student e uma simulação CFD não são intercambiáveis.
+
+Cada fonte deve ter uma finalidade específica.
+
+## 6.1 Fontes que recomendo incorporar
+
+[OpenF1 API | The open source API for Formula 1 data](https://images.openai.com/static-rsc-4/M6v8GReGEbJ1hiDavFsrwaNlPLZCpBbsu7LONBGyEk9ZRyv031CCLC0-UC-Qsaw4AYBOwcDe7dV-GXLk9oTncBz-Z6FOChPvA4ikrt0Km2FRBrXqEyZHze7fMHfMf8Jeahh6K21FufctUueY4h8jfscw5DsYm7q4Vun-yVfdvl4?purpose=inline)
+
+OpenF1
+
+Prioridade alta
+
+Dados históricos e telemetria desde 2023.
+
+Utilização: velocidades, RPM, marchas, acelerador, frenagem, tempos de volta, clima, pneus, pit stops e posicionamento dos carros.
+
+É uma fonte especialmente útil para calibrar a simulação de corrida e comparar o comportamento do modelo com dados observados. Não fornece diretamente coeficientes aerodinâmicos secretos.
+
+[Documentação da API](https://openf1.org/docs/?utm_source=chatgpt.com) · [Projeto e condições de acesso](https://openf1.org/?utm_source=chatgpt.com)
+
+[Introduction to FastF1 — FastF1 (3.8.1)](https://images.openai.com/static-rsc-4/LgLsZPw9soNh8XkY_umAvyWLg4TU2kGV5ITr5PW6SJsElhWgF8zgZIG-deKqUVg_qeEl9airOMqIi_1xYoTGL6Yd03UgGYmkOClqKIDBgIDH8ePwtFe_3iWtSu-anOecT0EShM8SaNWlESl343B53BCJlLR6IMTLGAJQ0bqBuSw?purpose=inline)
+
+FastF1
+
+Prioridade alta
+
+Biblioteca comunitária Python.
+
+Utilização: dados de sessões, telemetria, setores, pneus, tempos de volta, posicionamento e condições de pista. Excelente para construir ferramentas de análise e calibração.
+
+O repositório é disponibilizado sob licença MIT. Os dados de terceiros possuem condições próprias de utilização.
+
+[GitHub FastF1](https://github.com/theOehrly/Fast-F1?utm_source=chatgpt.com) · [Documentação técnica](https://github.com/theOehrly/Fast-F1/blob/main/docs/index.rst?utm_source=chatgpt.com)
+
+[业务体系-感](https://images.openai.com/static-rsc-4/9q6SPIr4J4CmMqrcPslzRXDGPLHM5hNIB_jYtD-RBUi4an0XaCx2EdjJDa8KqCKfp4BcNob8SdMDR1FfiIkzztK7blmBIFavzzJZcvLRD2_olVfZUOYhTos6PArFbwxm-DYNH4vBdAuw-arauhiJkpmRBfpIl9m5Chh2reiG_EM?purpose=inline)
+
+OpenFOAM
+
+Prioridade alta
+
+Simulação CFD.
+
+Utilização: estudar distribuição de pressão, velocidades, turbulência, separação de fluxo, arrasto, forças aerodinâmicas e refrigeração.
+
+Não é propriamente um banco de dados. É um software de simulação que permite gerar nossos próprios resultados físicos.
+
+[Tutoriais oficiais](https://www.openfoam.com/documentation/tutorial-guide?utm_source=chatgpt.com) · [Documentação e código](https://www.openfoam.com/documentation/?utm_source=chatgpt.com)
+
+[fsae-ttc :: Calspan](https://images.openai.com/static-rsc-4/6AltepP38Zs-wqiqDjD_2rztv6UrqGDvDJFNJw3p78I76xw1NIhafJfk_p_GHuk_s8kGTxK2ck8yXFHJKh9A2Lc7IkOBbQhSieHtsYE6pnxE0isFMAsM5j-V8gE9dnWePZEXFgTp7U7sFHTTONVtW-DtInZ4pi8_UqKFaX4Cdc4?purpose=inline)
+
+Formula SAE Tire Test Consortium
+
+Prioridade alta
+
+Dados experimentais de pneus.
+
+Utilização: curvas de força lateral e longitudinal, carga vertical, slip angle, slip ratio, cambagem e comportamento combinado.
+
+É uma referência experimental muito útil, mas os pneus de Formula Student não são equivalentes aos pneus de F1. Devem servir para estudar métodos e calibrar um modelo genérico, não para afirmar que temos parâmetros reais da Pirelli de F1.
+
+[Exemplo comunitário de ajuste Magic Formula](https://github.com/noahemery/MLP-MF-FSAE-Tire-Model?utm_source=chatgpt.com) · [Trabalho acadêmico com dados TTC](https://digitalcollection.zhaw.ch/entities/publication/0d42f73c-b3d9-4647-bbb8-311c4a61835e?utm_source=chatgpt.com)
+
+['Space in Ultra HD': NASA broadcasts first 4K video from an aircraft to International Space Station](https://images.openai.com/static-rsc-4/gsIe9ZkevSWPOFYHPingep3PfuUqFApVW25XmXpR3jADL0WouL60YsKXTkSoL2rDB-nLadFhtVANRyog_THh0p6oKZNCECy0MoE5_9fEtqwQ2aD3V8tfXWknj0ANMxwIhh4ernQkJSzWkLEeG-Vv_EO0994bjV6AeprNL5dVQbw?purpose=inline)
+
+NASA Glenn Research Center
+
+Referência física
+
+Fundamentos e modelos de aerodinâmica.
+
+Utilização: fundamentos de Bernoulli, forças aerodinâmicas, camada limite, Reynolds, separação e escoamento.
+
+[Bernoulli e Newton](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/bernoulli-and-newton/?utm_source=chatgpt.com) · [Camada limite](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/boundary-layer/?utm_source=chatgpt.com)
+
+## 6.2 Outras fontes comunitárias que vale incorporar
+
+Eu também investigaria:
+
+| Fonte             | Aplicação                                                      |
+| ----------------- | -------------------------------------------------------------- |
+| Jolpica-F1        | Resultados, classificação, pilotos, equipes e temporadas       |
+| GitHub            | Modelos físicos, ferramentas e conjuntos de dados comunitários |
+| Formula Student   | Estudos de chassis, suspensão, pneus e dinâmica                |
+| SAE International | Literatura e métodos de engenharia                             |
+| OptimumG          | Referências de dinâmica, pneus e análise de veículos           |
+
+Uma biblioteca interessante para começar é o pacote comunitário de Pacejka, que implementa a Magic Formula e permite construir curvas de forças de pneus. Entretanto, a implementação encontrada tem limitações explícitas e não traz parâmetros medidos de pneus de F1.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://pypi.org\&sz=32)
+
+PyPI+1
+
+
+
+## 6.3 Como eu organizaria o banco de dados próprio
+
+Não recomendo que o jogo consulte diretamente dez APIs diferentes durante uma corrida.
+
+Criaria um banco de dados interno, com fontes externas utilizadas na preparação e calibração dos modelos.
+
+## APEX Physics Database
+
+Fontes externas
+
+OpenF1 · FastF1 · TTC · OpenFOAM · Literatura técnica
+
+Ingestão e tratamento
+
+Unidades · Licenças · Limpeza · Conversão · Qualidade
+
+Aerodinâmica
+
+Dinâmica veicular
+
+Pneus
+
+Materiais
+
+Termodinâmica
+
+Propulsão
+
+Biblioteca de modelos calibrados
+
+Equações · Curvas · Coeficientes · Incertezas · Validação
+
+Motor de física do APEX
+
+Concepção · Simulação · Relatórios · Corrida
+
+### Estrutura de cada registro físico
+
+Cada fenômeno deverá possuir um registro estruturado com:
+
+| Campo                  | Exemplo                                           |
+| ---------------------- | ------------------------------------------------- |
+| ID                     | AER-001                                           |
+| Nome                   | Efeito Venturi                                    |
+| Disciplina             | Aerodinâmica                                      |
+| Equações               | Continuidade e Bernoulli, com hipóteses definidas |
+| Variáveis de entrada   | Área, velocidade, densidade                       |
+| Variáveis de saída     | Pressão e velocidade                              |
+| Unidades               | SI                                                |
+| Limitações             | Viscosidade, separação e turbulência              |
+| Componentes associados | Assoalho e dutos                                  |
+| Dependências           | Geometria e condições de escoamento               |
+| Fonte                  | Literatura ou conjunto de dados                   |
+| Licença                | Condições de utilização                           |
+| Confiança              | Nível de validação                                |
+| Versão                 | Versão do modelo                                  |
+
+Isso permite que o mesmo fenômeno seja utilizado em diversos componentes sem criar cálculos diferentes e contraditórios.
+
+Uma regra importante: cada dado deverá guardar sua origem, licença, unidade, faixa de validade e incerteza. Não devemos misturar dados públicos, parâmetros estimados e dados fictícios como se fossem medições reais.
+
+# 7. Como isso será integrado à interface existente
+
+Agora vamos à parte visual.
+
+Não quero que você perca as três interfaces que já possui.
+
+Quero transformar o conteúdo delas em uma interface que mostre a engenharia por trás das decisões.
+
+## 7.1 Tela de concepção do componente
+
+Sua primeira referência já tem uma estrutura muito boa:
+
+- Parâmetros na coluna esquerda.
+- Sistemas complementares na direita.
+- Custo, tempo e harmonia na parte superior.
+
+Eu manteria essa organização.
+
+Mas acrescentaria uma camada técnica expansível em cada parâmetro.
+
+APEX CAD — FLOOR ENGINEERING
+
+Projeto editável
+
+Geometria do difusor
+
+AER-018
+
+Ângulo de expansão
+
+Parâmetro de projeto
+
+# 9°
+
+Fundamentação física
+
+- Recuperação de pressão.
+- Gradiente adverso de pressão.
+- Camada limite.
+- Separação do escoamento.
+
+  Intervalo ilustrativo de exploração, não uma autorização regulamentar ou uma previsão CFD.
+
+Análise de engenharia
+
+Modelo físico
+
+Pendente de simulação
+
+O sistema deverá avaliar a recuperação de pressão e a estabilidade do escoamento na geometria completa.
+
+Dependências
+
+- Altura de rodagem traseira.
+- Geometria do assoalho.
+- Rigidez estrutural.
+- Condições de velocidade.
+
+Esse é um exemplo de como podemos enriquecer a interface, sem substituir seu padrão visual.
+
+O slider não deve produzir resultados fictícios enquanto o modelo físico não estiver implementado. Por isso, a interface precisa distinguir parâmetros configurados de resultados efetivamente calculados.
+
+## 7.2 Relatório de simulação
+
+A segunda tela será a referência para os relatórios.
+
+Eu manteria:
+
+- Resultado aprovado/reprovado.
+- Dados de desempenho.
+- Massa.
+- Dimensões.
+- Confiabilidade.
+- Custos.
+- Liberação do projeto.
+
+Acrescentaria:
+
+Relatório de CFD
+
+- Mapa de pressão.
+- Velocidade do fluxo.
+- Distribuição de downforce.
+- Arrasto.
+- Regiões de separação.
+- Vorticidade.
+- Sensibilidade à altura.
+
+Relatório de FEA
+
+- Tensões.
+- Deformações.
+- Rigidez.
+- Margens de segurança.
+- Modos de vibração.
+- Fadiga estimada.
+
+Relatório térmico
+
+- Temperatura dos componentes.
+- Fluxos de calor.
+- Capacidade de refrigeração.
+- Margem térmica.
+- Regiões críticas.
+
+## 7.3 Briefing dos engenheiros
+
+A terceira tela deverá ser preservada.
+
+Mas os engenheiros terão funções mais importantes.
+
+| Especialista            | Responsabilidade                       |
+| ----------------------- | -------------------------------------- |
+| Diretor técnico         | Coerência global do projeto            |
+| Chefe de aerodinâmica   | Desempenho e estabilidade do fluxo     |
+| Chefe de dinâmica       | Suspensão, pneus e comportamento       |
+| Chefe de estruturas     | Massa, rigidez e resistência           |
+| Chefe de PU             | Potência, eficiência e confiabilidade  |
+| Engenheiro térmico      | Refrigeração e temperaturas            |
+| Engenheiro de materiais | Seleção e dimensionamento de materiais |
+
+Cada especialista poderá apresentar:
+
+- Diagnóstico.
+- Hipótese física.
+- Evidência disponível.
+- Solução recomendada.
+- Custo estimado.
+- Risco.
+- Incerteza.
+- Dependências.
+
+O nível de competência do engenheiro determinará a qualidade da análise e não deverá simplesmente multiplicar a potência do motor ou a carga aerodinâmica.
+
+# 8. Regras de funcionamento do motor de física
+
+Quero estabelecer algumas regras que evitem erros de implementação.
+
+### Regra 1 — Não utilizar bônus arbitrários como substitutos da física
+
+Evitar:
+
+- +10 Downforce por escolher um assoalho.
+- +5 Potência por escolher titânio.
+- +15 Estabilidade por escolher Push-Rod.
+- +10 Refrigeração por escolher radiadores maiores.
+
+Preferir:
+
+- Geometria → distribuição de pressão → forças aerodinâmicas.
+- Material → propriedades mecânicas → massa e deformação.
+- Cinemática → movimento das rodas → comportamento dinâmico.
+- Radiador → vazão e transferência térmica → temperatura.
+- Transmissão → relações e perdas → torque nas rodas.
+
+Bônus abstratos ainda podem existir para representar qualidade de fabricação, competência da equipe ou precisão de simulação, mas não devem substituir os cálculos físicos.
+
+### Regra 2 — Utilizar unidades consistentes
+
+O motor físico deverá utilizar o Sistema Internacional:
+
+| Grandeza             | Unidade      |
+| -------------------- | ------------ |
+| Massa                | kg           |
+| Comprimento          | m            |
+| Velocidade           | m/s          |
+| Força                | N            |
+| Torque               | N·m          |
+| Potência             | W            |
+| Pressão              | Pa           |
+| Temperatura          | K            |
+| Energia              | J            |
+| Densidade            | kg/m³        |
+| Viscosidade dinâmica | Pa·s         |
+| Deformação           | Adimensional |
+| Tensão mecânica      | Pa           |
+
+A interface poderá apresentar CV, kW, km/h, °C, mm e outras unidades familiares, fazendo conversões internamente.
+
+### Regra 3 — Diferenciar cálculo, estimativa e medição
+
+Todo resultado deve possuir uma classificação:
+
+- Medido: proveniente de um ensaio físico.
+- Simulado: calculado por um modelo.
+- Estimado: previsto com base em dados incompletos.
+- Inferido: deduzido de dados indiretos.
+- Hipotético: utilizado para preencher aspectos fictícios do jogo.
+
+Isso é particularmente importante porque não temos acesso público aos projetos CAD, mapas aerodinâmicos e parâmetros internos completos das equipes de F1.
+
+### Regra 4 — Conservar energia e respeitar limites físicos
+
+O motor de física precisa impedir resultados impossíveis.
+
+Por exemplo:
+
+- Não gerar energia sem fonte.
+- Não permitir potência elétrica acima dos limites regulamentares.
+- Não permitir temperatura abaixo de zero absoluto.
+- Não permitir forças incompatíveis com as condições de contato.
+- Não permitir dimensões fora dos volumes regulamentares.
+- Não permitir materiais com propriedades inventadas sem identificá-los como fictícios.
+
+### Regra 5 — A incerteza faz parte da engenharia
+
+Uma simulação nunca deve ser tratada como verdade absoluta.
+
+Cada modelo terá:
+
+- Margem de erro.
+- Faixa de validade.
+- Qualidade de calibração.
+- Sensibilidade aos dados de entrada.
+
+Uma equipe pode ter um projeto excelente, mas uma infraestrutura de simulação ruim, e consequentemente tomar decisões equivocadas.
+
+# 9. O sistema de otimização multidisciplinar
+
+Esta será uma das principais funcionalidades do APEX.
+
+O jogador não deverá simplesmente encontrar a melhor configuração de cada componente isoladamente.
+
+Precisará encontrar uma solução que funcione para o veículo completo.
+
+Eu implementaria um sistema semelhante à otimização multidisciplinar de engenharia, conhecida como MDO (Multidisciplinary Design Optimization).
+
+### Exemplo de conflito
+
+O jogador quer aumentar a carga aerodinâmica traseira.
+
+## Cadeia de consequências
+
+Alteração da geometria aerodinâmica traseira
+
+Aerodinâmica
+
+Maior carga traseira.
+
+Dinâmica
+
+Alteração do equilíbrio do carro.
+
+Estruturas
+
+Maior solicitação estrutural.
+
+Pneus
+
+Nova distribuição de carga e temperatura.
+
+Reavaliação do projeto completo
+
+O sistema poderá apresentar diferentes soluções:
+
+- Configuração de maior desempenho máximo.
+- Configuração de maior estabilidade.
+- Configuração de maior eficiência.
+- Configuração de menor massa.
+- Configuração de maior confiabilidade.
+
+Nenhuma delas precisa ser a melhor em todas as dimensões.
+
+Podemos inclusive utilizar uma fronteira de Pareto: um conjunto de soluções em que melhorar determinado objetivo exige sacrificar outro.
+
+Isso permitirá ao jogador escolher conscientemente os compromissos do projeto.
+
+# 10. Como o projeto de engenharia alimenta a corrida
+
+O desenvolvimento não pode terminar quando o carro passa no túnel de vento.
+
+Os resultados precisam alimentar a simulação de corrida.
+
+| Resultado de engenharia    | Efeito na corrida                             |
+| -------------------------- | --------------------------------------------- |
+| Distribuição de downforce  | Velocidade em curvas                          |
+| Arrasto                    | Velocidade final e consumo energético         |
+| Sensibilidade aerodinâmica | Consistência em diferentes condições          |
+| Rigidez da suspensão       | Controle da plataforma                        |
+| Curvas dos pneus           | Aceleração, frenagem e curvas                 |
+| Eficiência térmica         | Confiabilidade e disponibilidade de potência  |
+| Massa total                | Aceleração, frenagem e comportamento dinâmico |
+| Distribuição de massa      | Equilíbrio e comportamento do veículo         |
+| Eficiência da transmissão  | Potência efetiva nas rodas                    |
+| Estratégia de energia      | Disponibilidade de potência durante a volta   |
+
+Eu substituiria progressivamente o OVR como principal representação de desempenho.
+
+O OVR pode continuar existindo como indicador resumido para a interface, mas o simulador precisa trabalhar com as características físicas.
+
+Por exemplo, dois carros podem ter o mesmo OVR e comportamentos muito diferentes:
+
+- Um é rápido em curvas, mas perde nas retas.
+- Outro tem baixo arrasto, mas apresenta menor aderência em curvas.
+- Um terceiro é consistente, mas não apresenta grande desempenho máximo.
+
+Isso cria diversidade real entre as equipes.
+
+# 11. Plano de implementação
+
+Não recomendo implementar os 12 módulos simultaneamente.
+
+Minha proposta é construir o motor físico progressivamente.
+
+| Fase | Módulo                     | Entrega                                        |
+| ---- | -------------------------- | ---------------------------------------------- |
+| 01   | Fundação física            | Unidades, variáveis, equações e banco de dados |
+| 02   | Filosofia do veículo       | Requisitos e prioridades                       |
+| 03   | Packaging                  | Dimensões, massa e centros de gravidade        |
+| 04   | Aerodinâmica               | Assoalho, asas e carroceria                    |
+| 05   | Dinâmica veicular          | Suspensão, geometria e transferência de carga  |
+| 06   | Pneus                      | Modelo de forças e degradação                  |
+| 07   | Estruturas                 | Materiais, rigidez e FEA reduzida              |
+| 08   | Unidade de potência        | ICE, MGU-K, bateria e térmica                  |
+| 09   | Transmissão                | Câmbio, diferencial e perdas                   |
+| 10   | Simulação multidisciplinar | Integração dos sistemas                        |
+| 11   | Simulação de corrida       | Tempo de volta e estratégias                   |
+| 12   | Calibração                 | Comparação com dados reais e testes            |
+
+## 11.1 Arquitetura técnica recomendada
+
+Se estivermos implementando isso sobre a aplicação existente, eu separaria o sistema em:
+
+- Interface: telas existentes, dashboards e relatórios.
+- Engineering Database: parâmetros, materiais, fenômenos e componentes.
+- Physics Engine: equações e modelos.
+- Simulation Engine: execução dos cenários.
+- Optimization Engine: comparação e otimização.
+- Race Engine: utilização dos resultados durante as corridas.
+- Regulatory Engine: validação de conformidade.
+
+A interface não deverá conter as fórmulas físicas diretamente. Ela deverá enviar parâmetros ao motor de engenharia e receber os resultados.
+
+Isso facilitará a manutenção e permitirá trocar um modelo físico sem redesenhar as telas.
+
+# 12. Diretriz final: critérios obrigatórios de qualidade
+
+Todo novo componente adicionado ao APEX deverá passar por uma ficha de especificação.
+
+## APEX — Engineering Design Checklist
+
+CRITÉRIOS DE ESPECIFICAÇÃO
+
+# 12/12
+
+Possui uma definição física e funcional?
+
+Possui parâmetros geométricos ou de funcionamento?
+
+Possui unidades e intervalos válidos?
+
+Possui fenômenos físicos associados?
+
+Possui equações ou modelos matemáticos?
+
+Possui fontes técnicas documentadas?
+
+Possui efeitos positivos e negativos?
+
+Possui dependências com outros componentes?
+
+Possui limitações e restrições regulamentares?
+
+Possui modelo de simulação definido?
+
+Possui critérios de validação?
+
+Possui representação adequada na interface?
+
+Reiniciar checklist
+
+Um componente que não possui fundamentação física não deve ser apresentado como uma simulação de engenharia real.
+
+# 13. Referências técnicas permanentes
+
+Estas serão algumas das fontes-base para o desenvolvimento:
+
+1. [FIA — Regulamento Técnico de Fórmula 1 2026, Seção C, edição 16](https://www.fia.com/system/files/documents/fia_2026_f1_regulations_-_section_c_technical_-_iss_16_-_2026-02-27.pdf?utm_source=chatgpt.com).
+2. [FIA — Regulamento Técnico da Unidade de Potência 2026](https://www.fia.com/sites/default/files/fia_2026_formula_1_technical_regulations_pu_-_issue_5_-_2023-12-06.pdf?utm_source=chatgpt.com).
+3. [F1 — Explicação das mudanças aerodinâmicas de 2026](https://www.formula1.com/en/latest/article/2026-regulations-explained-all-you-need-to-know-about-f1s-new-aerodynamics.7IAt0auc32UkCEFE5ypkTB.7IAt0auc32UkCEFE5ypkTB?utm_sourc

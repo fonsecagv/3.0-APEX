@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --f1-red: #E10600;
+    --f1-carbon: #15151E;
+    --f1-dark-card: #1C1C26;
+    --f1-card-hover: #232330;
+    --f1-border: #2C2C3A;
+    --f1-border-bright: #3D3D50;
+    --f1-offwhite: #F7F4F1;
+    --f1-white: #FFFFFF;
+    --f1-gold: #C8A962;
+    --f1-muted: #8E8E9B;
+  }
+
+  body {
+    font-family: 'Titillium Web', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--f1-carbon);
+    color: var(--f1-offwhite);
+  }
+}
+
+/* F1 Official Typography Classes */
+.font-f1-display {
+  font-family: 'Chakra Petch', 'Titillium Web', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.font-f1-wide {
+  font-family: 'Chakra Petch', 'Titillium Web', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.font-f1-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* F1 Graphic Patterns from Guidelines (Pages 73-76) */
+.f1-pattern-micro-grid {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.f1-pattern-cross-grid {
+  background-image: 
+    radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.f1-pattern-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.02) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+}
+
+.f1-pattern-red-grid {
+  background-image: 
+    linear-gradient(to right, rgba(225, 6, 0, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(225, 6, 0, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* F1 Thick and Thin line container device (Brand guide pages 66-71) */
+.f1-container-frame {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 3px solid #E10600;
+}
+
+.f1-container-bucket {
+  position: relative;
+  border-left: 3px solid #E10600;
+  border-bottom: 3px solid #E10600;
+  border-bottom-left-radius: 14px;
+}
+
+.f1-container-roof {
+  position: relative;
+  border-right: 3px solid #E10600;
+  border-top: 3px solid #E10600;
+  border-top-right-radius: 14px;
+}
+
+/* Tabbed container with 45-degree angle chamfer */
+.f1-tab-chamfer {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+.f1-tab-chamfer-both {
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #15151E;
+}
+::-webkit-scrollbar-thumb {
+  background: #2C2C3A;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E10600;
+}
