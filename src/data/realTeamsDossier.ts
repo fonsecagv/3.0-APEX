@@ -99,7 +99,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Charles Leclerc',
         number: 16,
-        rating: 91,
+        rating: 94,
         contractUntil: 2028,
         focus: 'Classificação pura e curvas de alta velocidade',
         role: 'Titular 1',
@@ -108,20 +108,29 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Lewis Hamilton',
         number: 44,
-        rating: 92,
+        rating: 95,
         contractUntil: 2027,
         focus: 'Gestão de corrida, preservação de pneus e pista molhada',
         role: 'Titular 2',
         nationality: 'Reino Unido'
       },
       {
-        name: 'Oliver Bearman',
-        number: 87,
-        rating: 78,
+        name: 'Antonio Giovinazzi',
+        number: 99,
+        rating: 79,
         contractUntil: 2026,
-        focus: 'Ritmo agressivo e rápida adaptação de pista',
+        focus: 'Feedback técnico e desenvolvimento de simulador em Maranello',
         role: 'Piloto Reserva',
-        nationality: 'Reino Unido'
+        nationality: 'Itália'
+      },
+      {
+        name: 'Dino Beganovic',
+        number: 7,
+        rating: 76,
+        contractUntil: 2026,
+        focus: 'Piloto da Ferrari Driver Academy em ascensão na F2',
+        role: 'Piloto Reserva',
+        nationality: 'Suécia'
       }
     ],
     technicalStaff: [
@@ -236,7 +245,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Lando Norris',
         number: 4,
-        rating: 91,
+        rating: 93,
         contractUntil: 2027,
         focus: 'Ritmo de corrida devastador e ritmo de classificação',
         role: 'Titular 1',
@@ -245,7 +254,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Oscar Piastri',
         number: 81,
-        rating: 89,
+        rating: 90,
         contractUntil: 2026,
         focus: 'Calma sob pressão extrema e largadas limpas',
         role: 'Titular 2',
@@ -253,12 +262,21 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       },
       {
         name: 'Patricio O’Ward',
-        number: 5,
+        number: 29,
         rating: 80,
         contractUntil: 2026,
-        focus: 'Agressividade de freada e adaptabilidade',
+        focus: 'Agressividade de freada e suporte nos TL1',
         role: 'Piloto Reserva',
         nationality: 'México'
+      },
+      {
+        name: 'Leonardo Fornaroli',
+        number: 1,
+        rating: 76,
+        contractUntil: 2026,
+        focus: 'Campeão da F3 em desenvolvimento contínuo',
+        role: 'Piloto Reserva',
+        nationality: 'Itália'
       }
     ],
     technicalStaff: [
@@ -373,29 +391,38 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Max Verstappen',
         number: 1,
-        rating: 98,
+        rating: 97,
         contractUntil: 2028,
         focus: 'Domínio absoluto, agressividade cirúrgica e telemetria',
         role: 'Titular 1',
         nationality: 'Holanda'
       },
       {
-        name: 'Liam Lawson',
-        number: 30,
-        rating: 82,
-        contractUntil: 2026,
-        focus: 'Combate corpo a corpo e consistência de pontuação',
-        role: 'Titular 2',
-        nationality: 'Nova Zelândia'
-      },
-      {
         name: 'Isack Hadjar',
         number: 6,
-        rating: 79,
+        rating: 81,
         contractUntil: 2026,
-        focus: 'Velocidade bruta em classificação e frenagens tardias',
-        role: 'Piloto Reserva',
+        focus: 'Agressividade pura, largadas fortes e arrojo técnico',
+        role: 'Titular 2',
         nationality: 'França'
+      },
+      {
+        name: 'Yuki Tsunoda',
+        number: 22,
+        rating: 83,
+        contractUntil: 2026,
+        focus: 'Velocidade explosiva e suporte de desenvolvimento',
+        role: 'Piloto Reserva',
+        nationality: 'Japão'
+      },
+      {
+        name: 'Ayumu Iwasa',
+        number: 40,
+        rating: 77,
+        contractUntil: 2026,
+        focus: 'Simulador avançado de Milton Keynes e ritmo consistente',
+        role: 'Piloto Reserva',
+        nationality: 'Japão'
       }
     ],
     technicalStaff: [
@@ -510,7 +537,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'George Russell',
         number: 63,
-        rating: 90,
+        rating: 91,
         contractUntil: 2027,
         focus: 'Consistência de ferro, ritmo de classificação e liderança técnica',
         role: 'Titular 1',
@@ -519,7 +546,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Kimi Antonelli',
         number: 12,
-        rating: 83,
+        rating: 82,
         contractUntil: 2026,
         focus: 'Talento puro em curvas rápidas e ultrapassagens arrojadas',
         role: 'Titular 2',
@@ -533,6 +560,15 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
         focus: 'Simulador avançado e desenvolvimento de software',
         role: 'Piloto Reserva',
         nationality: 'Dinamarca'
+      },
+      {
+        name: 'Doriane Pin',
+        number: 28,
+        rating: 75,
+        contractUntil: 2026,
+        focus: 'Mercedes Junior Team, precisão de telemetria e testes',
+        role: 'Piloto Reserva',
+        nationality: 'França'
       }
     ],
     technicalStaff: [
@@ -647,7 +683,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Fernando Alonso',
         number: 14,
-        rating: 91,
+        rating: 92,
         contractUntil: 2026,
         focus: 'Leitura tática impecável, defesas lendárias e determinação implacável',
         role: 'Titular 1',
@@ -663,13 +699,22 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
         nationality: 'Canadá'
       },
       {
-        name: 'Felipe Drugovich',
-        number: 34,
-        rating: 81,
+        name: 'Jak Crawford',
+        number: 7,
+        rating: 76,
         contractUntil: 2026,
-        focus: 'Consistência de stints longos e precisão de telemetria',
+        focus: 'Jovem talento americano em ascensão na F2',
         role: 'Piloto Reserva',
-        nationality: 'Brasil'
+        nationality: 'Estados Unidos'
+      },
+      {
+        name: 'Stoffel Vandoorne',
+        number: 2,
+        rating: 79,
+        contractUntil: 2026,
+        focus: 'Experiência em simulador e calibração de sistemas híbridos',
+        role: 'Piloto Reserva',
+        nationality: 'Bélgica'
       }
     ],
     technicalStaff: [
@@ -784,7 +829,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Carlos Sainz',
         number: 55,
-        rating: 89,
+        rating: 90,
         contractUntil: 2027,
         focus: 'Feedback cirúrgico aos engenheiros, acerto de corrida e inteligência tática',
         role: 'Titular 1',
@@ -801,12 +846,21 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       },
       {
         name: 'Luke Browning',
-        number: 37,
-        rating: 74,
+        number: 14,
+        rating: 77,
         contractUntil: 2026,
-        focus: 'Jovem promessa da academia britânica',
+        focus: 'Williams Racing Driver Academy e ritmo veloz na F2',
         role: 'Piloto Reserva',
         nationality: 'Reino Unido'
+      },
+      {
+        name: 'Victor Martins',
+        number: 1,
+        rating: 77,
+        contractUntil: 2026,
+        focus: 'Campeão da F3 com forte experiência em monomarcas',
+        role: 'Piloto Reserva',
+        nationality: 'França'
       }
     ],
     technicalStaff: [
@@ -921,7 +975,7 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Pierre Gasly',
         number: 10,
-        rating: 86,
+        rating: 85,
         contractUntil: 2026,
         focus: 'Determinação sob pressão e ritmo de corrida sólido',
         role: 'Titular 1',
@@ -937,13 +991,22 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
         nationality: 'Argentina'
       },
       {
-        name: 'Jack Doohan',
-        number: 61,
-        rating: 76,
+        name: 'Paul Aron',
+        number: 17,
+        rating: 78,
         contractUntil: 2026,
-        focus: 'Desenvolvimento e telemetria',
+        focus: 'Velocidade consistente e trabalho de simulador',
         role: 'Piloto Reserva',
-        nationality: 'Austrália'
+        nationality: 'Estônia'
+      },
+      {
+        name: 'Kush Maini',
+        number: 9,
+        rating: 75,
+        contractUntil: 2026,
+        focus: 'Alpine Academy com experiência ampla na F2',
+        role: 'Piloto Reserva',
+        nationality: 'Índia'
       }
     ],
     technicalStaff: [
@@ -1067,20 +1130,11 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Gabriel Bortoleto',
         number: 5,
-        rating: 80,
+        rating: 81,
         contractUntil: 2027,
         focus: 'Ultrapassagens calculadas, agressividade e leitura de telemetria',
         role: 'Titular 2',
         nationality: 'Brasil'
-      },
-      {
-        name: 'Zane Maloney',
-        number: 29,
-        rating: 74,
-        contractUntil: 2026,
-        focus: 'Simulador e suporte técnico',
-        role: 'Piloto Reserva',
-        nationality: 'Barbados'
       }
     ],
     technicalStaff: [
@@ -1204,20 +1258,29 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
       {
         name: 'Oliver Bearman',
         number: 87,
-        rating: 79,
+        rating: 80,
         contractUntil: 2027,
         focus: 'Velocidade bruta e arrojo em ultrapassagens',
         role: 'Titular 2',
         nationality: 'Reino Unido'
       },
       {
-        name: 'Pietro Fittipaldi',
-        number: 51,
-        rating: 74,
+        name: 'Ryo Hirakawa',
+        number: 15,
+        rating: 76,
         contractUntil: 2026,
-        focus: 'Testes de simulador e suporte de engenharia',
+        focus: 'Piloto Toyota Gazoo Racing, simulador e testes técnicos',
         role: 'Piloto Reserva',
-        nationality: 'Brasil'
+        nationality: 'Japão'
+      },
+      {
+        name: 'Jack Doohan',
+        number: 7,
+        rating: 78,
+        contractUntil: 2026,
+        focus: 'Piloto de testes experiente com ritmo veloz de volta lançada',
+        role: 'Piloto Reserva',
+        nationality: 'Austrália'
       }
     ],
     technicalStaff: [
@@ -1325,29 +1388,38 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
     ],
     drivers: [
       {
-        name: 'Yuki Tsunoda',
-        number: 22,
-        rating: 84,
+        name: 'Liam Lawson',
+        number: 30,
+        rating: 83,
         contractUntil: 2026,
-        focus: 'Velocidade explosiva, arrojo na chuva e garra em disputas',
+        focus: 'Combate corpo a corpo, consistência de pontuação e reflexos afiados',
         role: 'Titular 1',
-        nationality: 'Japão'
+        nationality: 'Nova Zelândia'
       },
       {
-        name: 'Isack Hadjar',
-        number: 6,
-        rating: 79,
-        contractUntil: 2026,
-        focus: 'Agressividade pura, largadas fortes e arrojo',
+        name: 'Arvid Lindblad',
+        number: 41,
+        rating: 78,
+        contractUntil: 2027,
+        focus: 'Prodígio Red Bull Junior de 18 anos com velocidade assombrosa',
         role: 'Titular 2',
-        nationality: 'França'
+        nationality: 'Reino Unido'
+      },
+      {
+        name: 'Yuki Tsunoda',
+        number: 22,
+        rating: 83,
+        contractUntil: 2026,
+        focus: 'Piloto de referência e suporte de telemetria rápida',
+        role: 'Piloto Reserva',
+        nationality: 'Japão'
       },
       {
         name: 'Ayumu Iwasa',
         number: 40,
-        rating: 76,
+        rating: 77,
         contractUntil: 2026,
-        focus: 'Simulador e ritmo consistente',
+        focus: 'Simulador e ritmo constante em treinos livres',
         role: 'Piloto Reserva',
         nationality: 'Japão'
       }
@@ -1465,22 +1537,31 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
         nationality: 'México'
       },
       {
+        name: 'Valtteri Bottas',
+        number: 77,
+        rating: 83,
+        contractUntil: 2027,
+        focus: 'Velocidade limpa em classificação, precisão mecânica e liderança experiente',
+        role: 'Titular 2',
+        nationality: 'Finlândia'
+      },
+      {
+        name: 'Zhou Guanyu',
+        number: 24,
+        rating: 78,
+        contractUntil: 2026,
+        focus: 'Precisão em simulador, trabalho de setup e suporte de telemetria',
+        role: 'Piloto Reserva',
+        nationality: 'China'
+      },
+      {
         name: 'Colton Herta',
         number: 26,
         rating: 80,
         contractUntil: 2027,
-        focus: 'Velocidade bruta em curvas de alta, agressividade em ultrapassagens e adaptabilidade rápida',
-        role: 'Titular 2',
-        nationality: 'Estados Unidos'
-      },
-      {
-        name: 'Patricio O\'Ward',
-        number: 29,
-        rating: 79,
-        contractUntil: 2026,
-        focus: 'Refinamento em simulador, feedback de suspensão e suporte nos treinos livres de sexta-feira',
+        focus: 'Estrela americana da F2 (Hitech TGR), velocidade bruta e agressividade',
         role: 'Piloto Reserva',
-        nationality: 'México'
+        nationality: 'Estados Unidos'
       }
     ],
     technicalStaff: [
