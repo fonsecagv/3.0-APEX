@@ -4,6 +4,8 @@ import { F1Logo, F1TabBucket } from '../brand/F1Logo';
 import { F1HelpTooltip } from '../common/F1HelpTooltip';
 import { HEADQUARTERS_OPTIONS, HQOption } from '../../data/headquartersData';
 import { PRINCIPAL_BACKGROUNDS, PrincipalBackgroundOption } from '../../data/principalBackgroundsData';
+import { evaluateSynergy, type SynergyAnalysis } from '../../data/synergyMatrix';
+import { REAL_TEAMS_DOSSIERS, type RealTeamDossier } from '../../data/realTeamsDossier';
 import {
   CareerPath,
   UserRole,
@@ -1169,6 +1171,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     (careerPath === 'real_team' ? 135000000 : ambitionSpec.budgetUsd) +
     backgroundCashBonusUsd +
     hqCashNetDeltaUsd;
+
+  const liveSynergy = evaluateSynergy(selectedHq, selectedBackground);
+  const selectedTeamDossier: RealTeamDossier = REAL_TEAMS_DOSSIERS[selectedRealTeamId] || REAL_TEAMS_DOSSIERS['ferrari'];
 
   // Step 2: FIA Meeting & Board Directive
   const [boardAccepted, setBoardAccepted] = useState<boolean>(true);
@@ -2428,6 +2433,318 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   ))}
                 </div>
 
+                {/* ========================================================================= */}
+                {/* 🖥️ TELA DE PERFIL DA EQUIPE: O DOSSIÊ DO TEAM PRINCIPAL                 */}
+                {/* ========================================================================= */}
+                <div className="bg-[#15151E] border-2 border-white/15 p-5 space-y-6 f1-container-roof shadow-2xl relative overflow-hidden">
+                  {/* Subtle livery stripe on top */}
+                  <div
+                    className="absolute top-0 left-0 right-0 h-1.5"
+                    style={{ backgroundColor: selectedTeamDossier.color }}
+                  />
+
+                  {/* 1. CABEÇALHO (A Identidade) */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className="w-14 h-14 border border-white/20 flex flex-col items-center justify-center font-f1-wide font-black text-xl text-white shadow-lg shrink-0"
+                        style={{ backgroundColor: selectedTeamDossier.color }}
+                      >
+                        {selectedTeamDossier.shortName}
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xl">{selectedTeamDossier.flagEmoji}</span>
+                          <span className="font-f1-mono text-xs text-zinc-400 uppercase tracking-wider">
+                            {selectedTeamDossier.location}
+                          </span>
+                          <span className="px-2 py-0.5 bg-white/10 text-zinc-300 font-f1-mono text-[10px] font-bold uppercase">
+                            MODELO: {selectedTeamDossier.carModel}
+                          </span>
+                        </div>
+                        <h3 className="font-f1-wide font-black text-2xl text-white uppercase tracking-tight mt-0.5">
+                          {selectedTeamDossier.officialFullName}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col md:items-end gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 text-xs font-f1-mono text-amber-300 bg-amber-950/30 border border-amber-500/40 px-3 py-1 font-bold">
+                        <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>{selectedTeamDossier.constructorTitles} Construtores</span>
+                        <span className="text-zinc-600">|</span>
+                        <span>{selectedTeamDossier.driverTitles} Pilotos</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] font-f1-mono">
+                        <span className="text-zinc-400">Reputação:</span>
+                        <span className="text-emerald-400 font-bold uppercase">
+                          {selectedTeamDossier.reputationLabel}
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-f1-mono text-zinc-400 bg-black/40 px-2.5 py-0.5 border border-white/10">
+                        🎯 <span className="text-white font-bold">Meta:</span> {selectedTeamDossier.boardExpectation}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. COLUNA ESQUERDA & DIREITA (DNA, HISTÓRIA & O PLANTEL) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* COLUNA ESQUERDA: DNA E HISTÓRIA (O Passado e o Presente) - 6 cols */}
+                    <div className="lg:col-span-6 space-y-4">
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-f1-mono text-[#E10600] font-bold uppercase tracking-wider block">
+                          [ HISTÓRIA & IDENTIDADE DA ESCUDERIA ]
+                        </span>
+                        <p className="text-xs text-zinc-300 font-light leading-relaxed italic border-l-2 border-[#E10600] pl-3 py-0.5 bg-white/[0.02]">
+                          "{selectedTeamDossier.historicalIntro}"
+                        </p>
+                      </div>
+
+                      {/* DNA Fixo da Equipe */}
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-f1-mono text-zinc-400 font-bold uppercase tracking-wider block">
+                          DNA Histórico da Equipe (Modificadores Fixos)
+                        </span>
+                        <div className="space-y-2">
+                          {selectedTeamDossier.fixedDnaTags.map((dna, idx) => (
+                            <div
+                              key={idx}
+                              className={`p-2.5 border text-xs font-f1-mono space-y-1 ${
+                                dna.type === 'positive'
+                                  ? 'bg-emerald-950/20 border-emerald-500/30'
+                                  : dna.type === 'negative'
+                                  ? 'bg-red-950/20 border-red-500/30'
+                                  : 'bg-white/5 border-white/10'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>{dna.icon}</span>
+                                <span className="font-bold text-white uppercase text-[11px]">
+                                  {dna.label}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-400 leading-snug pl-6">
+                                {dna.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Status da Diretoria */}
+                      <div className="bg-amber-950/20 border border-amber-500/40 p-3 text-xs font-f1-mono space-y-1">
+                        <div className="flex items-center gap-1.5 text-amber-400 font-bold uppercase text-[10px]">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Status do Conselho Administrativo</span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {selectedTeamDossier.boardStatus}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* COLUNA DIREITA: O PLANTEL (Pessoas e Ativos) - 6 cols */}
+                    <div className="lg:col-span-6 space-y-4">
+                      {/* Pilotos Atuais */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-f1-mono text-zinc-400 font-bold uppercase tracking-wider">
+                            Plantel de Pilotos Herdado
+                          </span>
+                          <span className="text-[10px] font-f1-mono text-cyan-400">
+                            {selectedTeamDossier.drivers.length} Pilotos Ativos
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {selectedTeamDossier.drivers.map((drv, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-[#1C1C26] border border-white/10 p-3 flex items-center justify-between gap-3 text-xs font-f1-mono hover:border-white/20 transition-all"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-black/60 border border-white/10 flex items-center justify-center font-f1-wide font-black text-xs text-white">
+                                  #{drv.number}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-white font-bold font-f1-wide uppercase text-xs">
+                                      {drv.name}
+                                    </span>
+                                    <span className="text-[9px] px-1.5 py-0.2 bg-white/10 text-zinc-400 uppercase">
+                                      {drv.role}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-zinc-400 mt-0.5">
+                                    Foco: <span className="text-zinc-300">{drv.focus}</span> · Contrato: <span className="text-cyan-400 font-bold">{drv.contractUntil}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className="text-[9px] text-zinc-500 uppercase block">Overall</span>
+                                <span className={`font-f1-wide font-black text-sm ${
+                                  drv.rating >= 90 ? 'text-amber-400' : drv.rating >= 80 ? 'text-emerald-400' : 'text-zinc-300'
+                                }`}>
+                                  {drv.rating}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Equipe Técnica Herdada */}
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-f1-mono text-zinc-400 font-bold uppercase tracking-wider block">
+                          Corpo Técnico em Exercício
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-f1-mono">
+                          {selectedTeamDossier.technicalStaff.map((staff, idx) => (
+                            <div key={idx} className="bg-[#1C1C26] border border-white/5 p-2.5 space-y-0.5">
+                              <span className="text-[9px] text-cyan-400 uppercase font-bold block">
+                                {staff.role}
+                              </span>
+                              <span className="text-white font-bold text-[11px] block truncate">
+                                {staff.name}
+                              </span>
+                              <span className="text-[9px] text-zinc-400 block truncate">
+                                {staff.focus}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. RODAPÉ (A Máquina: Relatório de Telemetria do Carro e Motor) */}
+                  <div className="bg-[#111118] border border-white/15 p-4 sm:p-5 space-y-4 f1-container-frame">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Gauge className="w-5 h-5 text-cyan-400 shrink-0" />
+                        <div>
+                          <span className="font-f1-wide font-black text-sm text-white uppercase tracking-wider block">
+                            Dossiê de Telemetria · Ponto de Partida 2026
+                          </span>
+                          <span className="text-[10px] font-f1-mono text-zinc-400">
+                            Diagnóstico Técnico Confidencial de Fábrica
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 bg-black/60 border border-white/10 text-cyan-400 font-f1-mono text-[10px] font-bold uppercase">
+                        FORNECEDOR: {selectedTeamDossier.powerUnitSupplier} ({selectedTeamDossier.powerUnitType})
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* UNIDADE DE POTÊNCIA (O Motor) */}
+                      <div className="space-y-3">
+                        <span className="text-xs font-f1-mono text-emerald-400 font-bold uppercase tracking-wider block flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 shrink-0" />
+                          UNIDADE DE POTÊNCIA (O MOTOR 2026)
+                        </span>
+
+                        <div className="space-y-2.5 bg-[#171722] p-3 border border-white/5">
+                          {selectedTeamDossier.puMetrics.map((metric, idx) => (
+                            <div key={idx} className="space-y-1 text-xs font-f1-mono">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-300 font-bold">{metric.label}</span>
+                                <span className={`text-[10px] font-bold ${
+                                  metric.status === 'good' ? 'text-emerald-400' : metric.status === 'warning' ? 'text-amber-400' : 'text-red-400'
+                                }`}>
+                                  {metric.tierText}
+                                </span>
+                              </div>
+                              <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    metric.status === 'good' ? 'bg-emerald-400' : metric.status === 'warning' ? 'bg-amber-400' : 'bg-red-400'
+                                  }`}
+                                  style={{ width: `${metric.value}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* DESEMPENHO DO CHASSI (O Carro Atual) */}
+                      <div className="space-y-3">
+                        <span className="text-xs font-f1-mono text-cyan-400 font-bold uppercase tracking-wider block flex items-center gap-1.5">
+                          <Wind className="w-3.5 h-3.5 shrink-0" />
+                          DESEMPENHO DO CHASSI & AERODINÂMICA
+                        </span>
+
+                        <div className="space-y-2.5 bg-[#171722] p-3 border border-white/5">
+                          {selectedTeamDossier.chassisMetrics.map((metric, idx) => (
+                            <div key={idx} className="space-y-1 text-xs font-f1-mono">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-zinc-300 font-bold">{metric.label}</span>
+                                <span className={`text-[10px] font-bold ${
+                                  metric.status === 'good' ? 'text-emerald-400' : metric.status === 'warning' ? 'text-amber-400' : 'text-red-400'
+                                }`}>
+                                  {metric.tierText}
+                                </span>
+                              </div>
+                              <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    metric.status === 'good' ? 'bg-cyan-400' : metric.status === 'warning' ? 'bg-amber-400' : 'bg-red-400'
+                                  }`}
+                                  style={{ width: `${metric.value}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vantagens e Vulnerabilidades */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-xs font-f1-mono border-t border-white/5">
+                      <div className="bg-emerald-950/20 border border-emerald-500/30 p-2.5">
+                        <span className="text-emerald-400 font-bold uppercase text-[10px] block">
+                          🛡️ Vantagem Competitiva Herdada:
+                        </span>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed mt-0.5">
+                          {selectedTeamDossier.tacticalAdvantage}
+                        </p>
+                      </div>
+
+                      <div className="bg-red-950/20 border border-red-500/30 p-2.5">
+                        <span className="text-red-400 font-bold uppercase text-[10px] block">
+                          ⚠️ Vulnerabilidade Crítica de Início de Temporada:
+                        </span>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed mt-0.5">
+                          {selectedTeamDossier.tacticalVulnerability}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. BOTÃO DE AÇÃO (O Contrato) */}
+                  <div className="bg-black/50 border border-white/15 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-f1-mono font-bold text-amber-300 uppercase block flex items-center gap-1.5">
+                        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                        AVISO OFICIAL DE GOVERNANÇA & DEMISSÃO
+                      </span>
+                      <p className="text-[11px] font-f1-mono text-zinc-400 leading-snug">
+                        {selectedTeamDossier.boardWarning}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={nextStep}
+                      className="px-6 py-3.5 bg-[#E10600] hover:bg-[#B30500] text-white font-f1-wide font-black text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(225,6,0,0.4)] flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                    >
+                      <span>{selectedTeamDossier.contractSignText}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
                 {/* Team Principal Profile & DNA Inicial (Real Team) */}
                 <div className="pt-3 border-t border-white/5 space-y-3.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2445,7 +2762,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-xs font-f1-wide font-bold text-white uppercase block">
-                          Seu Histórico (DNA Inicial)
+                          Seu Histórico Pessoal (DNA de Chefe)
                         </label>
                         <span className="text-[10px] font-f1-mono text-zinc-400">
                           6 Perfis de Carreira
@@ -2458,7 +2775,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       >
                         {PRINCIPAL_BACKGROUNDS.map((bg, idx) => (
                           <option key={bg.id} value={bg.id}>
-                            {idx + 1}. {bg.name} ({bg.bonus} | {bg.onus})
+                            {idx + 1}. {bg.name} (Foco: {bg.focus})
                           </option>
                         ))}
                       </select>
@@ -2470,13 +2787,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 bg-[#E10600] inline-block shrink-0" />
-                        <span className="font-f1-wide font-black text-sm text-white uppercase">
-                          {selectedBackground.name}
-                        </span>
+                        <div>
+                          <span className="font-f1-wide font-black text-sm text-white uppercase block">
+                            {selectedBackground.name}
+                          </span>
+                          <span className="text-[10px] font-f1-mono text-zinc-400">
+                            Foco: {selectedBackground.focus}
+                          </span>
+                        </div>
                       </div>
                       <span className="text-[10px] font-f1-mono text-zinc-300 bg-white/5 border border-white/10 px-2 py-0.5 uppercase tracking-wider font-bold">
                         {selectedBackground.badge}
                       </span>
+                    </div>
+
+                    {/* Vibe Callout */}
+                    <div className="bg-black/30 border-l-2 border-amber-400 px-3 py-1.5 text-[11px] font-f1-mono text-amber-300 italic">
+                      <span className="font-bold text-amber-400 not-italic uppercase text-[10px] mr-1.5">[VIBE]:</span>
+                      {selectedBackground.vibe}
                     </div>
 
                     {/* BÔNUS (VERDE) & ÔNUS (VERMELHO) TAGS */}
@@ -2667,7 +2995,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       >
                         {PRINCIPAL_BACKGROUNDS.map((bg, idx) => (
                           <option key={bg.id} value={bg.id}>
-                            {idx + 1}. {bg.name} ({bg.bonus} | {bg.onus})
+                            {idx + 1}. {bg.name} (Foco: {bg.focus})
                           </option>
                         ))}
                       </select>
@@ -2679,13 +3007,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 bg-[#E10600] inline-block shrink-0" />
-                        <span className="font-f1-wide font-black text-sm text-white uppercase">
-                          {selectedBackground.name}
-                        </span>
+                        <div>
+                          <span className="font-f1-wide font-black text-sm text-white uppercase block">
+                            {selectedBackground.name}
+                          </span>
+                          <span className="text-[10px] font-f1-mono text-zinc-400">
+                            Foco: {selectedBackground.focus}
+                          </span>
+                        </div>
                       </div>
                       <span className="text-[10px] font-f1-mono text-zinc-300 bg-white/5 border border-white/10 px-2 py-0.5 uppercase tracking-wider font-bold">
                         {selectedBackground.badge}
                       </span>
+                    </div>
+
+                    {/* Vibe Callout */}
+                    <div className="bg-black/30 border-l-2 border-amber-400 px-3 py-1.5 text-[11px] font-f1-mono text-amber-300 italic">
+                      <span className="font-bold text-amber-400 not-italic uppercase text-[10px] mr-1.5">[VIBE]:</span>
+                      {selectedBackground.vibe}
                     </div>
 
                     {/* BÔNUS (VERDE) & ÔNUS (VERMELHO) TAGS */}
@@ -2716,6 +3055,167 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <p className="text-[11px] text-zinc-400 font-light leading-relaxed border-t border-white/5 pt-2">
                       {selectedBackground.description}
                     </p>
+                  </div>
+
+                  {/* ========================================================================= */}
+                  {/* PAINEL DE RESUMO DA NOVA EQUIPE (12ª VAGA) & META-GAME DE SINERGIA       */}
+                  {/* ========================================================================= */}
+                  <div className={`p-4 sm:p-5 border-2 space-y-4 shadow-2xl relative overflow-hidden transition-all duration-300 ${
+                    liveSynergy.type === 'perfect_synergy'
+                      ? 'bg-[#121E19]/90 border-emerald-500/60 shadow-[0_0_35px_rgba(16,185,129,0.15)]'
+                      : liveSynergy.type === 'mitigation'
+                      ? 'bg-[#101C24]/90 border-cyan-500/60 shadow-[0_0_35px_rgba(6,182,212,0.15)]'
+                      : liveSynergy.type === 'hardcore'
+                      ? 'bg-[#221215]/90 border-red-500/60 shadow-[0_0_35px_rgba(239,68,68,0.2)]'
+                      : 'bg-[#1E1B14]/90 border-amber-500/60 shadow-[0_0_35px_rgba(245,158,11,0.15)]'
+                  }`}>
+                    {/* Top status bar indicator */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2 py-0.5 font-f1-mono text-[9px] font-black uppercase tracking-wider bg-white/10 text-white">
+                            RESUMO DA NOVA EQUIPE (12ª VAGA)
+                          </span>
+                          <span className={`px-2.5 py-0.5 font-f1-mono text-[9px] font-black uppercase tracking-wider rounded-none ${
+                            liveSynergy.type === 'perfect_synergy'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
+                              : liveSynergy.type === 'mitigation'
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50'
+                              : liveSynergy.type === 'hardcore'
+                              ? 'bg-red-500/20 text-red-300 border border-red-400/50'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                          }`}>
+                            {liveSynergy.typeBadge}
+                          </span>
+                        </div>
+                        <h4 className="font-f1-wide font-black text-lg sm:text-xl text-white uppercase tracking-tight">
+                          "{liveSynergy.paddockLabel}"
+                        </h4>
+                        <p className="text-[11px] font-f1-mono text-zinc-400">
+                          {selectedHq.name} + {selectedBackground.name}
+                        </p>
+                      </div>
+
+                      <div className="bg-black/50 border border-white/15 px-3.5 py-2 text-right shrink-0">
+                        <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block tracking-wider">
+                          Caixa Inicial Efetivo:
+                        </span>
+                        <span className="font-f1-wide font-black text-xl text-emerald-400 tracking-wider">
+                          {liveSynergy.initialCashFormatted}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Metric Bars: Tecnologia, Marketing, Moral */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Tecnologia */}
+                      <div className="bg-[#15151E] border border-white/10 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-f1-mono">
+                          <span className="text-zinc-400 uppercase text-[10px] font-bold">Tecnologia & P&D</span>
+                          <span className="text-cyan-300 font-bold font-f1-wide">{liveSynergy.techRating}/100</span>
+                        </div>
+                        <div className="w-full bg-white/5 h-2 rounded-none overflow-hidden border border-white/10">
+                          <div
+                            className="bg-cyan-400 h-full transition-all duration-500"
+                            style={{ width: `${liveSynergy.techRating}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-f1-mono text-zinc-400 block truncate">
+                          Sede: {selectedHq.name.split(',')[0]} + {selectedBackground.bonusShort}
+                        </span>
+                      </div>
+
+                      {/* Marketing */}
+                      <div className="bg-[#15151E] border border-white/10 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-f1-mono">
+                          <span className="text-zinc-400 uppercase text-[10px] font-bold">Marketing & Mídia</span>
+                          <span className="text-amber-300 font-bold font-f1-wide">{liveSynergy.marketingRating}/100</span>
+                        </div>
+                        <div className="w-full bg-white/5 h-2 rounded-none overflow-hidden border border-white/10">
+                          <div
+                            className="bg-amber-400 h-full transition-all duration-500"
+                            style={{ width: `${liveSynergy.marketingRating}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-f1-mono text-zinc-400 block truncate">
+                          Projeção de Patrocínios e Fãs
+                        </span>
+                      </div>
+
+                      {/* Moral */}
+                      <div className="bg-[#15151E] border border-white/10 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-f1-mono">
+                          <span className="text-zinc-400 uppercase text-[10px] font-bold">Moral da Equipe</span>
+                          <span className="text-emerald-300 font-bold font-f1-wide">{liveSynergy.moraleRating}/100</span>
+                        </div>
+                        <div className="w-full bg-white/5 h-2 rounded-none overflow-hidden border border-white/10">
+                          <div
+                            className="bg-emerald-400 h-full transition-all duration-500"
+                            style={{ width: `${liveSynergy.moraleRating}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-f1-mono text-zinc-400 block truncate">
+                          Clima da fábrica e sinergia de boxes
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dossiê Narrativo de Sinergia */}
+                    <div className={`p-3.5 border ${
+                      liveSynergy.type === 'perfect_synergy'
+                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                        : liveSynergy.type === 'mitigation'
+                        ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-200'
+                        : liveSynergy.type === 'hardcore'
+                        ? 'bg-red-950/40 border-red-500/50 text-red-200'
+                        : 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                    } space-y-1.5`}>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="font-f1-wide font-black text-xs uppercase tracking-wider text-white">
+                          💡 SINERGIA DETECTADA
+                        </span>
+                      </div>
+                      <p className="text-xs font-f1-mono leading-relaxed italic">
+                        "{liveSynergy.summaryQuote}"
+                      </p>
+                    </div>
+
+                    {/* Vantagens e Riscos Operacionais */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-f1-mono">
+                      <div className="bg-[#15151E] border border-emerald-500/30 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-emerald-400 font-bold uppercase text-[10px]">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>Vantagens Estratégicas</span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {liveSynergy.prosText}
+                        </p>
+                      </div>
+
+                      <div className="bg-[#15151E] border border-amber-500/30 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-amber-400 font-bold uppercase text-[10px]">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Riscos & Teto de Custos</span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {liveSynergy.risksText}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Roadmap Tático de 5 a 7 Temporadas */}
+                    <div className="bg-black/50 border border-white/10 p-3 flex items-start gap-2.5 text-xs font-f1-mono">
+                      <Target className="w-4 h-4 text-[#E10600] shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-white font-f1-wide font-bold uppercase text-[10px] tracking-wider block">
+                          Caminho para o Título (Estratégia de Longo Prazo · 5 a 7 Anos):
+                        </span>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed mt-0.5">
+                          {liveSynergy.fiveYearRoadmapAdvice}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

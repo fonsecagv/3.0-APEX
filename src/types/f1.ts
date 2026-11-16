@@ -383,6 +383,7 @@ export type PrincipalBackgroundId =
   | 'legendary_mechanic'
   | 'financial_magnate'
   | 'data_strategist'
+  | 'elite_executive'
   | 'fia_man'
   | 'pro_driver'
   | 'born_strategist'

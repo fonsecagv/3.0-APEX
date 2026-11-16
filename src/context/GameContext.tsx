@@ -506,6 +506,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setupRapido = true;
         erroCorrelacao = 0.15;
         break;
+      case 'elite_executive':
+        tempoPeD = 1.10;
+        moralFabrica = -15;
+        break;
       case 'fia_man':
       case 'fia_engineer':
         downforce = 5;
