@@ -104,6 +104,12 @@ export interface VehicleEngineeringParameters {
   gearToothWidthMm: number; // 14 - 22 mm
   differentialLockPct: number; // 25 - 85 %
   gearboxOilCoolingKw: number; // 6 - 18 kW
+  customGearRatios?: number[]; // optional 8-element array of Z2/Z1 target ratios
+  gearboxStaffTuning?: {
+    efficiencyBonus: number;
+    fatigueBonusRaces: number;
+    shiftReductionS: number;
+  };
 
   // 7. Monocoque & Laminate Layup (Anisotropy)
   compositeFiber: 't800' | 't1000' | 'm40j';
@@ -212,6 +218,8 @@ export interface VehiclePhysicsOutputs {
   // Powertrain & Transmission
   effectiveIcePowerKw: number;
   effectiveMgukPowerKw: number;
+  peakCombinedPowerKw: number;
+  peakCombinedPowerHp: number;
   totalWheelPowerKw: number;
   totalWheelPowerHp: number;
   transmissionEfficiencyPct: number;
@@ -293,7 +301,8 @@ export interface EngineerDiagnostic {
     | 'Chefe de Estruturas'
     | 'Chefe de PU'
     | 'Engenheiro Térmico'
-    | 'Engenheiro de Materiais';
+    | 'Engenheiro de Materiais'
+    | 'Chefe Mecânico';
   specialistName: string;
   competenceRating: number;
   diagnostic: string;
@@ -313,6 +322,24 @@ export interface EngineeringChecklistItem {
   detail: string;
 }
 
+export interface SimulatorPilotReport {
+  driverId: string;
+  driverName: string;
+  driverNumber: number;
+  feedbackRating: number;
+  trustRating: number;
+  handlingVerdict: 'estavel' | 'nervoso' | 'rigido' | 'critico';
+  quote: string;
+  suggestedAdjustment: string;
+  recommendedActionType?: 'vehicle' | 'setup';
+  recommendedParamsPatch?: Partial<VehicleEngineeringParameters>;
+  driverPerceivedAxes: Array<{
+    key: 'downforce' | 'lowDrag' | 'traction' | 'tireCare' | 'powerUnit' | 'reliability';
+    label: string;
+    value: number;
+  }>;
+}
+
 export interface SimulationReport {
   timestamp: string;
   componentType: 'pu' | 'gearbox' | 'chassis' | 'suspension' | 'floor' | 'wings';
@@ -330,6 +357,7 @@ export interface SimulationReport {
   checklist: EngineeringChecklistItem[];
   checklistScore: number;
   consequenceChain: string[];
+  pilotReport?: SimulatorPilotReport;
 }
 
 export interface MdoParetoSolution {

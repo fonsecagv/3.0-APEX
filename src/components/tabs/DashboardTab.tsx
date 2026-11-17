@@ -25,7 +25,9 @@ import {
   Shield,
   CheckCircle2,
   Compass,
-  Map as MapIcon
+  Map as MapIcon,
+  Wallet,
+  ListChecks
 } from 'lucide-react';
 import { RIVAL_TEAMS_DOSSIER, RivalTeamDossier } from '../../data/marketData';
 import { RealCircuitMap } from '../circuits/RealCircuitMap';
@@ -76,6 +78,15 @@ export const DashboardTab: React.FC = () => {
     aduoPlayerPwr,
     motorHomologadoFIA,
     homologarMotorFIA,
+    pendingSeasonEventCard,
+    resolveSeasonEventCard,
+    pendingMidSeasonDilemma,
+    resolveMidSeasonDilemma,
+    currentCircuitIndex,
+    rdFacilityCapacity,
+    setupWindow,
+    fpRunsDone,
+    simulateFreePractice1And2,
     t,
     language
   } = useGame();
@@ -147,6 +158,241 @@ export const DashboardTab: React.FC = () => {
         />
       ) : (
       <>
+      {/* PAINEL IMEDIATO DE AÇÃO: PRÓXIMO GP, BOTÃO AVANÇAR SEMANA & PRÓXIMOS PASSOS */}
+      {(() => {
+        const activeDevCount = components.filter(c => c.inDevelopment).length;
+        const maxSlots = rdFacilityCapacity?.manufacturingMaxSlots ?? 2;
+        const freeSlots = Math.max(0, maxSlots - activeDevCount);
+        const hasPendingDecision = Boolean(pendingSeasonEventCard || pendingMidSeasonDilemma || pendingRegulationChange);
+        const aeroLabels: Record<string, string> = {
+          very_low: 'Arrasto Mínimo',
+          low: 'Baixo Arrasto',
+          medium: 'Equilibrado',
+          high: 'Alto Downforce',
+          very_high: 'Carga Máxima',
+        };
+        const nextSteps: Array<{ id: string; title: string; detail: string; done: boolean; actionLabel?: string; onClick?: () => void }> = [
+          ...(hasPendingDecision
+            ? [{
+                id: 'decision',
+                title: 'Responder decisão pendente do Paddock / FIA',
+                detail: 'Há uma carta ou diretiva aguardando sua escolha logo abaixo.',
+                done: false,
+              }]
+            : []),
+          {
+            id: 'pu_homolog',
+            title: motorHomologadoFIA ? 'Unidade de Potência homologada na FIA' : 'Homologar Unidade de Potência antes da Semana 8',
+            detail: motorHomologadoFIA
+              ? 'Hardware selado — foco liberado para evolução de chassi e pista.'
+              : `Restam ${Math.max(0, semanasParaTeste)} semana(s) para o congelamento obrigatório.`,
+            done: motorHomologadoFIA,
+            actionLabel: !motorHomologadoFIA ? 'Ver Bancada' : undefined,
+            onClick: !motorHomologadoFIA ? () => setActiveTab('engineering') : undefined,
+          },
+          {
+            id: 'rd_slots',
+            title: freeSlots > 0 ? `Iniciar projeto de P&D (${freeSlots} slot livre)` : `Pipeline de P&D ativo (${activeDevCount}/${maxSlots} slots)`,
+            detail: freeSlots > 0
+              ? 'Você tem capacidade ociosa na fábrica para desenvolver Assoalho, Asas ou Suspensão.'
+              : 'Peças em fabricação avançam semanalmente pelo botão Avançar Semana no topo.',
+            done: freeSlots === 0,
+            actionLabel: freeSlots > 0 ? 'Abrir P&D' : undefined,
+            onClick: freeSlots > 0 ? () => setActiveTab('engineering') : undefined,
+          },
+          {
+            id: 'fp_setup',
+            title: setupWindow.confidence >= 65 ? `Acerto de pista encaminhado (${setupWindow.confidence}%)` : `Calibrar setup no Treino Livre (${setupWindow.confidence}%)`,
+            detail: fpRunsDone === 0
+              ? `Nenhum stint feito ainda em ${currentCircuit.city}.`
+              : `${fpRunsDone}/3 stints concluídos para a Classificação.`,
+            done: setupWindow.confidence >= 65,
+            actionLabel: setupWindow.confidence < 65 ? 'Ir para Treino' : undefined,
+            onClick: setupWindow.confidence < 65 ? () => setActiveTab('race_weekend') : undefined,
+          },
+        ];
+
+        const cashAvailable = Math.round(financials.bankBalance);
+        const isDangerCash = cashAvailable < 3_000_000;
+        const isLowCash = !isDangerCash && cashAvailable < 8_000_000;
+        const cashStatus = isDangerCash
+          ? {
+              textClass: 'text-red-400',
+              borderClass: 'border-red-500/40 bg-red-950/25',
+              badgeClass: 'bg-red-950/70 border-red-500/50 text-red-300',
+              label: 'PERIGO FINANCEIRO IMINENTE',
+            }
+          : isLowCash
+          ? {
+              textClass: 'text-amber-400',
+              borderClass: 'border-amber-500/40 bg-amber-950/20',
+              badgeClass: 'bg-amber-950/70 border-amber-500/50 text-amber-300',
+              label: 'RESERVA BAIXA',
+            }
+          : {
+              textClass: 'text-emerald-400',
+              borderClass: 'border-white/10 bg-[#15151E]',
+              badgeClass: 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300',
+              label: 'FLUXO SAUDÁVEL',
+            };
+        const costCapPct = Math.min(
+          100,
+          Math.max(0, (financials.costCapSpent / Math.max(1, financials.costCapLimit)) * 100)
+        );
+        const costCapBarClass =
+          costCapPct >= 93 ? 'bg-red-500' : costCapPct >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+        const costCapRemainingM = Math.max(
+          0,
+          (financials.costCapLimit - financials.costCapSpent) / 1_000_000
+        );
+
+        return (
+          <div className="bg-[#1C1C26] border border-[#E10600]/45 p-5 f1-pattern-micro-grid">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
+              {/* Bloco Esquerdo: Próximo GP, Widget Financeiro & Ação Principal */}
+              <div className="xl:col-span-7 flex flex-col justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-f1-mono uppercase tracking-wider">
+                    <span className="text-[#E10600] font-bold">PRÓXIMO GRANDE PRÊMIO</span>
+                    <span className="text-zinc-500">·</span>
+                    <span className="text-zinc-300 font-bold tabular-nums">ETAPA {currentCircuitIndex + 1} / 24</span>
+                    <span className="text-zinc-500">·</span>
+                    <span className="text-cyan-300 font-bold tabular-nums">SEMANA {currentWeek}</span>
+                  </div>
+                  <h2 className="font-f1-wide font-black text-xl sm:text-2xl text-white uppercase tracking-wide">
+                    {currentCircuit.name}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-f1-mono text-zinc-300 tabular-nums">
+                    <span>{currentCircuit.city}, {currentCircuit.country}</span>
+                    <span className="text-zinc-600">·</span>
+                    <span>{currentCircuit.laps} voltas</span>
+                    <span className="text-zinc-600">·</span>
+                    <span>Aero: <strong className="text-white">{aeroLabels[currentCircuit.aeroDemand] || currentCircuit.aeroDemand}</strong></span>
+                    <span className="text-zinc-600">·</span>
+                    <span>Desgaste Pneus: <strong className="text-white">{currentCircuit.tireWearSeverity}/5</strong></span>
+                  </div>
+                </div>
+
+                {/* Widget Financeiro em Destaque */}
+                <div className={`border p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-4 ${cashStatus.borderClass}`}>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-f1-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                        <Wallet className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>CAIXA DISPONÍVEL</span>
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border text-[9px] font-f1-mono font-bold uppercase whitespace-nowrap ${cashStatus.badgeClass}`}>
+                        {(isDangerCash || isLowCash) ? (
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        )}
+                        <span>{cashStatus.label}</span>
+                      </span>
+                    </div>
+                    <div className={`font-f1-wide font-black text-lg sm:text-xl tabular-nums ${cashStatus.textClass}`}>
+                      $ {cashAvailable.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 sm:border-l sm:border-white/10 sm:pl-4">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-f1-mono uppercase">
+                      <span className="text-zinc-400">TETO DE GASTOS (COST CAP)</span>
+                      <span className="text-white font-bold tabular-nums">
+                        ${(financials.costCapSpent / 1_000_000).toFixed(1)}M / ${(financials.costCapLimit / 1_000_000).toFixed(0)}M
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-[#15151E] border border-white/10 overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${costCapBarClass}`}
+                        style={{ width: `${costCapPct.toFixed(1)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-f1-mono text-zinc-400 tabular-nums">
+                      <span>{costCapPct.toFixed(0)}% utilizado</span>
+                      <span>Margem restante: <strong className="text-zinc-200">${costCapRemainingM.toFixed(1)}M</strong></span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ação Principal Única (CTA) + Atalho Opcional de Treinos Livres */}
+                <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('race_weekend')}
+                    className="px-6 py-3 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-black text-xs sm:text-sm uppercase tracking-wider f1-tab-chamfer transition-colors flex items-center gap-2 shadow-md cursor-pointer whitespace-nowrap"
+                  >
+                    <Flag className="w-4 h-4" />
+                    <span>INICIAR FIM DE SEMANA DO GP</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  {fpRunsDone < 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        simulateFreePractice1And2();
+                        setActiveTab('race_weekend');
+                      }}
+                      className="px-4 py-3 bg-[#15151E] hover:bg-[#252533] border border-white/20 hover:border-white/40 text-zinc-200 hover:text-white font-f1-wide font-bold text-xs uppercase tracking-wider transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    >
+                      <Sliders className="w-4 h-4 text-cyan-400" />
+                      <span>Simular Treinos Livres (TL1 e TL2)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloco Direito: Próximos Passos Recomendados */}
+              <div className="xl:col-span-5 bg-[#15151E] border border-white/10 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="text-[11px] font-f1-wide font-bold text-white uppercase flex items-center gap-1.5">
+                    <ListChecks className="w-4 h-4 text-emerald-400" />
+                    <span>PRÓXIMOS PASSOS DA SEMANA</span>
+                  </span>
+                  <span className="text-[10px] font-f1-mono text-zinc-400 tabular-nums">
+                    {nextSteps.filter(s => s.done).length}/{nextSteps.length} concluídos
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {nextSteps.slice(0, 3).map(step => (
+                    <div
+                      key={step.id}
+                      className="flex items-start justify-between gap-2.5 text-xs font-f1-mono bg-[#1C1C26] p-2.5 border border-white/5"
+                    >
+                      <div className="flex items-start gap-2 min-w-0">
+                        <CheckCircle2
+                          className={`w-4 h-4 shrink-0 mt-0.5 ${
+                            step.done ? 'text-emerald-400' : 'text-amber-400'
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <div className={`font-bold leading-snug ${step.done ? 'text-zinc-300' : 'text-white'}`}>
+                            {step.title}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 leading-snug mt-0.5">
+                            {step.detail}
+                          </div>
+                        </div>
+                      </div>
+                      {step.actionLabel && step.onClick && (
+                        <button
+                          type="button"
+                          onClick={step.onClick}
+                          className="px-2 py-1 bg-[#252533] hover:bg-[#323244] border border-white/15 text-[10px] font-f1-wide font-bold text-white uppercase shrink-0 cursor-pointer whitespace-nowrap"
+                        >
+                          {step.actionLabel}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 1. CRIAÇÃO DO EVENTO: O Prazo da FIA (Dia da Homologação FIA) */}
       <div className={`p-4 border font-f1-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
         motorHomologadoFIA
@@ -288,6 +534,125 @@ export const DashboardTab: React.FC = () => {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CARTA INTERATIVA SEMANAL DE PADDOCK (EVOLUÇÃO PÓS-FASE 8) */}
+      {pendingSeasonEventCard && (
+        <div className="bg-[#1C1C26] border-2 border-cyan-500/70 p-5 shadow-lg space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-f1-wide font-black text-sm text-white uppercase tracking-wider">
+                    {pendingSeasonEventCard.title}
+                  </span>
+                  <span className="text-[10px] font-f1-mono px-2 py-0.5 bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold uppercase">
+                    {pendingSeasonEventCard.category.replace('_', ' ')} · SEMANA {pendingSeasonEventCard.weekCreated}
+                  </span>
+                </div>
+                <div className="text-[11px] font-f1-mono text-zinc-400 mt-0.5">
+                  Remetente: <span className="text-zinc-200 font-bold">{pendingSeasonEventCard.sender}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed">
+            {pendingSeasonEventCard.description}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {pendingSeasonEventCard.options.map((opt, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => resolveSeasonEventCard(idx)}
+                className="text-left p-3 bg-[#15151E] hover:bg-[#232332] border border-white/15 hover:border-cyan-400/70 transition-colors cursor-pointer space-y-1"
+              >
+                <div className="font-f1-wide font-bold text-xs text-white uppercase flex items-center justify-between gap-2">
+                  <span>{opt.label}</span>
+                  <ChevronRight className="w-4 h-4 text-cyan-400 shrink-0" />
+                </div>
+                <div className="text-[11px] font-f1-mono text-zinc-400 leading-snug">
+                  {opt.effectSummary}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* DILEMA ESTRATÉGICO DE MEIO DE TEMPORADA (ATUAL VS PRÓXIMO ANO) */}
+      {pendingMidSeasonDilemma && (
+        <div className="bg-[#1C1C26] border-2 border-amber-500/80 p-5 shadow-xl space-y-4">
+          <div className="flex items-start gap-3">
+            <Compass className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-f1-wide font-black text-sm text-white uppercase tracking-wider">
+                  {pendingMidSeasonDilemma.title}
+                </span>
+                <span className="text-[10px] font-f1-mono bg-amber-500 text-black px-2 py-0.5 font-bold uppercase">
+                  DECISÃO ESTRATÉGICA · ETAPA {pendingMidSeasonDilemma.round}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-zinc-200 mt-1.5 leading-relaxed">
+                {pendingMidSeasonDilemma.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={() => resolveMidSeasonDilemma('current_car')}
+              className="text-left p-3.5 bg-[#15151E] hover:bg-[#252533] border border-white/15 hover:border-[#E10600] transition-colors cursor-pointer space-y-1.5"
+            >
+              <div className="font-f1-wide font-bold text-xs text-white uppercase">
+                Foco Total no {pendingMidSeasonDilemma.currentChassisName}
+              </div>
+              <div className="text-[11px] font-f1-mono text-emerald-400">
+                +2.5 DFm imediato · 15% ATR no ano seguinte
+              </div>
+              <div className="text-[10px] font-f1-mono text-zinc-400">
+                Maximiza vitórias e pódios nesta temporada; carro do próximo ano nasce mais conservador.
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => resolveMidSeasonDilemma('balanced')}
+              className="text-left p-3.5 bg-[#15151E] hover:bg-[#252533] border border-white/15 hover:border-cyan-400 transition-colors cursor-pointer space-y-1.5"
+            >
+              <div className="font-f1-wide font-bold text-xs text-white uppercase">
+                Transição Equilibrada (50% / 50%)
+              </div>
+              <div className="text-[11px] font-f1-mono text-cyan-300">
+                +1.0 DFm atual · 50% ATR para {pendingMidSeasonDilemma.nextChassisName}
+              </div>
+              <div className="text-[10px] font-f1-mono text-zinc-400">
+                Mantém competitividade nas pistas restantes sem comprometer a base do projeto seguinte.
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => resolveMidSeasonDilemma('next_year')}
+              className="text-left p-3.5 bg-[#15151E] hover:bg-[#252533] border border-white/15 hover:border-amber-400 transition-colors cursor-pointer space-y-1.5"
+            >
+              <div className="font-f1-wide font-bold text-xs text-white uppercase">
+                Virar a Chave para o {pendingMidSeasonDilemma.nextChassisName}
+              </div>
+              <div className="text-[11px] font-f1-mono text-amber-300">
+                +40h ATR · 85% ATR focado no próximo regulamento
+              </div>
+              <div className="text-[10px] font-f1-mono text-zinc-400">
+                Sacrifica upgrades finais do {pendingMidSeasonDilemma.currentChassisName} para acelerar o futuro monoposto.
+              </div>
+            </button>
           </div>
         </div>
       )}
@@ -470,78 +835,88 @@ export const DashboardTab: React.FC = () => {
       </F1TabBucket>
 
       {/* 2026 Technical Regulation Hero Card */}
-      <div className="bg-[#1C1C26] border border-white/10 f1-pattern-micro-grid p-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-full bg-gradient-to-l from-[#E10600]/10 to-transparent pointer-events-none" />
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
-              <span>{t.directiveTitle}</span>
-              <span>·</span>
-              <span>{seasonYear}</span>
+      {(() => {
+        const homologatedChassis = playerTeam.carModelName || 'APX-01';
+        const basePuName = playerTeam.engineCustomName || playerTeam.engineSupplier;
+        const fullHomologatedPu =
+          playerTeam.thirdPartyErsSupplier && !basePuName.includes(playerTeam.thirdPartyErsSupplier)
+            ? `${basePuName} + ERS ${playerTeam.thirdPartyErsSupplier}`
+            : basePuName;
+        const homologatedPeakHp = playerTeam.homologatedPeakPowerHp ?? vehiclePhysics.peakCombinedPowerHp;
+        const carRank = [...allTeams].sort((a, b) => b.carRating - a.carRating).findIndex(team => team.id === playerTeam.id) + 1;
+
+        return (
+          <div className="bg-[#1C1C26] border border-white/10 f1-pattern-micro-grid p-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-full bg-gradient-to-l from-[#E10600]/10 to-transparent pointer-events-none" />
+
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
+                  <span>{t.directiveTitle}</span>
+                  <span>·</span>
+                  <span>{seasonYear}</span>
+                </div>
+                <h1 className="font-f1-wide font-black text-2xl lg:text-3xl text-white tracking-tight uppercase mt-1">
+                  CHASSI: {homologatedChassis}
+                </h1>
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-f1-mono text-zinc-300 mt-1.5">
+                  <span>Equipe: <strong className="text-white">{playerTeam.name}</strong></span>
+                  <span className="text-zinc-600">·</span>
+                  <span>PU: <strong className="text-amber-300">{fullHomologatedPu}</strong></span>
+                  <span className="text-zinc-600">·</span>
+                  <span className="text-emerald-400 font-bold tabular-nums">{homologatedPeakHp} CV Pico</span>
+                </div>
+                <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
+                  {t.directiveDesc}
+                </p>
+              </div>
+
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
+                <div className="bg-[#15151E] border border-white/5 p-3 min-w-[115px]">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.standings}</span>
+                  <span className="text-xl font-f1-wide font-black text-white tabular-nums">
+                    P{playerPosition}
+                  </span>
+                  <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5 tabular-nums">
+                    {playerTeam.points} PTS
+                  </span>
+                </div>
+
+                <div className="bg-[#15151E] border border-white/5 p-3 min-w-[115px]">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.carIndex}</span>
+                  <span className="text-xl font-f1-wide font-black text-[#E10600] tabular-nums">
+                    {playerTeam.carRating}
+                  </span>
+                  <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5 tabular-nums">
+                    Rank #{carRank} / {allTeams.length}
+                  </span>
+                </div>
+
+                <div className="bg-[#15151E] border border-white/5 p-3 min-w-[115px]">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.atrTunnel}</span>
+                  <span className="text-xl font-f1-wide font-black text-white tabular-nums">
+                    {financials.atrWindTunnelHoursAvailable}h
+                  </span>
+                  <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5 tabular-nums">
+                    {financials.atrCfdMegaAllocations} MAUh CFD
+                  </span>
+                </div>
+
+                <div className="bg-[#15151E] border border-white/5 p-3 min-w-[125px]">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">MARKETING & FÃS</span>
+                  <span className="text-xl font-f1-wide font-black text-cyan-400 tabular-nums">
+                    {(baseDeFas / 1000000).toFixed(1)}M
+                  </span>
+                  <span className="text-[11px] font-f1-mono text-emerald-400 block mt-0.5 tabular-nums">
+                    +${(receitaMarketing / 1000000).toFixed(2)}M/ano
+                  </span>
+                </div>
+              </div>
             </div>
-            <h1 className="font-f1-wide font-black text-2xl lg:text-3xl text-white tracking-tight uppercase mt-1">
-              {playerTeam.name}
-            </h1>
-            <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
-              {t.directiveDesc}
-            </p>
           </div>
-
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
-            <div className="bg-[#15151E] border border-white/5 p-3 min-w-[110px]">
-              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.standings}</span>
-              <span className="text-xl font-f1-wide font-black text-white tabular-nums">
-                P{playerPosition}
-              </span>
-              <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5">
-                {playerTeam.points} PTS
-              </span>
-            </div>
-
-            <div className="bg-[#15151E] border border-white/5 p-3 min-w-[110px]">
-              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.carIndex}</span>
-              <span className="text-xl font-f1-wide font-black text-[#E10600] tabular-nums">
-                {playerTeam.carRating}
-              </span>
-              <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5">
-                Rank #5 / 10
-              </span>
-            </div>
-
-            <div className="bg-[#15151E] border border-white/5 p-3 min-w-[110px]">
-              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.atrTunnel}</span>
-              <span className="text-xl font-f1-wide font-black text-white tabular-nums">
-                {financials.atrWindTunnelHoursAvailable}h
-              </span>
-              <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5">
-                {financials.atrCfdMegaAllocations} MAUh CFD
-              </span>
-            </div>
-
-            <div className="bg-[#15151E] border border-white/5 p-3 min-w-[110px]">
-              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">{t.realCash}</span>
-              <span className="text-xl font-f1-wide font-black text-emerald-400 tabular-nums">
-                ${(financials.bankBalance / 1000000).toFixed(1)}M
-              </span>
-              <span className="text-[11px] font-f1-mono text-zinc-400 block mt-0.5">
-                Cap: ${(financials.costCapSpent / 1000000).toFixed(1)}M
-              </span>
-            </div>
-
-            <div className="bg-[#15151E] border border-white/5 p-3 min-w-[125px]">
-              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">MARKETING & FÃS</span>
-              <span className="text-xl font-f1-wide font-black text-cyan-400 tabular-nums">
-                {(baseDeFas / 1000000).toFixed(1)}M
-              </span>
-              <span className="text-[11px] font-f1-mono text-emerald-400 block mt-0.5">
-                +${(receitaMarketing / 1000000).toFixed(2)}M/ano
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Widget Dedicado: Marketing & Base de Fãs */}
       <div className="bg-[#1C1C26] border border-white/10 p-5 f1-container-bucket space-y-4">
@@ -814,7 +1189,40 @@ export const DashboardTab: React.FC = () => {
           </F1TabBucket>
 
           {/* 2026 Active Aerodynamics & Powertrain Integration Status */}
-          <F1TabBucket title="2026 VEHICLE DYNAMICS SPECIFICATION" badge="CHASSIS & PU">
+          <F1TabBucket title="2026 VEHICLE DYNAMICS SPECIFICATION" badge={`CHASSI ${playerTeam.carModelName || 'APX-01'}`}>
+            {/* Dossiê Técnico Oficial (Chassi / Motor / Peso) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 bg-[#15151E] border border-white/10 p-3.5">
+              <div>
+                <span className="text-[10px] font-f1-mono text-zinc-500 uppercase block">Chassi Homologado</span>
+                <span
+                  className="font-f1-wide font-black text-base uppercase tracking-wider"
+                  style={{ color: playerTeam.color || '#E10600' }}
+                >
+                  {playerTeam.carModelName || 'APX-01'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] font-f1-mono text-zinc-500 uppercase block">Motor / Unidade de Potência</span>
+                <span className="font-f1-mono font-bold text-sm text-white block truncate">
+                  {(() => {
+                    const baseName = playerTeam.engineCustomName || playerTeam.engineSupplier;
+                    return playerTeam.thirdPartyErsSupplier && !baseName.includes(playerTeam.thirdPartyErsSupplier)
+                      ? `${baseName} + ERS ${playerTeam.thirdPartyErsSupplier}`
+                      : baseName;
+                  })()}
+                </span>
+                <span className="text-[11px] font-f1-mono text-amber-400 font-bold tabular-nums block mt-0.5">
+                  {playerTeam.homologatedPeakPowerHp ?? vehiclePhysics.peakCombinedPowerHp} CV Pico · {vehiclePhysics.totalWheelPowerHp} CV na roda
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] font-f1-mono text-zinc-500 uppercase block">Peso Total Homologado</span>
+                <span className="font-f1-mono font-bold text-sm text-emerald-400 tabular-nums">
+                  {Math.round(vehiclePhysics.totalMassKg)} kg <span className="text-[10px] text-zinc-400">(Mín. FIA 768 kg)</span>
+                </span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-[#15151E] p-4 border border-white/5 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-f1-wide font-bold text-white">
@@ -851,7 +1259,7 @@ export const DashboardTab: React.FC = () => {
                   {language === 'pt' ? 'Entre-eixos: 3.400 mm · Largura: 1.900 mm. Peso mínimo: 768 kg. Túneis Venturi calibrados contra porpoising.' : 'Wheelbase: 3,400 mm · Width: 1,900 mm. Min weight target: 768 kg. Floor ground-effect tunnels tuned to suppress porpoising.'}
                 </div>
                 <div className="pt-1 text-[11px] font-f1-mono text-zinc-400">
-                  {language === 'pt' ? 'Massa Atual:' : 'Current Mass:'} <span className="text-white font-bold tabular-nums">{totalWeight} kg</span>
+                  {language === 'pt' ? 'Massa Atual:' : 'Current Mass:'} <span className="text-white font-bold tabular-nums">{Math.round(vehiclePhysics.totalMassKg)} kg</span>
                 </div>
               </div>
             </div>

@@ -2986,7 +2986,7 @@ export const SPORTING_STAFF_MEMBERS: StaffMember[] = [
     salary: 950000,
     buyoutClause: 100000,
     currentTeam: 'Prodrive Operations',
-    specialty: 'Treinamento de Pistoleiros de Roda de Titânio',
+    specialty: 'Gestão Financeira de Staff, Teto Salarial e Operações de Equipe',
     teamOrigin: 'Banbury Operations',
     isFictional: true
   },

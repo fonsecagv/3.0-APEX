@@ -13,6 +13,9 @@ import { computeMdoParetoSolutions } from '../../engine/optimizationEngine';
 import { validateFia2026Compliance } from '../../engine/regulatoryEngine';
 import { ModulesAuditConsole } from '../engineering/ModulesAuditConsole';
 import { Packaging3DViewport } from '../engineering/Packaging3DViewport';
+import { CarRadarComparisonChart } from '../engineering/CarRadarComparisonChart';
+import { PersonAvatar } from '../common/PersonAvatar';
+import { evaluateChiefCadFeedback } from '../../engine/engineeringFeedbackEngine';
 import { buildPackagingArchitecture, FIA_2026_DEFAULT_EDITION } from '../../engine/modules/m03Packaging';
 import { LIVERY_2026_CATALOG } from '../../data/f12026Liveries';
 import {
@@ -82,10 +85,14 @@ export const EngineeringTab: React.FC = () => {
     playerTeam,
     allTeams,
     drivers,
+    staff,
+    respondToChiefAdvice,
+    respondToDriverFeedback,
     unlockedPuMaterials,
     activePuMaterialResearch,
     startPuMaterialResearch,
-    motorHomologadoFIA
+    motorHomologadoFIA,
+    rdFacilityCapacity
   } = useGame();
 
   // Selected CAD Component type
@@ -231,11 +238,44 @@ export const EngineeringTab: React.FC = () => {
   }, [selectedType, vehicleParams, vehiclePhysics]);
 
   const isMaxLevel = (currentComp?.level || 1) >= (currentComp?.maxLevel || 10);
+  const activeDevComps = components.filter(c => c.inDevelopment);
+  const activeMfgCount = activeDevComps.length;
+  const activeAeroCount = activeDevComps.filter(c => c.type === 'floor' || c.type === 'wings').length;
+  const isSelectedAlreadyDeveloping = Boolean(currentComp?.inDevelopment);
+  const mfgSlotsFull =
+    !isSelectedAlreadyDeveloping && activeMfgCount >= rdFacilityCapacity.manufacturingMaxSlots;
+  const aeroSlotsFull =
+    !isSelectedAlreadyDeveloping &&
+    (selectedType === 'floor' || selectedType === 'wings') &&
+    activeAeroCount >= rdFacilityCapacity.aeroMaxSlots;
+  const cannotLaunchCad = isMaxLevel || mfgSlotsFull || aeroSlotsFull;
+
+  const leadDriver = useMemo(
+    () =>
+      drivers.find(d => playerTeam?.drivers?.includes(d.id)) ||
+      drivers.find(d => d.teamId === playerTeam?.id && !d.isAffiliate),
+    [drivers, playerTeam]
+  );
+
+  const chiefFeedback = useMemo(
+    () =>
+      evaluateChiefCadFeedback({
+        selectedType,
+        vehicleParams,
+        vehiclePhysics,
+        philosophy: playerTeam?.filosofiaAtual,
+        regulatory: regulatoryLive,
+        staff,
+        teamName: playerTeam?.name,
+      }),
+    [selectedType, vehicleParams, vehiclePhysics, playerTeam?.filosofiaAtual, playerTeam?.name, regulatoryLive, staff]
+  );
+
   const effectiveCost =
     phoenixDiscountH1 && selectedType === 'pu' ? Math.round(prototypeSpec.cost * 0.5) : prototypeSpec.cost;
 
   const handleLaunchProject = () => {
-    if (isMaxLevel) return;
+    if (cannotLaunchCad) return;
 
     const newSpec: ComponentSpec = {
       id: `comp_${selectedType}_${Date.now()}`,
@@ -253,10 +293,18 @@ export const EngineeringTab: React.FC = () => {
       thermalCompatibility: Math.max(40, Math.min(100, Math.round(80 + vehiclePhysics.thermalMarginC * 1.2))),
       cost: effectiveCost,
       costCapImpact: effectiveCost,
-      designWeeks: prototypeSpec.leadWeeks
+      designWeeks: prototypeSpec.leadWeeks,
+      atrHoursCost: chiefFeedback.atrHoursCost,
+      chiefId: chiefFeedback.chiefId,
+      chiefAdviceFollowed: chiefFeedback.status === 'aligned',
     };
 
-    startComponentDevelopment(newSpec);
+    startComponentDevelopment(newSpec, {
+      atrHoursCost: chiefFeedback.atrHoursCost,
+      chiefId: chiefFeedback.chiefId,
+      chiefName: chiefFeedback.chiefName,
+      adviceFollowed: chiefFeedback.status === 'aligned',
+    });
   };
 
   const handleRunWindTunnel = () => {
@@ -527,6 +575,74 @@ export const EngineeringTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Grade de Slots de P&D & Eficiência das Instalações */}
+      <div className="bg-[#1C1C26] border border-white/10 p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <span className="text-[10px] font-f1-mono text-cyan-400 font-bold uppercase tracking-widest block">
+              Capacidade de Manufatura & Túnel de Vento
+            </span>
+            <h2 className="font-f1-wide font-bold text-xs sm:text-sm text-white uppercase">
+              Grade de Slots de P&D ({playerTeam.carModelName || 'APX-01'})
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-[11px] font-f1-mono tabular-nums">
+            <div className="bg-[#15151E] border border-white/10 px-2.5 py-1">
+              Fábrica Nv.{rdFacilityCapacity.manufacturingLevel}:{' '}
+              <span className={activeMfgCount >= rdFacilityCapacity.manufacturingMaxSlots ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                {activeMfgCount}/{rdFacilityCapacity.manufacturingMaxSlots} slots
+              </span>
+            </div>
+            <div className="bg-[#15151E] border border-white/10 px-2.5 py-1">
+              Túnel Nv.{rdFacilityCapacity.windTunnelLevel}:{' '}
+              <span className={activeAeroCount >= rdFacilityCapacity.aeroMaxSlots ? 'text-amber-400 font-bold' : 'text-cyan-300 font-bold'}>
+                {activeAeroCount}/{rdFacilityCapacity.aeroMaxSlots} aero
+              </span>
+              {rdFacilityCapacity.aeroEfficiencyBonusPct > 0 && (
+                <span className="text-emerald-400 font-bold ml-1.5">
+                  (+{rdFacilityCapacity.aeroEfficiencyBonusPct}% DF)
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {Array.from({ length: rdFacilityCapacity.manufacturingMaxSlots }).map((_, slotIdx) => {
+            const devComp = activeDevComps[slotIdx];
+            if (!devComp) {
+              return (
+                <div
+                  key={`slot_empty_${slotIdx}`}
+                  className="bg-[#15151E] border border-dashed border-white/15 p-2.5 flex items-center justify-between text-[11px] font-f1-mono text-zinc-500"
+                >
+                  <span>SLOT #{slotIdx + 1} · LIVRE</span>
+                  <span className="text-[10px] uppercase">Pronto para CAD</span>
+                </div>
+              );
+            }
+            const totalW = Math.max(1, devComp.designWeeks || 4);
+            const leftW = Math.max(0, devComp.developmentWeeksLeft || 0);
+            const pct = Math.min(100, Math.max(8, Math.round(((totalW - leftW) / totalW) * 100)));
+            return (
+              <div
+                key={`slot_active_${devComp.id}`}
+                className="bg-[#15151E] border border-[#E10600]/50 p-2.5 space-y-1.5"
+              >
+                <div className="flex items-center justify-between text-[11px] font-f1-mono">
+                  <span className="text-white font-bold uppercase truncate">{devComp.type} · MK{(devComp.level || 1) + 1}</span>
+                  <span className="text-[#E10600] font-bold tabular-nums">{leftW} sem</span>
+                </div>
+                <div className="w-full h-1.5 bg-zinc-800 overflow-hidden">
+                  <div className="h-full bg-[#E10600]" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 6-Step Sequential CAD Pipeline Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {pipelineOrder.map(item => {
@@ -578,7 +694,7 @@ export const EngineeringTab: React.FC = () => {
         {/* Left Column: CAD Parameters & Physical Foundation Cards (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
           <F1TabBucket
-            title={`CAD DESIGN SUITE: ${selectedType.toUpperCase()}`}
+            title={`MESA DE PROJETOS: ${chiefFeedback.chiefName.toUpperCase()} (${chiefFeedback.sectorLabel})`}
             badge={isSimulationStale ? 'PARÂMETROS EDITADOS' : 'SIMULADO EM BANCADA'}
           >
             <div className="space-y-4">
@@ -1128,7 +1244,7 @@ export const EngineeringTab: React.FC = () => {
                     <div className="flex items-center justify-between font-f1-wide font-bold">
                       <span className="flex items-center gap-1.5">
                         <Flame className="w-4 h-4 text-[#E10600]" />
-                        POTÊNCIA NA RODA: {vehiclePhysics.totalWheelPowerHp} CV ({vehiclePhysics.totalWheelPowerKw} kW)
+                        POTÊNCIA NA RODA: {vehiclePhysics.totalWheelPowerHp} CV ({vehiclePhysics.totalWheelPowerKw} kW) · PICO HOMOLOGADO: {playerTeam.homologatedPeakPowerHp ?? vehiclePhysics.peakCombinedPowerHp} CV
                       </span>
                       <span className={`font-f1-mono ${vehiclePhysics.thermalMarginC < 4 ? 'text-red-400' : 'text-emerald-400'}`}>
                         {vehiclePhysics.thermalMarginC < 4
@@ -1932,36 +2048,214 @@ export const EngineeringTab: React.FC = () => {
                 </div>
               )}
 
-              {/* Launch Production Bar */}
-              <div className="pt-2 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-xs font-f1-mono text-zinc-400 space-y-0.5">
-                  <div>
-                    {t.estCapex}: <span className="text-white font-bold">${(effectiveCost / 1000000).toFixed(1)}M</span>{' '}
-                    {phoenixDiscountH1 && selectedType === 'pu' && <span className="text-emerald-400 font-bold">(-50%)</span>} ·{' '}
-                    {t.leadTime}:{' '}
-                    <span className="text-white font-bold">
-                      {Math.max(1, Math.round(prototypeSpec.leadWeeks * modificadorTempoManufatura * modificadorTempoPeD))}{' '}
-                      {language === 'pt' ? 'SEMANAS' : 'WEEKS'}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-zinc-500 font-f1-mono">
-                    Fórmula: TempoFinal = Base ({prototypeSpec.leadWeeks} sem) × Manufatura (x{modificadorTempoManufatura.toFixed(2)}) × P&D (x{modificadorTempoPeD.toFixed(2)})
+              {/* Parecer do Chefe de Setor & Escuta Ativa */}
+              <div
+                className={`p-3.5 border space-y-3 ${
+                  chiefFeedback.isDisengaged
+                    ? 'bg-red-950/25 border-red-500/40'
+                    : chiefFeedback.status === 'critical'
+                    ? 'bg-red-950/20 border-[#E10600]/45'
+                    : chiefFeedback.status === 'warning'
+                    ? 'bg-amber-950/20 border-amber-500/40'
+                    : 'bg-[#15151E] border-emerald-500/35'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <PersonAvatar
+                    role={chiefFeedback.avatarRole}
+                    name={chiefFeedback.chiefName}
+                    sizeClass="w-12 h-12"
+                    accentColor={
+                      chiefFeedback.isDisengaged || chiefFeedback.status === 'critical'
+                        ? '#E10600'
+                        : chiefFeedback.status === 'warning'
+                        ? '#F59E0B'
+                        : '#10B981'
+                    }
+                  />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-f1-wide font-black text-white uppercase truncate">
+                        {chiefFeedback.chiefName} · <span className="text-zinc-400 font-f1-mono text-[11px]">Nota {chiefFeedback.chiefRating}</span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 border text-[10px] font-f1-mono font-bold uppercase whitespace-nowrap ${
+                          chiefFeedback.isDisengaged
+                            ? 'bg-red-950/70 border-red-500/50 text-red-300'
+                            : chiefFeedback.chiefTrust >= 70
+                            ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                        }`}
+                      >
+                        {chiefFeedback.isDisengaged
+                          ? 'DESENGAJADO'
+                          : chiefFeedback.chiefTrust >= 70
+                          ? 'ALINHADO'
+                          : 'CAUTELOSO'}
+                      </span>
+                    </div>
+
+                    {/* Trust & Respect progress bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-f1-mono tabular-nums">
+                        <span className="text-zinc-400 uppercase">Confiança / Respeito do Setor</span>
+                        <span
+                          className={`font-bold ${
+                            chiefFeedback.chiefTrust >= 70
+                              ? 'text-emerald-400'
+                              : chiefFeedback.chiefTrust >= 40
+                              ? 'text-amber-300'
+                              : 'text-red-400'
+                          }`}
+                        >
+                          {chiefFeedback.chiefTrust}/100 · Ritmo P&D {chiefFeedback.rdSpeedModifierPct >= 0 ? `+${chiefFeedback.rdSpeedModifierPct}%` : `${chiefFeedback.rdSpeedModifierPct}%`}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-black/50 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            chiefFeedback.chiefTrust >= 70
+                              ? 'bg-emerald-500'
+                              : chiefFeedback.chiefTrust >= 40
+                              ? 'bg-amber-400'
+                              : 'bg-[#E10600]'
+                          }`}
+                          style={{ width: `${chiefFeedback.chiefTrust}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleLaunchProject}
-                  disabled={isMaxLevel}
-                  className={`w-full sm:w-auto px-6 py-2.5 font-f1-wide font-bold text-xs uppercase tracking-wider f1-tab-chamfer transition-colors flex items-center justify-center gap-2 shadow-sm ${
-                    isMaxLevel
-                      ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-                      : 'bg-[#E10600] hover:bg-[#c20500] text-white cursor-pointer'
-                  }`}
-                >
-                  <Cpu className="w-4 h-4" />
-                  <span>{isMaxLevel ? (language === 'pt' ? 'LIMITE FÍSICO ATINGIDO (NÍVEL 10)' : 'MAX LEVEL (LEVEL 10)') : t.startCadBtn}</span>
-                </button>
+                <p className="text-xs text-zinc-200 italic leading-relaxed border-t border-white/10 pt-2.5">
+                  "{chiefFeedback.quote}"
+                </p>
+
+                {chiefFeedback.status !== 'aligned' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                    <span className="text-[11px] font-f1-mono text-zinc-300">
+                      {chiefFeedback.recommendationSummary}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {chiefFeedback.recommendedPatch && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            respondToChiefAdvice('follow', {
+                              chiefId: chiefFeedback.chiefId,
+                              chiefName: chiefFeedback.chiefName,
+                              adviceKey: chiefFeedback.adviceKey,
+                              recommendedPatch: chiefFeedback.recommendedPatch,
+                            })
+                          }
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-f1-mono font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                        >
+                          Ouvir & Aplicar Conselho (+10 Confiança)
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          respondToChiefAdvice('ignore', {
+                            chiefId: chiefFeedback.chiefId,
+                            chiefName: chiefFeedback.chiefName,
+                            adviceKey: chiefFeedback.adviceKey,
+                          })
+                        }
+                        className="px-3 py-1.5 bg-[#1C1C26] hover:bg-red-950/60 border border-white/15 text-zinc-300 hover:text-red-200 font-f1-mono font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        Manter Decisão (-15 Confiança)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Launch Production Bar */}
+              <div className="pt-2 border-t border-white/5 space-y-3">
+                <div className="bg-[#15151E] border border-white/10 p-2.5 text-[11px] font-f1-mono text-zinc-300 leading-relaxed tabular-nums">
+                  Fabricar essa peça custará{' '}
+                  <strong className="text-white">${(effectiveCost / 1000000).toFixed(1)}M</strong>
+                  {chiefFeedback.atrHoursCost > 0
+                    ? ` e consumirá ${chiefFeedback.atrHoursCost} horas de túnel de vento`
+                    : ' (0h ATR de túnel)'}
+                  .{' '}
+                  <span
+                    className={
+                      chiefFeedback.isDisengaged
+                        ? 'text-red-300 font-bold'
+                        : chiefFeedback.status === 'aligned'
+                        ? 'text-emerald-300 font-bold'
+                        : 'text-amber-300 font-bold'
+                    }
+                  >
+                    {chiefFeedback.chiefName}{' '}
+                    {chiefFeedback.isDisengaged
+                      ? 'está desengajado (+10% prazo).'
+                      : chiefFeedback.status === 'aligned'
+                      ? 'está ansioso para testar (+5% vel. P&D).'
+                      : 'recomenda revisão técnica antes de aprovar.'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-xs font-f1-mono text-zinc-400 space-y-0.5 tabular-nums">
+                    <div>
+                      {t.estCapex}: <span className="text-white font-bold">${(effectiveCost / 1000000).toFixed(1)}M</span>{' '}
+                      {phoenixDiscountH1 && selectedType === 'pu' && <span className="text-emerald-400 font-bold">(-50%)</span>} ·{' '}
+                      {chiefFeedback.atrHoursCost > 0 && (
+                        <>
+                          ATR: <span className="text-cyan-300 font-bold">{chiefFeedback.atrHoursCost}h</span> ·{' '}
+                        </>
+                      )}
+                      {t.leadTime}:{' '}
+                      <span className="text-white font-bold">
+                        {Math.max(
+                          1,
+                          Math.round(
+                            prototypeSpec.leadWeeks *
+                              modificadorTempoManufatura *
+                              modificadorTempoPeD *
+                              (chiefFeedback.isDisengaged ? 1.1 : chiefFeedback.status === 'aligned' ? 0.95 : 1.0)
+                          )
+                        )}{' '}
+                        {language === 'pt' ? 'SEMANAS' : 'WEEKS'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 font-f1-mono">
+                      Fórmula: TempoFinal = Base ({prototypeSpec.leadWeeks} sem) × Manufatura (x{modificadorTempoManufatura.toFixed(2)}) × P&D (x{modificadorTempoPeD.toFixed(2)})
+                      {chiefFeedback.rdSpeedModifierPct !== 0
+                        ? ` × Engenheiro (${chiefFeedback.rdSpeedModifierPct > 0 ? '-5%' : '+10%'})`
+                        : ''}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleLaunchProject}
+                    disabled={cannotLaunchCad || (chiefFeedback.atrHoursCost > 0 && financials.atrWindTunnelHoursAvailable < chiefFeedback.atrHoursCost)}
+                    className={`w-full sm:w-auto px-6 py-2.5 font-f1-wide font-bold text-xs uppercase tracking-wider f1-tab-chamfer transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap ${
+                      cannotLaunchCad || (chiefFeedback.atrHoursCost > 0 && financials.atrWindTunnelHoursAvailable < chiefFeedback.atrHoursCost)
+                        ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
+                        : 'bg-[#E10600] hover:bg-[#c20500] text-white cursor-pointer'
+                    }`}
+                  >
+                    <Cpu className="w-4 h-4" />
+                    <span>
+                      {isMaxLevel
+                        ? language === 'pt'
+                          ? 'LIMITE FÍSICO ATINGIDO (NÍVEL 10)'
+                          : 'MAX LEVEL (LEVEL 10)'
+                        : aeroSlotsFull
+                        ? `TÚNEL DE VENTO LOTADO (${activeAeroCount}/${rdFacilityCapacity.aeroMaxSlots})`
+                        : mfgSlotsFull
+                        ? `SLOTS DE FÁBRICA LOTADOS (${activeMfgCount}/${rdFacilityCapacity.manufacturingMaxSlots})`
+                        : chiefFeedback.atrHoursCost > 0 && financials.atrWindTunnelHoursAvailable < chiefFeedback.atrHoursCost
+                        ? `HORAS ATR INSUFICIENTES (${chiefFeedback.atrHoursCost}h)`
+                        : t.startCadBtn}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
           </F1TabBucket>
@@ -2062,31 +2356,130 @@ export const EngineeringTab: React.FC = () => {
                   </div>
 
                   {windTunnelResult && lastSimulationReport ? (
-                    <div className="bg-[#15151E] p-3 border border-white/10 space-y-2 f1-pattern-micro-grid">
-                      <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
-                        <span className="font-f1-wide font-bold text-white">TELEMETRIA DE CORRELAÇÃO</span>
-                        <span className={lastSimulationReport.approved ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                          {lastSimulationReport.approved ? 'APROVADO' : 'REVISAR'}
-                        </span>
+                    <div className="space-y-3">
+                      <div className="bg-[#15151E] p-3 border border-white/10 space-y-2 f1-pattern-micro-grid">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                          <span className="font-f1-wide font-bold text-white">TELEMETRIA DE CORRELAÇÃO</span>
+                          <span className={lastSimulationReport.approved ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                            {lastSimulationReport.approved ? 'APROVADO' : 'REVISAR'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 tabular-nums">
+                          <div className="bg-[#1C1C26] p-2 border border-white/5">
+                            <span className="text-[10px] text-zinc-400 block">DOWNFORCE MODO Z</span>
+                            <span className="text-white font-bold">{lastSimulationReport.physics.cornerMode.downforceTotalN} N</span>
+                          </div>
+                          <div className="bg-[#1C1C26] p-2 border border-white/5">
+                            <span className="text-[10px] text-zinc-400 block">EFICIÊNCIA L/D</span>
+                            <span className="text-cyan-400 font-bold">{lastSimulationReport.physics.cornerMode.aeroEfficiencyLD}</span>
+                          </div>
+                          <div className="bg-[#1C1C26] p-2 border border-white/5">
+                            <span className="text-[10px] text-zinc-400 block">ERRO DE CORRELAÇÃO</span>
+                            <span className="text-amber-400 font-bold">±{lastSimulationReport.finalCorrelationErrorPct}%</span>
+                          </div>
+                          <div className="bg-[#1C1C26] p-2 border border-white/5">
+                            <span className="text-[10px] text-zinc-400 block">RISCO PORPOISING</span>
+                            <span className="text-white font-bold">{lastSimulationReport.physics.porpoisingRiskPct}%</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-[#1C1C26] p-2 border border-white/5">
-                          <span className="text-[10px] text-zinc-400 block">DOWNFORCE MODO Z</span>
-                          <span className="text-white font-bold">{lastSimulationReport.physics.cornerMode.downforceTotalN} N</span>
-                        </div>
-                        <div className="bg-[#1C1C26] p-2 border border-white/5">
-                          <span className="text-[10px] text-zinc-400 block">EFICIÊNCIA L/D</span>
-                          <span className="text-cyan-400 font-bold">{lastSimulationReport.physics.cornerMode.aeroEfficiencyLD}</span>
-                        </div>
-                        <div className="bg-[#1C1C26] p-2 border border-white/5">
-                          <span className="text-[10px] text-zinc-400 block">ERRO DE CORRELAÇÃO</span>
-                          <span className="text-amber-400 font-bold">±{lastSimulationReport.finalCorrelationErrorPct}%</span>
-                        </div>
-                        <div className="bg-[#1C1C26] p-2 border border-white/5">
-                          <span className="text-[10px] text-zinc-400 block">RISCO PORPOISING</span>
-                          <span className="text-white font-bold">{lastSimulationReport.physics.porpoisingRiskPct}%</span>
-                        </div>
-                      </div>
+
+                      {lastSimulationReport.pilotReport && (() => {
+                        const pr = lastSimulationReport.pilotReport;
+                        const liveDriverTrust = leadDriver?.trust ?? pr.trustRating;
+                        const verdictLabel =
+                          pr.handlingVerdict === 'estavel'
+                            ? 'ESTÁVEL'
+                            : pr.handlingVerdict === 'nervoso'
+                            ? 'NERVOSO'
+                            : pr.handlingVerdict === 'rigido'
+                            ? 'RÍGIDO'
+                            : 'CRÍTICO';
+                        const verdictCls =
+                          pr.handlingVerdict === 'estavel'
+                            ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                            : pr.handlingVerdict === 'critico'
+                            ? 'bg-red-950/60 border-red-500/40 text-red-300'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-300';
+
+                        return (
+                          <div className="bg-[#15151E] p-3 border border-cyan-500/35 space-y-2.5">
+                            <div className="flex items-start gap-3">
+                              <PersonAvatar
+                                role="driver"
+                                name={pr.driverName}
+                                sizeClass="w-11 h-11"
+                                accentColor="#22D3EE"
+                              />
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-f1-wide font-bold text-[11px] text-white uppercase truncate">
+                                    Relatório do Simulador ({pr.driverName})
+                                  </span>
+                                  <span className={`px-2 py-0.5 border text-[9px] font-bold uppercase whitespace-nowrap ${verdictCls}`}>
+                                    {verdictLabel}
+                                  </span>
+                                </div>
+                                <div className="space-y-1 tabular-nums">
+                                  <div className="flex justify-between text-[10px] text-zinc-400">
+                                    <span>Confiança do Piloto · Feedback {pr.feedbackRating}/99</span>
+                                    <span className="text-cyan-300 font-bold">{liveDriverTrust}/100</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-black/50 overflow-hidden">
+                                    <div
+                                      className={`h-full transition-all duration-300 ${
+                                        liveDriverTrust >= 70
+                                          ? 'bg-cyan-400'
+                                          : liveDriverTrust >= 40
+                                          ? 'bg-amber-400'
+                                          : 'bg-[#E10600]'
+                                      }`}
+                                      style={{ width: `${liveDriverTrust}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-zinc-200 italic leading-relaxed border-t border-white/10 pt-2">
+                              "{pr.quote}"
+                            </p>
+                            <div className="text-[10px] text-cyan-300">{pr.suggestedAdjustment}</div>
+
+                            {pr.recommendedParamsPatch && (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    respondToDriverFeedback(
+                                      'listen',
+                                      pr.driverId,
+                                      `sim_${lastSimulationReport.timestamp}`,
+                                      { vehiclePatch: pr.recommendedParamsPatch }
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                                >
+                                  Aplicar Ajuste do Piloto (+8 Confiança)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    respondToDriverFeedback(
+                                      'ignore',
+                                      pr.driverId,
+                                      `sim_${lastSimulationReport.timestamp}`
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 bg-[#1C1C26] hover:bg-red-950/60 border border-white/15 text-zinc-300 hover:text-red-200 font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                                >
+                                  Ignorar (-12 Confiança)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="p-3 bg-[#15151E] border border-white/5 text-zinc-400 text-[11px]">
@@ -2350,22 +2743,32 @@ export const EngineeringTab: React.FC = () => {
           )}
 
           {/* Active Homologation Specification Summary (Live SI Physics) */}
-          <F1TabBucket title="ACTIVE HOMOLOGATION SPECIFICATION" badge="CURRENT CAR (SI)">
+          <F1TabBucket title="ACTIVE HOMOLOGATION SPECIFICATION" badge={`CHASSI ${playerTeam.carModelName || 'APX-01'}`}>
             <div className="space-y-2 text-xs font-f1-mono divide-y divide-white/5">
-              <div className="flex justify-between py-1.5">
-                <span className="text-zinc-400">POWER UNIT SUPPLIER:</span>
-                <span className="text-white font-bold">{playerTeam.engineSupplier} ({vehiclePhysics.totalWheelPowerHp} CV)</span>
+              <div className="flex justify-between py-1.5 gap-3">
+                <span className="text-zinc-400">CHASSI HOMOLOGADO:</span>
+                <span className="text-white font-bold uppercase">{playerTeam.carModelName || 'APX-01'}</span>
               </div>
-              <div className="flex justify-between py-1.5">
+              <div className="flex justify-between py-1.5 gap-3">
+                <span className="text-zinc-400">POWER UNIT SUPPLIER:</span>
+                <span className="text-white font-bold text-right tabular-nums">
+                  {playerTeam.engineCustomName || playerTeam.engineSupplier}
+                  {playerTeam.thirdPartyErsSupplier && !(playerTeam.engineCustomName || '').includes(playerTeam.thirdPartyErsSupplier)
+                    ? ` + ERS ${playerTeam.thirdPartyErsSupplier}`
+                    : ''}{' '}
+                  ({playerTeam.homologatedPeakPowerHp ?? vehiclePhysics.peakCombinedPowerHp} CV)
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5 gap-3">
                 <span className="text-zinc-400">MASSA TOTAL (MÍN. FIA 768 kg):</span>
                 <span className="text-white font-bold tabular-nums">
                   {vehiclePhysics.totalMassKg} kg ({vehiclePhysics.weightDistFrontPct}% Diant.)
                 </span>
               </div>
-              <div className="flex justify-between py-1.5">
+              <div className="flex justify-between py-1.5 gap-3">
                 <span className="text-zinc-400">DIVISÃO TÉRMICA / ERS 2026:</span>
-                <span className="text-white font-bold">
-                  {vehiclePhysics.effectiveIcePowerKw} kW ICE / {vehiclePhysics.effectiveMgukPowerKw} kW ERS
+                <span className="text-white font-bold text-right tabular-nums">
+                  {vehiclePhysics.effectiveIcePowerKw} kW ICE / 350 kW ERS Pico ({vehiclePhysics.totalWheelPowerHp} CV na roda)
                 </span>
               </div>
               <div className="flex justify-between py-1.5">
@@ -2381,6 +2784,27 @@ export const EngineeringTab: React.FC = () => {
                 </span>
               </div>
             </div>
+          </F1TabBucket>
+
+          {/* 6-Axis Radar Comparison vs Selected Rival */}
+          <F1TabBucket title="COMPARATIVO RADAR VS RIVAIS (6 EIXOS)" badge="DESEMPENHO RELATIVO">
+            <CarRadarComparisonChart
+              playerTeam={playerTeam}
+              allTeams={allTeams}
+              vehicleParams={vehicleParams}
+              vehiclePhysics={vehiclePhysics}
+              components={components}
+              correlationErrorPct={
+                lastSimulationReport?.finalCorrelationErrorPct ??
+                Math.max(
+                  4,
+                  Math.round(
+                    (16 - rdFacilityCapacity.windTunnelLevel * 2 - rdFacilityCapacity.cfdLevel * 1.5) * 10
+                  ) / 10
+                )
+              }
+              leadDriverFeedback={leadDriver?.attributes?.feedback}
+            />
           </F1TabBucket>
         </div>
       </div>

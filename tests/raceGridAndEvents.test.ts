@@ -350,4 +350,92 @@ describe('Grid de 24 Pilotos, Roster Real do Save e Regras FIA', () => {
     // Chuva forte com pneus slick eleva drasticamente a taxa de acidentes em relação ao seco
     expect(avgWetCrashDnfs).toBeGreaterThan(avgDryCrashDnfs);
   });
+
+  it('gera evento de fumaça no escapamento quando PU de baixa confiabilidade (66%) falha em corrida', () => {
+    const resolved = resolveRaceGridDrivers(INITIAL_TEAMS, INITIAL_DRIVERS);
+    let smokeEventSeen = false;
+    let cars: LiveCarState[] = resolved.gridDrivers.slice(0, 2).map((drv, idx) => ({
+      driverId: drv.id,
+      driverName: drv.name,
+      shortCode: drv.shortCode,
+      driverNumber: drv.number,
+      teamId: drv.teamId,
+      teamColor: '#fff',
+      isPlayer: idx === 0,
+      position: idx + 1,
+      lap: 34,
+      distanceOnLap: 0.995,
+      totalDistance: 34.995,
+      currentLapTime: 0,
+      lastLapTime: 85,
+      bestLapTime: 85,
+      gapToLeaderSec: idx * 0.4,
+      gapToAheadSec: idx === 0 ? 0 : 0.4,
+      tireCompound: 'medium',
+      tireAgeLaps: 12,
+      tireWearPercent: 30,
+      tireGrainingBlistering: 0,
+      tireTempC: 96,
+      socPercent: 75,
+      batteryTempC: 54,
+      engineMode: 'balanced',
+      aeroMode: 'mode_z',
+      paceMode: 'balanced',
+      fuelMixMode: 'standard',
+      fuelRemainingKg: 60,
+      fuelInitialKg: 100,
+      fuelBurnKgPerLap: 1.65,
+      fuelSavingPenaltySec: 0,
+      eFuelRating: 91,
+      inPitLane: false,
+      pitStopsDone: 1,
+      pitDurationSec: 0,
+      hasDerating: false,
+      damagePercent: 0,
+      status: 'running',
+    }));
+
+    // Deterministic RNG returning very low values after green checks to trigger mechanical failure check on lap 35
+    let callIdx = 0;
+    const smokeRng = () => {
+      callIdx += 1;
+      // Avoid incidentRollProb (which checks rng() < ~0.002) -> wait: mechanical check happens at lap completion,
+      // returning 0.003 triggers totalMechRisk (~0.0105 at 66% rel) while avoiding dry crash roll (~0.002)
+      return callIdx % 2 === 0 ? 0.0035 : 0.5;
+    };
+
+    for (let step = 0; step < 30; step++) {
+      const res = stepRaceSimulationTick({
+        cars,
+        drivers: resolved.gridDrivers,
+        allTeams: resolved.normalizedTeams,
+        raceSpeed: 4,
+        totalLaps: 57,
+        baseLapTimeSec: 85,
+        trackWeather: 'sunny',
+        aeroDemand: 'medium',
+        airDensityKgM3: 1.225,
+        tireStressIndex01: 0.5,
+        coolingDemandIndex01: 0.55,
+        netErsBalanceKjPerLap: 100,
+        playerCarRating: 88,
+        playerTotalMassKg: 772,
+        playerPorpoisingRiskPct: 15,
+        playerThermalMarginC: 2,
+        playerBatteryCellTempC: 55,
+        playerFatigueLifeRaces: 5,
+        playerTireWearRateMultiplier: 1.0,
+        playerAvgReliability: 66,
+        flagState: { flag: 'green', expiresAtLap: 0 },
+        rng: smokeRng,
+      });
+      if (res.events.some(e => e.title.includes('FUMAÇA NO ESCAPAMENTO'))) {
+        smokeEventSeen = true;
+        break;
+      }
+      cars = res.cars.map(c => ({ ...c, distanceOnLap: 0.995 }));
+    }
+
+    expect(smokeEventSeen).toBe(true);
+  });
 });

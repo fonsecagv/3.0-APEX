@@ -5,12 +5,12 @@ import type { PrincipalBackgroundOption } from '../../data/principalBackgroundsD
 import {
   AERO_STAFF_MEMBERS,
   PU_STAFF_MEMBERS,
-  SPORTING_STAFF_MEMBERS,
-  CHIEF_MECHANIC_STAFF_MEMBERS
+  SPORTING_STAFF_MEMBERS
 } from '../../data/marketData';
 import {
   PROJECT_AMBITION_OPTIONS,
   calculateStaffInterest,
+  evaluateCombinedLeadershipDna,
   getStaffFullProfile
 } from '../../utils/profileSheets';
 import { StaffMarketCard } from './Step5MarketCards';
@@ -21,6 +21,7 @@ import {
   Check,
   CheckCircle2,
   Cpu,
+  Crown,
   DollarSign,
   Lock,
   Search,
@@ -41,14 +42,13 @@ export interface Step3OrganizationAndStaffProps {
   selectedHeadAero: string | null;
   selectedHeadPU: string | null;
   selectedSportingDirector: string | null;
-  selectedChiefMechanic: string | null;
   onToggleStaff: (staff: StaffMember) => void;
   onExpandStaff: (staff: StaffMember) => void;
   onPlaySound?: () => void;
 }
 
 type SubTab3 = 'dna_board' | 'pillars' | 'staff_dna';
-type StaffFilterRole = 'aero' | 'pu' | 'sporting' | 'mechanic';
+type StaffFilterRole = 'aero' | 'pu' | 'sporting';
 
 export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps> = ({
   careerPath,
@@ -61,7 +61,6 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
   selectedHeadAero,
   selectedHeadPU,
   selectedSportingDirector,
-  selectedChiefMechanic,
   onToggleStaff,
   onExpandStaff,
   onPlaySound
@@ -78,7 +77,6 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
   const stfAero = AERO_STAFF_MEMBERS.find(s => s.id === selectedHeadAero) || null;
   const stfPU = PU_STAFF_MEMBERS.find(s => s.id === selectedHeadPU) || null;
   const stfSport = SPORTING_STAFF_MEMBERS.find(s => s.id === selectedSportingDirector) || null;
-  const stfMech = CHIEF_MECHANIC_STAFF_MEMBERS.find(s => s.id === selectedChiefMechanic) || null;
 
   const pillarsCompleteCount = [stfAero, stfPU, stfSport].filter(Boolean).length;
   const allThreePillarsReady = pillarsCompleteCount === 3;
@@ -88,9 +86,7 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
       ? AERO_STAFF_MEMBERS
       : roleFilter === 'pu'
       ? PU_STAFF_MEMBERS
-      : roleFilter === 'sporting'
-      ? SPORTING_STAFF_MEMBERS
-      : CHIEF_MECHANIC_STAFF_MEMBERS;
+      : SPORTING_STAFF_MEMBERS;
 
   const q = searchQuery.trim().toLowerCase();
   const filteredList = activeList.filter(s => {
@@ -104,7 +100,7 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
     );
   });
 
-  const hiredStaffList = [stfAero, stfPU, stfSport, stfMech].filter(Boolean) as StaffMember[];
+  const hiredStaffList = [stfAero, stfPU, stfSport].filter(Boolean) as StaffMember[];
   const totalStaffSalariesUsd = hiredStaffList.reduce((acc, s) => {
     const ev = calculateStaffInterest({
       staff: s,
@@ -116,6 +112,13 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
     return acc + (ev.status === 'negotiable' ? ev.requiredSalaryUsd : s.salary);
   }, 0);
   const totalBuyoutsUsd = hiredStaffList.reduce((acc, s) => acc + (s.buyoutClause || 0), 0);
+
+  const combinedDna = evaluateCombinedLeadershipDna({
+    principalBackground: selectedBackground,
+    headAero: stfAero,
+    headPu: stfPU,
+    sportingDirector: stfSport
+  });
 
   return (
     <div className="space-y-6">
@@ -412,58 +415,66 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-f1-mono">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs font-f1-mono">
               {[
-                { label: '1. CHEFE DE AERO', roleKey: 'aero' as StaffFilterRole, member: stfAero, required: true },
-                { label: '2. CHEFE DE PU & COMP.', roleKey: 'pu' as StaffFilterRole, member: stfPU, required: true },
-                { label: '3. CHEFE DE GERENCIAMENTO', roleKey: 'sporting' as StaffFilterRole, member: stfSport, required: true },
-                { label: 'CHEFE MECÂNICO (GARAGEM)', roleKey: 'mechanic' as StaffFilterRole, member: stfMech, required: false }
+                { label: '1. CHEFE DE AERODINÂMICA', roleKey: 'aero' as StaffFilterRole, member: stfAero },
+                { label: '2. CHEFE DE PU & COMP.', roleKey: 'pu' as StaffFilterRole, member: stfPU },
+                { label: '3. CHEFE DE GERENCIAMENTO', roleKey: 'sporting' as StaffFilterRole, member: stfSport }
               ].map(slot => {
                 const profile = slot.member ? getStaffFullProfile(slot.member) : null;
+                const isActiveSlot = roleFilter === slot.roleKey;
                 return (
                   <div
                     key={slot.label}
-                    onClick={() => setRoleFilter(slot.roleKey)}
-                    className={`p-3 border rounded cursor-pointer transition-all flex flex-col justify-between min-h-[104px] ${
+                    onClick={() => {
+                      onPlaySound?.();
+                      setRoleFilter(slot.roleKey);
+                    }}
+                    className={`p-3.5 border rounded cursor-pointer transition-all flex flex-col justify-between min-h-[116px] ${
                       slot.member
-                        ? 'bg-[#15151E] border-emerald-500/40'
-                        : slot.required
-                        ? 'bg-amber-950/15 border-dashed border-amber-500/50'
-                        : 'bg-[#15151E]/60 border-white/10'
+                        ? isActiveSlot
+                          ? 'bg-[#15151E] border-emerald-400 ring-1 ring-emerald-400/50'
+                          : 'bg-[#15151E] border-emerald-500/40 hover:border-emerald-400/70'
+                        : isActiveSlot
+                        ? 'bg-amber-950/20 border-amber-400 ring-1 ring-amber-400/40'
+                        : 'bg-amber-950/15 border-dashed border-amber-500/50 hover:border-amber-400'
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold mb-1">
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold mb-1.5">
                         <span>{slot.label}</span>
                         {slot.member ? (
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : slot.required ? (
+                        ) : (
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                        ) : null}
+                        )}
                       </div>
                       {slot.member && profile ? (
-                        <div className="space-y-0.5">
-                          <div className="font-f1-wide font-bold text-white text-xs truncate">
+                        <div className="space-y-1">
+                          <div className="font-f1-wide font-bold text-white text-sm truncate">
                             {slot.member.name}
                           </div>
-                          <div className="text-[10px] text-purple-300 font-bold">
-                            [{profile.staffPhilosophyTag}] · OVR {slot.member.rating}
+                          <div className="text-[10px] text-purple-300 font-bold tabular-nums">
+                            {profile.staffPhilosophyTag} · OVR {slot.member.rating}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 truncate">
+                            {profile.designDna}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-amber-400 font-bold text-[11px] block mt-1">
-                          {slot.required ? 'Clique para contratar' : 'Padrão de fábrica ativo'}
+                        <span className="text-amber-400 font-bold text-[11px] block mt-2">
+                          Clique para contratar no mercado abaixo
                         </span>
                       )}
                     </div>
-                    {slot.member && slot.required && (
+                    {slot.member && (
                       <button
                         type="button"
                         onClick={e => {
                           e.stopPropagation();
                           onToggleStaff(slot.member!);
                         }}
-                        className="text-[9px] text-red-400 hover:text-red-300 underline text-left mt-1 cursor-pointer"
+                        className="text-[10px] text-red-400 hover:text-red-300 underline text-left mt-2 cursor-pointer w-fit"
                       >
                         Dispensar
                       </button>
@@ -484,15 +495,14 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
             </div>
           )}
 
-          {/* Filtros de Cargo + Busca */}
+          {/* Filtros de Cargo (3 Pilares de Projeto & Organização) + Busca */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               {(
                 [
                   { id: 'aero', label: '1. Chefe de Aerodinâmica' },
                   { id: 'pu', label: '2. Chefe de PU & Componentes' },
-                  { id: 'sporting', label: '3. Chefe de Gerenciamento' },
-                  { id: 'mechanic', label: 'Chefe Mecânico (Opcional)' }
+                  { id: 'sporting', label: '3. Chefe de Gerenciamento' }
                 ] as const
               ).map(tab => (
                 <button
@@ -502,7 +512,7 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
                     onPlaySound?.();
                     setRoleFilter(tab.id);
                   }}
-                  className={`px-3 py-1.5 text-xs font-f1-mono font-bold uppercase border transition-all whitespace-nowrap cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-f1-mono font-bold uppercase border transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                     roleFilter === tab.id
                       ? 'bg-white/20 border-white text-white'
                       : 'bg-[#15151E] border-white/10 text-zinc-400 hover:text-white'
@@ -531,8 +541,7 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
               const isAssigned =
                 (roleFilter === 'aero' && selectedHeadAero === member.id) ||
                 (roleFilter === 'pu' && selectedHeadPU === member.id) ||
-                (roleFilter === 'sporting' && selectedSportingDirector === member.id) ||
-                (roleFilter === 'mechanic' && selectedChiefMechanic === member.id);
+                (roleFilter === 'sporting' && selectedSportingDirector === member.id);
 
               const interest = calculateStaffInterest({
                 staff: member,
@@ -576,19 +585,19 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
       )}
 
       {/* ==================================================================== */}
-      {/* SUB-PASSO 3.3: DNA TÉCNICO DO STAFF & COMPROMISSO FINANCEIRO         */}
+      {/* SUB-PASSO 3.3: DNA TÉCNICO COMBINADO (VOCÊ + 3 CHEFES)               */}
       {/* ==================================================================== */}
       {subTab === 'staff_dna' && (
         <div className="space-y-5">
-          <div className="bg-[#1C1C26] border border-white/10 p-5 space-y-4">
+          <div className="bg-[#1C1C26] border border-white/10 p-5 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
               <div>
                 <h3 className="font-f1-wide font-black text-sm text-white uppercase flex items-center gap-2">
                   <Wrench className="w-4 h-4 text-purple-400" />
-                  <span>DNA Técnico Combinado da Diretoria de Engenharia</span>
+                  <span>DNA Técnico Combinado (Você + Diretoria de Engenharia)</span>
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  A filosofia de cada chefe contratado definirá sinergias ou conflitos ao escolher o conceito do carro na Fase 5.
+                  O seu perfil de Team Principal atua como modificador global sobre os 3 chefes contratados e filtra os conceitos do carro na Fase 4. O Chefe Mecânico e os Engenheiros de Rádio serão contratados na Fase 6 (Equipe de Pista).
                 </p>
               </div>
               <div className="text-right font-f1-mono text-xs">
@@ -604,62 +613,222 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* TERMÔMETRO DE SINERGIA DA LIDERANÇA (VOCÊ + 3 CHEFES) */}
+            <div
+              className={`p-4 border space-y-3 ${
+                combinedDna.synergyTone === 'emerald'
+                  ? 'bg-emerald-950/20 border-emerald-500/45'
+                  : combinedDna.synergyTone === 'red'
+                  ? 'bg-red-950/30 border-red-500/60'
+                  : 'bg-amber-950/20 border-amber-500/50'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase tracking-widest font-bold">
+                    TERMÔMETRO DE SINERGIA:
+                  </span>
+                  <span className="font-f1-wide font-black text-xs sm:text-sm text-white uppercase">
+                    {combinedDna.combinedHeadline}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`text-[10px] font-f1-mono font-bold uppercase ${
+                      combinedDna.synergyTone === 'emerald'
+                        ? 'text-emerald-300'
+                        : combinedDna.synergyTone === 'red'
+                        ? 'text-red-300'
+                        : 'text-amber-200'
+                    }`}
+                  >
+                    {combinedDna.synergyTone === 'emerald'
+                      ? '+10% Velocidade P&D'
+                      : combinedDna.synergyTone === 'red'
+                      ? 'Guerra Civil (-30% P&D · Risco Demissão)'
+                      : combinedDna.synergyPct < 60
+                      ? 'Tensão Interna (-15% P&D)'
+                      : 'Guerra Fria (Sem bônus P&D)'}
+                  </span>
+                  <span
+                    className={`font-f1-wide font-black text-xs sm:text-sm tabular-nums ${
+                      combinedDna.synergyTone === 'emerald'
+                        ? 'text-emerald-400'
+                        : combinedDna.synergyTone === 'red'
+                        ? 'text-red-400'
+                        : 'text-amber-300'
+                    }`}
+                  >
+                    Sinergia {combinedDna.synergyPct}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-2.5 w-full bg-black/70 border border-white/10 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    combinedDna.synergyTone === 'emerald'
+                      ? 'bg-emerald-500'
+                      : combinedDna.synergyTone === 'red'
+                      ? 'bg-red-500'
+                      : 'bg-amber-400'
+                  }`}
+                  style={{ width: `${combinedDna.synergyPct}%` }}
+                />
+              </div>
+
+              <p
+                className={`text-xs font-f1-mono leading-relaxed ${
+                  combinedDna.synergyTone === 'red' ? 'text-red-200 font-bold' : 'text-zinc-200'
+                }`}
+              >
+                {combinedDna.narrativeSummary}
+              </p>
+
+              {combinedDna.interactions.length > 0 && (
+                <div className="pt-2 border-t border-white/10 space-y-1.5">
+                  <span className="text-[10px] font-f1-mono text-zinc-400 uppercase tracking-wider font-bold block">
+                    Interações Ativas (Seu Bônus × Chefes Contratados)
+                  </span>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                    {combinedDna.interactions.map(inter => (
+                      <div
+                        key={inter.id}
+                        className={`p-2.5 border text-[11px] font-f1-mono flex items-start gap-2 ${
+                          inter.type === 'conflict'
+                            ? 'bg-red-950/35 border-red-500/50 text-red-200'
+                            : inter.type === 'synergy'
+                            ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                            : 'bg-[#15151E] border-white/10 text-zinc-300'
+                        }`}
+                      >
+                        {inter.type === 'conflict' ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                        ) : inter.type === 'synergy' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <span className="font-bold block text-white">{inter.title}</span>
+                          <span className="leading-snug block mt-0.5">{inter.detail}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4 CARDS: VOCÊ (À ESQUERDA, DESTAQUE DOURADO) + 3 CHEFES CONTRATADOS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+              {/* CARD 0: JOGADOR (TEAM PRINCIPAL / DIRETOR TÉCNICO) */}
+              <div className="p-5 pb-6 border border-amber-400/75 bg-gradient-to-b from-amber-950/15 via-[#15151E] to-[#15151E] rounded-lg flex flex-col justify-between h-full min-h-[255px] gap-4">
+                <div className="space-y-2.5">
+                  <span className="text-[10px] font-f1-mono text-amber-300 uppercase font-bold flex items-center gap-1.5 tracking-wider">
+                    <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>VOCÊ · TEAM PRINCIPAL / DIR. TÉCNICO</span>
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-f1-wide font-black text-sm text-white uppercase">
+                      {selectedBackground.name}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-f1-mono text-cyan-300 font-bold uppercase">
+                    FILOSOFIA: {combinedDna.principalCard.leadershipTag}
+                  </div>
+                  <p className="text-[11px] font-f1-mono text-zinc-300 leading-relaxed pt-2 border-t border-white/5 pb-1">
+                    {combinedDna.principalCard.summary}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-white/10 space-y-1.5 text-[10px] font-f1-mono">
+                  <div className="text-emerald-400 font-bold leading-snug">
+                    Bônus: {combinedDna.principalCard.bonusLine}
+                  </div>
+                  <div className="text-amber-300 leading-snug">
+                    Ônus: {combinedDna.principalCard.onusLine}
+                  </div>
+                </div>
+              </div>
+
+              {/* CARDS 1, 2, 3: OS 3 CHEFES DE ENGENHARIA E GESTÃO */}
               {[
-                { title: 'Chefe de Aerodinâmica', member: stfAero, filter: 'aero' as StaffFilterRole },
-                { title: 'Chefe de PU & Componentes', member: stfPU, filter: 'pu' as StaffFilterRole },
-                { title: 'Chefe de Gerenciamento', member: stfSport, filter: 'sporting' as StaffFilterRole }
+                {
+                  title: '1. Chefe de Aerodinâmica',
+                  member: stfAero,
+                  filter: 'aero' as StaffFilterRole,
+                  leadershipNote: combinedDna.roleNotes.headAero
+                },
+                {
+                  title: '2. Chefe de PU & Componentes',
+                  member: stfPU,
+                  filter: 'pu' as StaffFilterRole,
+                  leadershipNote: combinedDna.roleNotes.headPu
+                },
+                {
+                  title: '3. Chefe de Gerenciamento',
+                  member: stfSport,
+                  filter: 'sporting' as StaffFilterRole,
+                  leadershipNote: combinedDna.roleNotes.sportingDirector
+                }
               ].map(item => {
                 const profile = item.member ? getStaffFullProfile(item.member) : null;
                 return (
                   <div
                     key={item.title}
-                    className={`p-4 border rounded-lg space-y-2.5 ${
+                    className={`p-5 pb-6 border rounded-lg flex flex-col justify-between h-full min-h-[255px] gap-4 ${
                       item.member
                         ? 'bg-[#15151E] border-purple-500/40'
                         : 'bg-amber-950/15 border-dashed border-amber-500/40'
                     }`}
                   >
-                    <span className="text-[10px] font-f1-mono text-zinc-400 uppercase font-bold block">
-                      {item.title}
-                    </span>
-                    {item.member && profile ? (
-                      <>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-f1-wide font-black text-sm text-white">
-                            {item.member.name}
-                          </span>
-                          <span className="text-xs font-f1-wide font-black text-emerald-400 tabular-nums">
-                            OVR {item.member.rating}
-                          </span>
+                    <div className="space-y-2.5">
+                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase font-bold block">
+                        {item.title}
+                      </span>
+                      {item.member && profile ? (
+                        <>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-f1-wide font-black text-sm text-white">
+                              {item.member.name}
+                            </span>
+                            <span className="text-xs font-f1-wide font-black text-emerald-400 tabular-nums">
+                              OVR {item.member.rating}
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-f1-mono text-zinc-300">
+                            <span className="text-purple-300 font-bold">{profile.staffPhilosophyTag}</span>
+                            {' · '}
+                            <span>{profile.designDna}</span>
+                          </div>
+                          <p className="text-[11px] font-f1-mono text-zinc-300 leading-relaxed pt-2 border-t border-white/5 pb-1">
+                            {profile.philosophyImpactSummary}
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-2 py-2">
+                          <p className="text-xs font-f1-mono text-amber-300">
+                            Cargo obrigatório ainda em aberto.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRoleFilter(item.filter);
+                              setSubTab('pillars');
+                            }}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-f1-wide font-bold uppercase rounded cursor-pointer"
+                          >
+                            Contratar Agora
+                          </button>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] font-f1-mono font-bold px-2 py-0.5 bg-purple-950/70 border border-purple-400/50 text-purple-200 rounded">
-                            [ FILOSOFIA: {profile.staffPhilosophyTag} ]
-                          </span>
-                          <span className="text-[10px] font-f1-mono px-2 py-0.5 bg-white/5 border border-white/10 text-zinc-300 rounded">
-                            {profile.designDna}
-                          </span>
-                        </div>
-                        <p className="text-[11px] font-f1-mono text-zinc-300 leading-relaxed pt-1 border-t border-white/5">
-                          {profile.philosophyImpactSummary}
-                        </p>
-                      </>
-                    ) : (
-                      <div className="space-y-2 py-2">
-                        <p className="text-xs font-f1-mono text-amber-300">
-                          Cargo obrigatório ainda em aberto.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRoleFilter(item.filter);
-                            setSubTab('pillars');
-                          }}
-                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-f1-wide font-bold uppercase rounded cursor-pointer"
-                        >
-                          Contratar Agora
-                        </button>
+                      )}
+                    </div>
+
+                    {item.member && item.leadershipNote && (
+                      <div className="pt-3 border-t border-white/10 text-[10px] font-f1-mono text-cyan-300 leading-snug">
+                        <span className="text-zinc-400 uppercase font-bold block">Impacto sob sua liderança:</span>
+                        <span>{item.leadershipNote}</span>
                       </div>
                     )}
                   </div>

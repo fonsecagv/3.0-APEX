@@ -91,6 +91,43 @@ export interface TransmissionOutputs {
   };
 }
 
+export interface GearboxStaffSynergyResult {
+  efficiencyBonus: number;
+  fatigueBonusRaces: number;
+  shiftReductionS: number;
+  puLeaderLabel: string;
+  mechLeaderLabel: string;
+  summaryLabel: string;
+}
+
+export function computeGearboxStaffSynergy(
+  headPu?: { name: string; rating: number; specialty?: string } | null,
+  chiefMechanic?: { name: string; rating: number; specialty?: string } | null
+): GearboxStaffSynergyResult {
+  const puRating = headPu?.rating ?? 74;
+  const mechRating = chiefMechanic?.rating ?? 74;
+
+  // Chefe de PU otimiza eficiência hidráulica/engrenagens e resistência à fadiga
+  const efficiencyBonus = Number(Math.max(0, Math.min(0.0085, (puRating - 68) * 0.00028)).toFixed(4));
+  const fatigueBonusRaces = puRating >= 88 ? 2 : puRating >= 78 ? 1 : 0;
+
+  // Chefe Mecânico otimiza tempo de atuação eletro-hidráulica nas trocas e preparação de caixa
+  const shiftReductionS = Number(Math.max(0, Math.min(0.014, (mechRating - 68) * 0.00045)).toFixed(4));
+
+  const puLeaderLabel = headPu ? `${headPu.name} (OVR ${headPu.rating})` : 'Chefe de PU Padrão';
+  const mechLeaderLabel = chiefMechanic ? `${chiefMechanic.name} (OVR ${chiefMechanic.rating})` : 'Chefe Mecânico Padrão';
+  const summaryLabel = `+${(efficiencyBonus * 100).toFixed(2)}% efic. · +${fatigueBonusRaces} GPs fadiga · -${(shiftReductionS * 1000).toFixed(0)} ms troca`;
+
+  return {
+    efficiencyBonus,
+    fatigueBonusRaces,
+    shiftReductionS,
+    puLeaderLabel,
+    mechLeaderLabel,
+    summaryLabel,
+  };
+}
+
 export function evaluateTransmission(
   params: VehicleEngineeringParameters,
   input: TransmissionOperatingInput,
@@ -98,7 +135,7 @@ export function evaluateTransmission(
 ): TransmissionOutputs {
   const violations: string[] = [];
 
-  // Build 8 discrete Z2/Z1 gear pairs tuned by gearRatioBias (short accel vs long top speed)
+  // Build 8 discrete Z2/Z1 gear pairs tuned by customGearRatios (if provided) or gearRatioBias
   const biasShift = 0.92 + (params.gearRatioBias / 100) * 0.16; // ~0.92..1.08
   const basePairs: Array<[number, number]> = [
     [13, 38],
@@ -110,9 +147,16 @@ export function evaluateTransmission(
     [24, 23],
     [26, 22],
   ];
+  const hasCustomRatios =
+    Array.isArray(params.customGearRatios) &&
+    params.customGearRatios.length === edition.numForwardGears;
 
   const gears: GearPairSpec[] = basePairs.slice(0, edition.numForwardGears).map(([z1, z2], idx) => {
-    const z2Adj = Math.max(18, Math.round(z2 / biasShift));
+    const customR = hasCustomRatios ? params.customGearRatios![idx] : undefined;
+    const z2Adj =
+      typeof customR === 'number' && Number.isFinite(customR)
+        ? Math.max(16, Math.min(48, Math.round(customR * z1)))
+        : Math.max(18, Math.round(z2 / biasShift));
     const ratio = z2Adj / z1;
     const moduleM = 0.0042;
     return {
@@ -136,11 +180,13 @@ export function evaluateTransmission(
     );
   }
 
-  // Efficiency (tooth churning + bearing + casing deflection)
+  // Efficiency (tooth churning + bearing + casing deflection + Chefe de PU tuning)
+  const staffTuning = params.gearboxStaffTuning;
   const gbAlloy = CASING_ALLOYS[params.gearboxMaterial];
   const churningLoss = 0.019 + (params.gearToothWidthMm - 14) * 0.0008 + (params.differentialLockPct / 100) * 0.004;
   const casingFlexLoss = gbAlloy.youngsModulusGpa < 90 ? 0.004 : 0.001;
-  const gearboxEfficiency = Math.max(0.90, Math.min(0.985, 1 - churningLoss - casingFlexLoss));
+  const staffEffBonus = staffTuning?.efficiencyBonus ?? 0;
+  const gearboxEfficiency = Math.max(0.90, Math.min(0.985, 1 - churningLoss - casingFlexLoss + staffEffBonus));
 
   // i = omega_in / omega_out, T_out = T_in * i * eta
   const inputOmega = Math.max(10, input.engineOmegaRadS);
@@ -179,8 +225,9 @@ export function evaluateTransmission(
   const actualClutchTorque = Math.min(Math.abs(inputTorque), clutchTorqueCapacityNm);
   const clutchSlipPowerW = actualClutchTorque * Math.abs(input.clutchSlipOmegaRadS);
 
-  // Shift dynamics & thermal/wear penalty
-  const shiftDurationS = Math.max(edition.minShiftTimeS, input.shiftTimeCommandS);
+  // Shift dynamics & thermal/wear penalty (Chefe Mecânico speeds actuation without breaching FIA minimum)
+  const shiftReductionS = staffTuning?.shiftReductionS ?? 0;
+  const shiftDurationS = Math.max(edition.minShiftTimeS, input.shiftTimeCommandS - shiftReductionS);
   const gearStepInertiaKgM2 = 0.045;
   const deltaOmegaShift = inputOmega * 0.16;
   const shiftSyncEnergyLossJ = 0.5 * gearStepInertiaKgM2 * deltaOmegaShift * deltaOmegaShift + clutchSlipPowerW * shiftDurationS;
@@ -198,13 +245,16 @@ export function evaluateTransmission(
   const shaftAllowableShearPa = 520e6; // high-strength aerospace steel 300M / maraging
   const shaftSafetyFactor = shaftAllowableShearPa / Math.max(1, shaftMaxShearStressPa);
 
-  // Gear tooth bending & Basquin S-N fatigue
+  // Gear tooth bending & Basquin S-N fatigue (+Chefe de PU structural durability)
   const toothWidthM = params.gearToothWidthMm / 1000;
   const lewisY = 0.34;
   const moduleM = 0.0042;
   const toothBendingStressMpa = (toothTangentialForceFtN / (toothWidthM * moduleM * lewisY)) / 1e6;
   const fatigueStressRatio = toothBendingStressMpa / (gbAlloy.yieldStrengthMpa * gbAlloy.fatigueEnduranceRatio * 1.4);
-  const fatigueLifeRaces = Math.max(1, Math.min(24, Math.round(10 / Math.pow(Math.max(0.35, fatigueStressRatio), 1.8))));
+  const fatigueLifeRaces = Math.max(
+    1,
+    Math.min(24, Math.round(10 / Math.pow(Math.max(0.35, fatigueStressRatio), 1.8)) + (staffTuning?.fatigueBonusRaces ?? 0))
+  );
 
   // Oil Thermal Balance
   const oilCoolingRejectedW = params.gearboxOilCoolingKw * 1000;

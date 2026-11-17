@@ -172,7 +172,7 @@ export function getPhase3Narrative(
         ],
         alert: {
           type: 'success',
-          text: 'Ao confirmar, o gabarito tridimensional é liberado imediatamente para o CAD do chassi na Fase 4.'
+          text: 'Ao confirmar, o gabarito tridimensional é liberado para a montagem da equipe de pista (Fase 6) e o CAD do chassi (Fase 7).'
         }
       },
       secondary: [
@@ -428,21 +428,21 @@ export function getPhase6Narrative(
 ): { primary: NarrativeMessage; secondary: NarrativeMessage[] } {
   const philosophyQuotes: Record<CarPhilosophy, string> = {
     low_drag:
-      'Baixo Arrasto (Low Drag — M02): Prioriza reduzir D = ½ρV²CDA e P_D = D·V em retas longas. Sacrifica carga absoluta em curvas lentas e exige dutos térmicos enxutos.',
+      'Baixo Arrasto (Low Drag): Corta a resistência do ar para ganhar muita velocidade nas retas longas. Sacrifica aderência em curvas lentas e exige refrigeração compacta.',
     high_downforce:
-      'Alta Carga (High Downforce — M02): Maximiza Fz = ½ρV²CLA para ataque agressivo em curvas de média/alta velocidade. Eleva arrasto induzido (CDi ∝ CL²), rigidez estrutural e exigência térmica.',
+      'Alta Carga (High Downforce): Gera máxima pressão vertical no asfalto para contornar curvas rápidas em alta velocidade. Gera mais arrasto nas retas e exige mais dos pneus e da suspensão.',
     stable_platform:
-      'Plataforma Estável (Stable Platform — M02): Minimiza ∂Fz/∂h, migração de centro de pressão e sensibilidade a pitch/yaw na transição Modo Z ↔ Modo X, prevenindo estol e porpoising.',
+      'Plataforma Estável (Stable Platform): Mantém o carro previsível e fácil de pilotar sobre zebras, vento lateral e troca entre modo reta e modo curva.',
     aero_efficiency:
-      'Eficiência Aerodinâmica (Aero Efficiency — M02): Maximiza a razão CL/CD em todo o envelope de velocidades e modos ativos 2026, equilibrando downforce útil sem desperdiçar arrasto.',
+      'Eficiência Aerodinâmica (Aero Efficiency): Equilibra velocidade de reta com boa pressão em curva, extraindo o máximo rendimento sem desperdiçar energia.',
     mechanical_grip:
-      'Aderência Mecânica (Mechanical Grip — M02): Prioriza contato pneu-pista, tração de saída de curva, absorção de zebras/ondulações e janela térmica sustentável nos stints longos.',
+      'Aderência Mecânica (Mechanical Grip): Prioriza tração na saída de curva, absorção de zebras e preservação dos pneus em stints longos.',
     balanced_adaptive:
-      'Equilibrado / Adaptativo (Balanced Adaptive — M02): Robustez multidisciplinar entre arrasto, carga, plataforma e margem térmica ao longo de todos os perfis de pista do calendário.',
+      'Equilibrado / Adaptativo (Balanced Adaptive): Conceito versátil para entregar desempenho sólido em todos os tipos de pista do calendário.',
     balanced:
-      'Equilibrado / Adaptativo (Balanced Adaptive — M02): Robustez multidisciplinar entre arrasto, carga, plataforma e margem térmica ao longo de todos os perfis de pista do calendário.',
+      'Equilibrado / Adaptativo (Balanced Adaptive): Conceito versátil para entregar desempenho sólido em todos os tipos de pista do calendário.',
     tire_preservation:
-      'Aderência Mecânica (Mechanical Grip — M02): Controle mecânico suave para preservar os pneus e maximizar tração em stints longos.'
+      'Aderência Mecânica (Mechanical Grip): Controle mecânico suave para preservar os pneus e maximizar tração em stints longos.'
   };
 
   const fuelQuotes: Record<FuelPartnerId, string> = {
@@ -504,7 +504,7 @@ export function getPhase7Narrative(
         ],
         alert: {
           type: 'info',
-          text: 'O câmbio se acopla diretamente ao gabarito homologado da PU na Fase 4.'
+          text: 'O câmbio se acopla diretamente ao gabarito homologado da PU na Fase 5.'
         }
       },
       secondary: [

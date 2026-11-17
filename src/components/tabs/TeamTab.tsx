@@ -21,6 +21,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { PRINCIPAL_BACKGROUNDS } from '../../data/principalBackgroundsData';
+import { evaluatePitAndGarageOperations } from '../../engine/simulationEngine';
+import { PersonAvatar } from '../common/PersonAvatar';
+import type { EngineeringAvatarRole } from '../../engine/engineeringFeedbackEngine';
 
 export const TeamTab: React.FC = () => {
   const {
@@ -29,6 +32,7 @@ export const TeamTab: React.FC = () => {
     playerTeam,
     principalProfile,
     signDriver,
+    dismissDriverAndPromote,
     promoteAffiliateToFP1,
     selectedAffiliateInFP1,
     financials,
@@ -50,8 +54,10 @@ export const TeamTab: React.FC = () => {
   const [marketingFeedback, setMarketingFeedback] = useState<string | null>(null);
 
   const playerDrivers = drivers.filter(d => d.teamId === playerTeam.id && !d.isAffiliate);
+  const activeSelectedDriver = playerDrivers.find(d => d.id === selectedDriver.id) || playerDrivers[0] || selectedDriver;
   const affiliateDrivers = drivers.filter(d => d.isAffiliate);
   const marketDrivers = drivers.filter(d => d.teamId !== playerTeam.id && !d.isAffiliate);
+  const [replacingDriverId, setReplacingDriverId] = useState<string | null>(null);
 
   const getMentalityColor = (m: number) => {
     if (m >= 85) return 'text-emerald-400';
@@ -65,6 +71,40 @@ export const TeamTab: React.FC = () => {
     if (m >= 70) return 'CONFIDENT';
     if (m >= 50) return 'RESTLESS';
     return 'DEMORALIZED / POACHING RISK';
+  };
+
+  const getTrustStatus = (rawTrust?: number) => {
+    const val = Math.max(0, Math.min(100, Math.round(rawTrust ?? 75)));
+    if (val === 0) {
+      return {
+        val,
+        label: 'CRISE DE CONFIANÇA (VAZAMENTO)',
+        textCls: 'text-red-400',
+        barCls: 'bg-[#E10600]',
+      };
+    }
+    if (val < 40) {
+      return {
+        val,
+        label: 'DESGASTADA / CRISE',
+        textCls: 'text-red-400',
+        barCls: 'bg-[#E10600]',
+      };
+    }
+    if (val < 70) {
+      return {
+        val,
+        label: 'ESTÁVEL',
+        textCls: 'text-amber-300',
+        barCls: 'bg-amber-400',
+      };
+    }
+    return {
+      val,
+      label: 'CONFIANÇA ALTA',
+      textCls: 'text-emerald-400',
+      barCls: 'bg-emerald-500',
+    };
   };
 
   return (
@@ -189,7 +229,7 @@ export const TeamTab: React.FC = () => {
             </div>
 
             {playerDrivers.map((driver, idx) => {
-              const isSelected = selectedDriver.id === driver.id;
+              const isSelected = activeSelectedDriver.id === driver.id;
 
               return (
                 <div
@@ -224,20 +264,42 @@ export const TeamTab: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Mentality bar */}
-                  <div className="mt-4 pt-3 border-t border-white/5 space-y-1">
-                    <div className="flex justify-between text-[10px] font-f1-mono">
-                      <span className="text-zinc-400">MENTALITY MORALE</span>
-                      <span className={`font-bold tabular-nums ${getMentalityColor(driver.mentality)}`}>
-                        {driver.mentality}% ({getMentalityLabel(driver.mentality)})
-                      </span>
+                  {/* Mentality & Trust bars */}
+                  <div className="mt-4 pt-3 border-t border-white/5 space-y-2.5">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-f1-mono">
+                        <span className="text-zinc-400">MENTALITY MORALE</span>
+                        <span className={`font-bold tabular-nums ${getMentalityColor(driver.mentality)}`}>
+                          {driver.mentality}% ({getMentalityLabel(driver.mentality)})
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full bg-[#E10600]"
+                          style={{ width: `${driver.mentality}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full bg-[#E10600]"
-                        style={{ width: `${driver.mentality}%` }}
-                      />
-                    </div>
+
+                    {(() => {
+                      const trustMeta = getTrustStatus(driver.trust);
+                      return (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-f1-mono tabular-nums">
+                            <span className="text-zinc-400 uppercase">Confiança / Escuta Ativa</span>
+                            <span className={`font-bold ${trustMeta.textCls}`}>
+                              {trustMeta.val}/100 ({trustMeta.label})
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${trustMeta.barCls}`}
+                              style={{ width: `${trustMeta.val}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Marketability & Fadiga metrics */}
@@ -260,6 +322,59 @@ export const TeamTab: React.FC = () => {
                     <span>{driver.contractYearsRemaining} Years Left</span>
                     <span>Buyout: ${(driver.buyoutClause / 1000000).toFixed(1)}M</span>
                   </div>
+
+                  {/* In-season Driver Dismissal & Replacement */}
+                  <div className="mt-3 pt-2.5 border-t border-white/10">
+                    {replacingDriverId === driver.id ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[10px] font-f1-mono text-amber-300 uppercase font-bold">
+                          <span>Escolha quem assume o Carro #{idx + 1}:</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReplacingDriverId(null);
+                            }}
+                            className="text-zinc-400 hover:text-white cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto">
+                          {affiliateDrivers.slice(0, 6).map((cand) => (
+                            <button
+                              key={cand.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                dismissDriverAndPromote(driver.id, cand.id);
+                                setReplacingDriverId(null);
+                              }}
+                              className="px-2.5 py-1.5 bg-[#15151E] hover:bg-[#E10600]/20 border border-white/10 hover:border-[#E10600] text-left text-[11px] font-f1-mono flex items-center justify-between cursor-pointer"
+                            >
+                              <span className="text-white font-bold">
+                                {cand.name} ({cand.series})
+                              </span>
+                              <span className="text-emerald-400 font-bold tabular-nums">
+                                PACE {cand.attributes.pace} · Promover
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReplacingDriverId(driver.id);
+                        }}
+                        className="w-full py-1.5 bg-[#15151E] hover:bg-red-950/60 border border-white/10 hover:border-red-500/50 text-[10px] font-f1-mono uppercase text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Dispensar Titular & Promover Substituto
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -268,71 +383,71 @@ export const TeamTab: React.FC = () => {
           {/* 14 Attributes Radar View (7 cols) */}
           <div className="lg:col-span-7">
             <F1TabBucket
-              title={`DRIVER TELEMETRY PROFILE: ${selectedDriver.name.toUpperCase()}`}
-              badge={`#${selectedDriver.number} · ${selectedDriver.shortCode}`}
+              title={`DRIVER TELEMETRY PROFILE: ${activeSelectedDriver.name.toUpperCase()}`}
+              badge={`#${activeSelectedDriver.number} · ${activeSelectedDriver.shortCode}`}
             >
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">CORNERING</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.cornering} / 99
+                      {activeSelectedDriver.attributes.cornering} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">BRAKING</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.braking} / 99
+                      {activeSelectedDriver.attributes.braking} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">TIRE PRESERVATION</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.tireManagement} / 99
+                      {activeSelectedDriver.attributes.tireManagement} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">WET WEATHER MASTERY</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.wetWeather} / 99
+                      {activeSelectedDriver.attributes.wetWeather} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">REACTION TIME</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.reactionTime} / 99
+                      {activeSelectedDriver.attributes.reactionTime} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">COMPOSURE UNDER FIRE</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.composure} / 99
+                      {activeSelectedDriver.attributes.composure} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">OVERTAKING AGGRESSION</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.overtaking} / 99
+                      {activeSelectedDriver.attributes.overtaking} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">DEFENSIVE RACECRAFT</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.defending} / 99
+                      {activeSelectedDriver.attributes.defending} / 99
                     </span>
                   </div>
 
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">TECHNICAL SETUP FEEDBACK</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {selectedDriver.attributes.feedback} / 99
+                      {activeSelectedDriver.attributes.feedback} / 99
                     </span>
                   </div>
                 </div>
@@ -418,13 +533,33 @@ export const TeamTab: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => promoteAffiliateToFP1(aff.id)}
-                    className="w-full py-2 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
-                  >
-                    <UserCheck className="w-4 h-4" />
-                    <span>Seat in Upcoming FP1 Session (+XP)</span>
-                  </button>
+                  {aff.id === 'f2_camara' && (
+                    <div className="bg-emerald-950/30 border border-emerald-500/40 px-2.5 py-1.5 text-[10px] font-f1-mono text-emerald-300">
+                      Pré-contrato Haas F1 (2027) · Estreia antecipável na F1 mediante substituição de titular.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      onClick={() => promoteAffiliateToFP1(aff.id)}
+                      className="w-full py-2 bg-[#252533] hover:bg-[#323244] border border-white/10 text-white font-f1-wide font-bold text-[11px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Treino TL1 (+XP)</span>
+                    </button>
+                    {playerDrivers[0] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          dismissDriverAndPromote(playerDrivers[0].id, aff.id);
+                          setActiveSubTab('roster');
+                        }}
+                        className="w-full py-2 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-[11px] uppercase tracking-wider transition-colors cursor-pointer"
+                      >
+                        Promover no Lugar de {playerDrivers[0].shortCode}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </F1TabBucket>
             ))}
@@ -451,12 +586,12 @@ export const TeamTab: React.FC = () => {
           },
           {
             role: 'sporting_director',
-            title: '3. Chefe Esportivo',
-            scope: 'Pilotos, Estratégia de corrida, Desempenho esportivo e regulamento FIA'
+            title: '3. Chefe de Gerenciamento',
+            scope: 'Organização, Pilotos, Estratégia de corrida e regulamento FIA'
           },
           {
             role: 'chief_mechanic',
-            title: '4. Chefe de Mecânicos',
+            title: '4. Chefe Mecânico · Equipe de Pista & Garagem',
             scope: 'Montagem, Manutenção preventiva, Preparação dos carros e Pit Stops'
           }
         ];
@@ -464,7 +599,8 @@ export const TeamTab: React.FC = () => {
         const activeChiefs = chiefRoles.map(cr => ({
           ...cr,
           member:
-            staff.find(s => s.role === cr.role && (s.currentTeam === playerTeam.name || s.currentTeam === 'APEX Grand Prix Team' || s.id.startsWith('staff_head') || s.id === 'staff_sporting_dir' || s.id === 'staff_chief_mechanic')) ||
+            staff.find(s => s.role === cr.role && (s.currentTeam === playerTeam.name || s.currentTeam === 'APEX Grand Prix Team')) ||
+            staff.find(s => s.role === cr.role && (s.id.startsWith('staff_head') || s.id === 'staff_sporting_dir' || s.id === 'staff_chief_mechanic')) ||
             staff.find(s => s.role === cr.role)
         }));
         const activeChiefIds = new Set(activeChiefs.map(c => c.member?.id).filter(Boolean));
@@ -473,7 +609,7 @@ export const TeamTab: React.FC = () => {
         return (
           <div className="space-y-6">
             {/* Top Command Node: Player = Team Principal + Technical Director */}
-            <div className="bg-[#1C1C26] border-2 border-[#E10600]/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="bg-[#1C1C26] border border-[#E10600]/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="text-[10px] font-f1-mono text-[#E10600] font-bold uppercase tracking-widest block">
                   GDD SEÇÃO 6 · COMANDO UNIFICADO DA ESCUDERIA
@@ -482,48 +618,97 @@ export const TeamTab: React.FC = () => {
                   {principalProfile.name} · Team Principal & Diretor Técnico
                 </h2>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  O jogador centraliza a direção executiva e técnica; os 4 Chefes de Departamento respondem diretamente abaixo.
+                  3 Pilares de Projeto & Organização (Aero, PU e Gerenciamento) + Chefe Mecânico na Equipe Operacional de Pista (Garagem & Pit Crew).
                 </p>
               </div>
-              <span className="px-3 py-1 bg-[#E10600]/20 border border-[#E10600] text-white font-f1-mono text-xs font-bold uppercase shrink-0">
+              <span className="px-3 py-1 bg-[#E10600]/20 border border-[#E10600] text-white font-f1-mono text-xs font-bold uppercase shrink-0 whitespace-nowrap">
                 4 CHEFES DIRETOS
               </span>
             </div>
 
             {/* 4 Direct Chiefs Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {activeChiefs.map(({ role, title, scope, member }) => (
-                <F1TabBucket
-                  key={role}
-                  title={title.toUpperCase()}
-                  badge={member ? `NOTA: ${member.rating}` : 'VAGO'}
-                >
-                  {member ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-f1-wide font-black text-sm text-white uppercase">{member.name}</h3>
-                          <div className="text-xs font-f1-mono text-zinc-400">
-                            DNA: <span className="text-[#E10600] font-bold">{member.teamOrigin}</span> · Moral {member.mentality}%
+              {activeChiefs.map(({ role, title, scope, member }) => {
+                const mechOps =
+                  role === 'chief_mechanic' && member
+                    ? evaluatePitAndGarageOperations({
+                        chiefMechanicRating: member.rating,
+                        principalBackground: principalProfile.background,
+                        isSakuraHq: Boolean(playerTeam.location?.includes('Sakura')),
+                      })
+                    : null;
+
+                return (
+                  <F1TabBucket
+                    key={role}
+                    title={title.toUpperCase()}
+                    badge={member ? `NOTA: ${member.rating}` : 'VAGO'}
+                  >
+                    {member ? (
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <PersonAvatar
+                              role={role as EngineeringAvatarRole}
+                              name={member.name}
+                              sizeClass="w-12 h-12"
+                              accentColor={(member.trust ?? 75) < 40 ? '#E10600' : '#10B981'}
+                            />
+                            <div className="min-w-0">
+                              <h3 className="font-f1-wide font-black text-sm text-white uppercase truncate">{member.name}</h3>
+                              <div className="text-xs font-f1-mono text-zinc-400">
+                                DNA: <span className="text-[#E10600] font-bold">{member.teamOrigin}</span> · Moral {member.morale ?? member.mentality}%
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right font-f1-mono text-xs shrink-0">
+                            <span className="text-[10px] text-zinc-500 uppercase block">SALÁRIO</span>
+                            <span className="text-white font-bold tabular-nums">${(member.salary / 1000000).toFixed(2)}M/ano</span>
                           </div>
                         </div>
-                        <div className="text-right font-f1-mono text-xs">
-                          <span className="text-[10px] text-zinc-500 uppercase block">SALÁRIO</span>
-                          <span className="text-white font-bold">${(member.salary / 1000000).toFixed(2)}M/ano</span>
+
+                        {(() => {
+                          const trustMeta = getTrustStatus(member.trust);
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] font-f1-mono tabular-nums">
+                                <span className="text-zinc-400 uppercase">Confiança / Respeito</span>
+                                <span className={`font-bold ${trustMeta.textCls}`}>
+                                  {trustMeta.val}/100 ({trustMeta.label})
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${trustMeta.barCls}`}
+                                  style={{ width: `${trustMeta.val}%` }}
+                                />
+                              </div>
+                              {trustMeta.val < 40 && (
+                                <div className="text-[10px] font-f1-mono text-red-300 font-bold pt-0.5">
+                                  DESENGAJADO: -10% VELOCIDADE P&D neste setor até recuperar confiança.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        <div className="bg-[#15151E] p-3 border border-white/5 text-xs font-f1-mono space-y-1">
+                          <span className="text-[10px] text-zinc-400 uppercase block">ESPECIALIDADE & ESCOPO DIRETO</span>
+                          <div className="text-white font-bold">{member.specialty}</div>
+                          <div className="text-[10px] text-cyan-300">{scope}</div>
+                          {mechOps && (
+                            <div className="text-[10px] text-emerald-300 pt-1 border-t border-white/5 tabular-nums">
+                              Impacto Real: Pit Stop {mechOps.totalPitDeltaSec > 0 ? `+${mechOps.totalPitDeltaSec.toFixed(2)}` : mechOps.totalPitDeltaSec.toFixed(2)}s · Risco Erro Box {mechOps.pitErrorProbPct}% · Turnaround Garagem {mechOps.garageTurnaroundDeltaMin > 0 ? `+${mechOps.garageTurnaroundDeltaMin}` : mechOps.garageTurnaroundDeltaMin} min
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      <div className="bg-[#15151E] p-3 border border-white/5 text-xs font-f1-mono space-y-1">
-                        <span className="text-[10px] text-zinc-400 uppercase block">ESPECIALIDADE & ESCOPO DIRETO</span>
-                        <div className="text-white font-bold">{member.specialty}</div>
-                        <div className="text-[10px] text-cyan-300">{scope}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-f1-mono text-amber-400">Cargo aguardando nomeação.</div>
-                  )}
-                </F1TabBucket>
-              ))}
+                    ) : (
+                      <div className="text-xs font-f1-mono text-amber-400">Cargo aguardando nomeação.</div>
+                    )}
+                  </F1TabBucket>
+                );
+              })}
             </div>
 
             {/* Paddock Directory / Candidates */}

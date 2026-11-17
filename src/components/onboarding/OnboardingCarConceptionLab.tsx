@@ -12,7 +12,10 @@ import {
   Sparkles,
   Shield,
   Wind,
+  Wrench,
+  RotateCcw,
 } from 'lucide-react';
+import type { StaffMember } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { FIA_2026_DEFAULT_EDITION } from '../../engine/modules/m03Packaging';
 import { evaluateGate03 } from '../../engine/modules/m03Packaging';
@@ -20,11 +23,17 @@ import { evaluateGate04 } from '../../engine/modules/m04Aerodynamics';
 import { evaluateGate05 } from '../../engine/modules/m05VehicleDynamics';
 import { evaluateGate06 } from '../../engine/modules/m06Tires';
 import { evaluateGate07 } from '../../engine/modules/m07Structures';
-import { evaluateGate09 } from '../../engine/modules/m09Transmission';
+import { evaluateGate09, computeGearboxStaffSynergy } from '../../engine/modules/m09Transmission';
 import { runMultidisciplinarySimulation, evaluateGate10 } from '../../engine/modules/m10Multidisciplinary';
 import { evaluatePhilosophyForTrack, evaluateGate02, type VehiclePhilosophyCode } from '../../engine/modules/m02Philosophy';
 import { COMPOSITE_MATERIALS } from '../../data/physicsDatabase';
 import { Packaging3DViewport } from '../engineering/Packaging3DViewport';
+import { CarSilhouette2026 } from './CarSilhouette2026';
+import {
+  computeMonocoqueChassisCostUsd,
+  evaluatePhase7ScopeAlignment,
+  type Phase7ScopeFeedback,
+} from '../../engine/phase7BoardFeedback';
 
 export type ConceptionSubStep = 'gearbox' | 'packaging' | 'monocoque' | 'dynamics';
 
@@ -48,6 +57,14 @@ interface OnboardingCarConceptionLabProps {
   ferrariErsSidepodMandatory?: boolean;
   sidepodZeroPodBlocked?: boolean;
   coolingSidepodConstraintReason?: string | null;
+  headAero?: StaffMember | null;
+  headPU?: StaffMember | null;
+  sportingDirector?: StaffMember | null;
+  chiefMechanic?: StaffMember | null;
+  availableBudgetUsd?: number;
+  committedCarCostUsd?: number;
+  costCapCommittedUsd?: number;
+  costCapLimitUsd?: number;
 }
 
 export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProps> = ({
@@ -70,13 +87,40 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
   ferrariErsSidepodMandatory = false,
   sidepodZeroPodBlocked = false,
   coolingSidepodConstraintReason = null,
+  headAero = null,
+  headPU = null,
+  sportingDirector = null,
+  chiefMechanic = null,
+  availableBudgetUsd = 80_000_000,
+  committedCarCostUsd = 15_000_000,
+  costCapCommittedUsd = 53_000_000,
+  costCapLimitUsd = 135_000_000,
 }) => {
   const [selectedGearProbe, setSelectedGearProbe] = useState<number>(6);
+  const [draggingGearNum, setDraggingGearNum] = useState<number | null>(null);
+  const gearChartTrackRef = React.useRef<HTMLDivElement | null>(null);
+
+  const gearboxStaffSynergy = useMemo(
+    () => computeGearboxStaffSynergy(headPU, chiefMechanic),
+    [headPU, chiefMechanic]
+  );
+
+  const effectiveVehicleParams = useMemo<VehicleEngineeringParameters>(
+    () => ({
+      ...vehicleParams,
+      gearboxStaffTuning: {
+        efficiencyBonus: gearboxStaffSynergy.efficiencyBonus,
+        fatigueBonusRaces: gearboxStaffSynergy.fatigueBonusRaces,
+        shiftReductionS: gearboxStaffSynergy.shiftReductionS,
+      },
+    }),
+    [vehicleParams, gearboxStaffSynergy]
+  );
 
   const mdo = useMemo(
     () =>
       runMultidisciplinarySimulation(
-        vehicleParams,
+        effectiveVehicleParams,
         {
           fidelityLevel: 'L2',
           couplingMode: 'strong',
@@ -91,7 +135,7 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
         },
         FIA_2026_DEFAULT_EDITION
       ),
-    [vehicleParams]
+    [effectiveVehicleParams]
   );
 
   const pkg = mdo.subsystems.packaging;
@@ -166,8 +210,239 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
 
   const activeGear = tr.gearboxSet.gears.find((g) => g.gearNumber === selectedGearProbe) ?? tr.gearboxSet.gears[5];
 
+  const computeGearSpeedKmh = React.useCallback(
+    (ratio: number) => {
+      const totalRatio = ratio * tr.gearboxSet.finalDriveRatio;
+      return ((11600 * 2 * Math.PI) / 60 / Math.max(0.5, totalRatio)) * 0.36 * 3.6;
+    },
+    [tr.gearboxSet.finalDriveRatio]
+  );
+
+  const updateSingleGearSpeed = React.useCallback(
+    (gearNum: number, targetSpeedKmh: number) => {
+      const clampedKmh = Math.max(95, Math.min(375, targetSpeedKmh));
+      const wheelOmega = clampedKmh / 3.6 / 0.36;
+      const engineOmega = (11600 * 2 * Math.PI) / 60;
+      const targetRatio = engineOmega / Math.max(1, wheelOmega * tr.gearboxSet.finalDriveRatio);
+      const currentRatios = tr.gearboxSet.gears.map((g) => g.ratio);
+      const nextRatios = [...currentRatios];
+      nextRatios[gearNum - 1] = Number(Math.max(0.65, Math.min(3.5, targetRatio)).toFixed(3));
+      onUpdateParams({ customGearRatios: nextRatios });
+    },
+    [tr.gearboxSet.finalDriveRatio, tr.gearboxSet.gears, onUpdateParams]
+  );
+
+  React.useEffect(() => {
+    if (draggingGearNum === null) return;
+    const handleMove = (ev: PointerEvent) => {
+      const track = gearChartTrackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const frac = Math.max(0.24, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      const targetKmh = 95 + frac * (375 - 95);
+      updateSingleGearSpeed(draggingGearNum, targetKmh);
+    };
+    const handleUp = () => setDraggingGearNum(null);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [draggingGearNum, updateSingleGearSpeed]);
+
+  const topGearSpeedKmh = computeGearSpeedKmh(tr.gearboxSet.gears[tr.gearboxSet.gears.length - 1]?.ratio ?? 0.85);
+  const topSpeedEstKmh = mdo.vehicleMetrics.topSpeedEstimateMs * 3.6;
+
+  // Live Budget & Cost Cap calculations across 1/4 - 4/4
+  const monocoqueCostUsd = useMemo(
+    () => computeMonocoqueChassisCostUsd(effectiveVehicleParams),
+    [
+      effectiveVehicleParams.compositeFiber,
+      effectiveVehicleParams.laminateThicknessMm,
+      effectiveVehicleParams.localReinforcementPct,
+    ]
+  );
+  const pendingGearboxCostUsd = gearboxFinalized ? 0 : gearboxCostUsd;
+  const liveAccumulatedCarCostUsd = committedCarCostUsd + pendingGearboxCostUsd + monocoqueCostUsd;
+  const liveCashAvailableUsd = availableBudgetUsd - pendingGearboxCostUsd - monocoqueCostUsd;
+  const liveCostCapProjectedUsd = costCapCommittedUsd + pendingGearboxCostUsd + monocoqueCostUsd;
+  const costCapPct = (liveCostCapProjectedUsd / Math.max(1, costCapLimitUsd)) * 100;
+  const isBudgetDanger = liveCashAvailableUsd < 0 || costCapPct > 100;
+  const isBudgetTight = !isBudgetDanger && (liveCashAvailableUsd < 15_000_000 || costCapPct >= 82);
+
+  // Dynamic Board / Scope Alignment Feedback for screens 2/4, 3/4, 4/4
+  const scopeFeedback: Phase7ScopeFeedback | null = useMemo(() => {
+    if (subStep === 'gearbox') return null;
+    return evaluatePhase7ScopeAlignment(subStep, {
+      philosophyCode,
+      sidepodConcept,
+      params: effectiveVehicleParams,
+      packaging: pkg,
+      aeroCorner: aeroZ,
+      aeroStraight: aeroX,
+      dynamics: dyn,
+      tireCorner: tire,
+      structures: str,
+      powerUnit: pu,
+      headAero,
+      headPU,
+      sportingDirector,
+      chiefMechanic,
+    });
+  }, [
+    subStep,
+    philosophyCode,
+    sidepodConcept,
+    effectiveVehicleParams,
+    pkg,
+    aeroZ,
+    aeroX,
+    dyn,
+    tire,
+    str,
+    pu,
+    headAero,
+    headPU,
+    sportingDirector,
+    chiefMechanic,
+  ]);
+
+  const renderScopeAlignmentCard = (fb: Phase7ScopeFeedback) => {
+    const statusBadgeClass =
+      fb.status === 'aligned'
+        ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
+        : fb.status === 'moderate_conflict'
+        ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
+        : 'bg-red-950/70 border-red-500/60 text-red-300';
+
+    const statusIcon =
+      fb.status === 'aligned' ? '🟢' : fb.status === 'moderate_conflict' ? '🟡' : '🔴';
+
+    const containerBorderClass =
+      fb.status === 'aligned'
+        ? 'border-emerald-500/35'
+        : fb.status === 'moderate_conflict'
+        ? 'border-amber-500/45'
+        : 'border-red-500/60';
+
+    return (
+      <div className={`bg-[#181822] border ${containerBorderClass} p-4 space-y-3`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-f1-wide font-black text-white uppercase tracking-wider">
+              PARECER DA DIRETORIA & ALINHAMENTO DE ESCOPO
+            </span>
+            <span className="text-[10px] font-f1-mono bg-[#15151E] border border-white/15 px-2 py-0.5 text-cyan-300 font-bold uppercase">
+              Filosofia Alvo (Fase 4): {fb.targetPhilosophyName}
+            </span>
+          </div>
+          <span className={`text-[10px] font-f1-mono font-bold px-2.5 py-1 border uppercase ${statusBadgeClass}`}>
+            {statusIcon} {fb.statusLabel}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-f1-mono">
+          {fb.speakers.map((sp, idx) => {
+            const boxStyle =
+              sp.tone === 'angry'
+                ? 'bg-red-950/55 border-red-500/70 text-red-100'
+                : sp.tone === 'caution'
+                ? 'bg-amber-950/35 border-amber-500/45 text-amber-100'
+                : 'bg-[#15151E] border-emerald-500/30 text-zinc-200';
+            const nameColor =
+              sp.tone === 'angry'
+                ? 'text-red-300'
+                : sp.tone === 'caution'
+                ? 'text-amber-300'
+                : 'text-emerald-300';
+
+            return (
+              <div key={idx} className={`p-3 border space-y-1.5 ${boxStyle}`}>
+                <div className="flex items-center justify-between gap-2 text-[10px] uppercase font-bold">
+                  <span className={nameColor}>
+                    {sp.speakerName} ({sp.roleLabel})
+                  </span>
+                  {sp.tone === 'angry' && (
+                    <span className="px-1.5 py-0.5 bg-red-600/80 text-white text-[9px]">DESVIO CRÍTICO</span>
+                  )}
+                </div>
+                <p className={`leading-relaxed text-[11px] ${sp.tone === 'angry' ? 'text-red-200 font-semibold' : ''}`}>
+                  {sp.quote}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-[#15151E] border border-white/10 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-f1-mono tabular-nums">
+          <span className="text-zinc-400 uppercase font-bold text-[10px]">Impacto no Desempenho:</span>
+          <span className="text-white font-bold">{fb.impactSummary}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* Sticky Financial Telemetry Header across Phase 7 (1/4 to 4/4) */}
+      <div
+        className={`sticky top-0 z-30 border px-4 py-2.5 shadow-lg transition-colors ${
+          isBudgetDanger
+            ? 'bg-[#221014] border-red-500/70'
+            : isBudgetTight
+            ? 'bg-[#1F1A10] border-amber-500/60'
+            : 'bg-[#101018] border-emerald-500/40'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] font-f1-mono tabular-nums">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-f1-wide font-black uppercase tracking-wider text-zinc-300">
+              ORÇAMENTO FASE 7 ({subStep === 'gearbox' ? '1/4' : subStep === 'packaging' ? '2/4' : subStep === 'monocoque' ? '3/4' : '4/4'})
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <div>
+              <span className="text-[9px] text-zinc-400 uppercase mr-1.5">CAIXA DISPONÍVEL:</span>
+              <span
+                className={`font-f1-wide font-black ${
+                  liveCashAvailableUsd < 0
+                    ? 'text-red-400'
+                    : liveCashAvailableUsd < 15_000_000
+                    ? 'text-amber-300'
+                    : 'text-emerald-400'
+                }`}
+              >
+                ${(liveCashAvailableUsd / 1_000_000).toFixed(1)}M
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] text-zinc-400 uppercase mr-1.5">CUSTO ACUMULADO DO CARRO:</span>
+              <span className="text-white font-f1-wide font-black">
+                ${(liveAccumulatedCarCostUsd / 1_000_000).toFixed(1)}M
+              </span>
+              <span className="text-[10px] text-zinc-400 ml-1.5">
+                (CFRP ${(monocoqueCostUsd / 1_000_000).toFixed(1)}M)
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] text-zinc-400 uppercase mr-1.5">TETO FIA ($135M):</span>
+              <span
+                className={`font-bold ${
+                  costCapPct > 100 ? 'text-red-400' : costCapPct >= 82 ? 'text-amber-300' : 'text-emerald-400'
+                }`}
+              >
+                {costCapPct > 100
+                  ? `ESTOURO (${costCapPct.toFixed(0)}%)`
+                  : costCapPct >= 82
+                  ? `Atenção (${costCapPct.toFixed(0)}%)`
+                  : `Seguro (${costCapPct.toFixed(0)}%)`}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
       {/* Header + 4-stage Nav Tabs */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-white/10 pb-4">
         <div className="space-y-1">
@@ -220,42 +495,39 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
         </div>
       </div>
 
-      {/* Live Multi-Module Telemetry Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs font-f1-mono tabular-nums">
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">MASSA / MÍN FIA</span>
-          <span className={`font-bold text-sm ${pkg.totalMassKg >= FIA_2026_DEFAULT_EDITION.minMassKg ? 'text-white' : 'text-red-400'}`}>
-            {pkg.totalMassKg.toFixed(1)} / {FIA_2026_DEFAULT_EDITION.minMassKg} kg
+      {/* Live Simplified 4-KPI Telemetry Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-f1-mono tabular-nums">
+        <div className="bg-[#1C1C26] p-3 border border-white/10">
+          <span className="text-[10px] text-zinc-400 uppercase block">Massa Total (FIA ≥ {FIA_2026_DEFAULT_EDITION.minMassKg} kg)</span>
+          <span className={`font-f1-wide font-black text-base ${pkg.totalMassKg >= FIA_2026_DEFAULT_EDITION.minMassKg ? 'text-white' : 'text-red-400'}`}>
+            {pkg.totalMassKg.toFixed(1)} kg
           </span>
         </div>
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">POTÊNCIA RODA (M08→M09)</span>
-          <span className="text-emerald-400 font-bold text-sm">
-            {(tr.kinematicsAndTorque.outputAxlePowerW / 1000).toFixed(1)} kW ({(tr.kinematicsAndTorque.gearboxEfficiency * 100).toFixed(1)}%)
+        <div className="bg-[#1C1C26] p-3 border border-white/10">
+          <span className="text-[10px] text-zinc-400 uppercase block">Potência na Roda (M08→M09)</span>
+          <span className="text-emerald-400 font-f1-wide font-black text-base">
+            {(tr.kinematicsAndTorque.outputAxlePowerW / 1000).toFixed(1)} kW
+            <span className="text-[11px] font-f1-mono text-zinc-400 font-normal ml-1.5">
+              ({(tr.kinematicsAndTorque.gearboxEfficiency * 100).toFixed(1)}%)
+            </span>
           </span>
         </div>
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">MODO Z L/D · MODO X</span>
-          <span className="text-cyan-400 font-bold text-sm">
-            {aeroZ.forces.aeroEfficiencyLD.toFixed(2)} · -{dragReductionPct}% CdA
+        <div className="bg-[#1C1C26] p-3 border border-white/10">
+          <span className="text-[10px] text-zinc-400 uppercase block">Downforce Total (Modo Z)</span>
+          <span className="text-cyan-400 font-f1-wide font-black text-base">
+            {Math.round(aeroZ.forces.downforceTotalN).toLocaleString('pt-BR')} N
+            <span className="text-[11px] font-f1-mono text-zinc-400 font-normal ml-1.5">
+              (Modo X -{dragReductionPct}%)
+            </span>
           </span>
         </div>
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">PORPOISING / MARGEM TÉRM.</span>
-          <span className={`font-bold text-sm ${aeroZ.sensitivities.porpoisingRiskPct > 55 || pu.thermalAndLubrication.thermalMarginK < 4 ? 'text-amber-400' : 'text-emerald-400'}`}>
-            {aeroZ.sensitivities.porpoisingRiskPct.toFixed(0)}% · {pu.thermalAndLubrication.thermalMarginK.toFixed(1)} K
-          </span>
-        </div>
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">RIGIDEZ CFRP / TSAI-WU</span>
-          <span className="text-white font-bold text-sm">
-            {str.stiffnessMetrics.torsionalStiffnessNmPerDeg} N·m/° ({str.failureSummary.worstTsaiWuIndex})
-          </span>
-        </div>
-        <div className="bg-[#1C1C26] p-2.5 border border-white/10">
-          <span className="text-[9px] text-zinc-400 uppercase block">ESTIMATIVA VOLTA M10</span>
-          <span className="text-amber-300 font-bold text-sm">
-            {mdo.vehicleMetrics.estimatedLapTimeS.toFixed(3)}s
+        <div className="bg-[#1C1C26] p-3 border border-white/10">
+          <span className="text-[10px] text-zinc-400 uppercase block">Vel. Máxima Estimada (M10)</span>
+          <span className="text-amber-300 font-f1-wide font-black text-base">
+            {topSpeedEstKmh.toFixed(1)} km/h
+            <span className="text-[11px] font-f1-mono text-zinc-400 font-normal ml-1.5">
+              ({mdo.vehicleMetrics.estimatedLapTimeS.toFixed(2)}s)
+            </span>
           </span>
         </div>
       </div>
@@ -273,7 +545,7 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               </div>
               <div>
                 <span className="text-[10px] font-f1-mono text-emerald-400 font-bold uppercase block">
-                  GABARITO HOMOLOGADO FASE 4 · {engineFullName}
+                  GABARITO HOMOLOGADO FASE 5 · {engineFullName}
                 </span>
                 <span className="text-xs font-f1-mono text-zinc-300">
                   V6 {engineBlockAngle}° · Massa PU: {puPkg ? puPkg.massKg.toFixed(1) : '145.0'} kg · Eixo Entrada:{' '}
@@ -295,6 +567,47 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               ⚠️ Motor emergencial {emergencySupplierName}: pontos de ancoragem provisórios aumentam o erro de correlação em +15% até calibragem em pista.
             </div>
           )}
+
+          {/* Responsáveis pelo Câmbio (Bônus Duplo: Chefe de PU + Chefe Mecânico) */}
+          <div className="bg-[#1C1C26] border border-cyan-500/35 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+              <span className="text-xs font-f1-wide font-black text-white uppercase flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-cyan-400" />
+                <span>Responsáveis pelo Câmbio (Bônus Duplo Ativo)</span>
+              </span>
+              <span className="text-[10px] font-f1-mono text-emerald-300 font-bold tabular-nums bg-emerald-950/50 border border-emerald-500/40 px-2 py-0.5">
+                {gearboxStaffSynergy.summaryLabel}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-f1-mono">
+              <div className="bg-[#15151E] border border-white/10 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-cyan-300 font-bold uppercase">1. Chefe de PU & Componentes (Líder Técnico)</span>
+                  <span className="text-emerald-400 font-bold tabular-nums">
+                    +{(gearboxStaffSynergy.efficiencyBonus * 100).toFixed(2)}% efic. · +{gearboxStaffSynergy.fatigueBonusRaces} GPs fadiga
+                  </span>
+                </div>
+                <div className="font-f1-wide font-bold text-white uppercase">{gearboxStaffSynergy.puLeaderLabel}</div>
+                <div className="text-[10px] text-zinc-400">
+                  {headPU?.specialty || 'Integração térmica, rigidez de engrenagens e rendimento mecânico M08→M09.'}
+                </div>
+              </div>
+
+              <div className="bg-[#15151E] border border-white/10 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-amber-300 font-bold uppercase">2. Chefe Mecânico (Operação & Trocas)</span>
+                  <span className="text-emerald-400 font-bold tabular-nums">
+                    -{(gearboxStaffSynergy.shiftReductionS * 1000).toFixed(0)} ms nas trocas
+                  </span>
+                </div>
+                <div className="font-f1-wide font-bold text-white uppercase">{gearboxStaffSynergy.mechLeaderLabel}</div>
+                <div className="text-[10px] text-zinc-400">
+                  {chiefMechanic?.specialty || 'Atuação eletro-hidráulica de caixa, inspeção rápida e turnaround de garagem.'}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <div className="lg:col-span-7 space-y-4">
@@ -461,88 +774,158 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               </div>
             </div>
 
-            {/* Right: 8 Discrete Gears + Real M09 Outputs */}
+            {/* Right: Interactive 8-Gear Horizontal Bar Chart + Parecer dos Chefes */}
             <div className="lg:col-span-5 bg-[#1C1C26] border border-white/10 p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                 <span className="text-xs font-f1-wide font-black text-white uppercase">
-                  ESCALONAMENTO 8 MARCHAS DISCRETAS (M09)
+                  ESCALONAMENTO INTERATIVO (1ª A 8ª MARCHA)
                 </span>
-                <select
-                  value={selectedGearProbe}
-                  onChange={(e) => setSelectedGearProbe(Number(e.target.value))}
-                  className="bg-[#15151E] border border-white/15 px-2 py-1 text-xs font-f1-mono text-white"
-                >
-                  {tr.gearboxSet.gears.map((g) => (
-                    <option key={g.gearNumber} value={g.gearNumber}>
-                      G{g.gearNumber} ({g.z2Gear}/{g.z1Pinion})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {vehicleParams.customGearRatios && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateParams({ customGearRatios: undefined })}
+                      className="px-2 py-0.5 bg-[#15151E] hover:bg-white/10 border border-white/15 text-[10px] font-f1-mono text-zinc-300 flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Padrão</span>
+                    </button>
+                  )}
+                  <select
+                    value={selectedGearProbe}
+                    onChange={(e) => setSelectedGearProbe(Number(e.target.value))}
+                    className="bg-[#15151E] border border-white/15 px-2 py-1 text-xs font-f1-mono text-white"
+                  >
+                    {tr.gearboxSet.gears.map((g) => (
+                      <option key={g.gearNumber} value={g.gearNumber}>
+                        G{g.gearNumber} ({g.z2Gear}/{g.z1Pinion})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-1.5 text-[10px] font-f1-mono tabular-nums">
-                {tr.gearboxSet.gears.map((g) => {
-                  const totalRatio = g.ratio * tr.gearboxSet.finalDriveRatio;
-                  const topSpeedKmh = ((11600 * 2 * Math.PI) / 60 / totalRatio) * 0.36 * 3.6;
+              <div className="text-[10px] font-f1-mono text-zinc-400">
+                Arraste a alça direita de cada barra (ou use -/+) para ajustar os degraus de velocidade:
+              </div>
+
+              {/* Interactive Horizontal Speed Bars */}
+              <div ref={gearChartTrackRef} className="space-y-1.5 text-[10px] font-f1-mono tabular-nums select-none">
+                {tr.gearboxSet.gears.map((g, idx) => {
+                  const speedKmh = computeGearSpeedKmh(g.ratio);
+                  const prevSpeed = idx > 0 ? computeGearSpeedKmh(tr.gearboxSet.gears[idx - 1].ratio) : 0;
+                  const stepDelta = idx > 0 ? speedKmh - prevSpeed : speedKmh;
+                  const pct = Math.max(18, Math.min(100, ((speedKmh - 80) / (375 - 80)) * 100));
+                  const isActive = selectedGearProbe === g.gearNumber;
                   return (
-                    <button
+                    <div
                       key={g.gearNumber}
-                      type="button"
                       onClick={() => setSelectedGearProbe(g.gearNumber)}
-                      className={`p-2 border text-left cursor-pointer ${
-                        selectedGearProbe === g.gearNumber
-                          ? 'bg-[#E10600]/20 border-[#E10600] text-white'
-                          : 'bg-[#15151E] border-white/5 text-zinc-300'
+                      className={`p-1.5 border cursor-pointer transition-colors ${
+                        isActive ? 'bg-[#E10600]/15 border-[#E10600]' : 'bg-[#15151E] border-white/5 hover:border-white/20'
                       }`}
                     >
-                      <div className="font-bold">G{g.gearNumber}</div>
-                      <div className="text-zinc-400">i={g.ratio.toFixed(2)}</div>
-                      <div className="text-cyan-300">{topSpeedKmh.toFixed(0)} km/h</div>
-                    </button>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-bold text-white">
+                          {g.gearNumber}ª <span className="text-zinc-400 font-normal">({g.z2Gear}/{g.z1Pinion} · i={g.ratio.toFixed(2)})</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {idx > 0 && (
+                            <span className={`text-[9px] ${stepDelta < 18 ? 'text-amber-300' : 'text-zinc-400'}`}>
+                              +{stepDelta.toFixed(0)} km/h
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateSingleGearSpeed(g.gearNumber, speedKmh - 4);
+                            }}
+                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
+                            title="Encurtar marcha (-4 km/h)"
+                          >
+                            -
+                          </button>
+                          <span className="text-cyan-300 font-bold w-14 text-right">{speedKmh.toFixed(0)} km/h</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateSingleGearSpeed(g.gearNumber, speedKmh + 4);
+                            }}
+                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
+                            title="Alongar marcha (+4 km/h)"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="relative h-2.5 w-full bg-black/50 border border-white/5">
+                        <div
+                          className={`h-full transition-all ${
+                            isActive ? 'bg-[#E10600]' : 'bg-cyan-500/80'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                        <div
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            setSelectedGearProbe(g.gearNumber);
+                            setDraggingGearNum(g.gearNumber);
+                          }}
+                          title="Arrastar relação da marcha"
+                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-4 bg-white border border-black cursor-ew-resize shadow"
+                          style={{ left: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
                   );
                 })}
               </div>
 
               <div className="bg-[#15151E] p-3 border border-white/5 space-y-1.5 text-xs font-f1-mono tabular-nums">
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Eficiência Mecânica / Perda:</span>
+                  <span className="text-zinc-400">Eficiência / Perda Mecânica:</span>
                   <span className="text-emerald-400 font-bold">
                     {(tr.kinematicsAndTorque.gearboxEfficiency * 100).toFixed(2)}% ({(tr.kinematicsAndTorque.mechanicalPowerLossW / 1000).toFixed(1)} kW)
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Marcha {activeGear.gearNumber} ({activeGear.z2Gear}/{activeGear.z1Pinion}) Torque Eixo:</span>
-                  <span className="text-white font-bold">{tr.kinematicsAndTorque.outputAxleTorqueNm.toFixed(0)} N·m</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Tração na Roda (M06 Limitada):</span>
+                  <span className="text-zinc-400">Marcha {activeGear.gearNumber} · Tração na Roda:</span>
                   <span className="text-cyan-300 font-bold">
                     {tr.kinematicsAndTorque.wheelForceTractionLimitedN.toFixed(0)} N{' '}
                     {tr.kinematicsAndTorque.tractionClampedByTire ? '(Limitada Pneu)' : ''}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Resíduo Diferencial (T_L+T_R-T):</span>
-                  <span className="text-emerald-400">{tr.differentialAndYaw.conservationResidualNm} N·m</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Embreagem / Troca:</span>
-                  <span className="text-zinc-200">
-                    {tr.clutchAndShifts.clutchTorqueCapacityNm.toFixed(0)} N·m · {(tr.clutchAndShifts.shiftDurationS * 1000).toFixed(0)} ms
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">FS Semieixo / Fadiga Engrenagem:</span>
+                  <span className="text-zinc-400">Troca / Fadiga / FS Eixo:</span>
                   <span className="text-amber-300 font-bold">
-                    FS={tr.structuralAndFatigue.shaftSafetyFactor.toFixed(2)} · {tr.structuralAndFatigue.fatigueLifeRaces.toFixed(1)} GPs
+                    {(tr.clutchAndShifts.shiftDurationS * 1000).toFixed(0)} ms · {tr.structuralAndFatigue.fatigueLifeRaces} GPs · FS {tr.structuralAndFatigue.shaftSafetyFactor.toFixed(2)}x
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Acoplamento M04 Difusor (CL / CD):</span>
-                  <span className="text-white">
-                    CL={aeroZ.forces.clTotal.toFixed(3)} · L/D={aeroZ.forces.aeroEfficiencyLD.toFixed(2)}
-                  </span>
-                </div>
+              </div>
+
+              {/* Parecer Dinâmico dos Chefes */}
+              <div className="bg-[#15151E] border border-cyan-500/30 p-3 space-y-2 text-[11px] font-f1-mono">
+                <span className="text-[10px] font-f1-wide font-bold text-cyan-300 uppercase block">
+                  Parecer dos Chefes sobre o Câmbio Atual
+                </span>
+                <p className="text-zinc-300 leading-snug">
+                  <strong className="text-white">{headPU?.name || 'Chefe de PU'}:</strong>{' '}
+                  {topGearSpeedKmh < 322
+                    ? `"Com a 8ª marcha fechando em ${topGearSpeedKmh.toFixed(0)} km/h, o ${engineFullName.split(' ')[0]} vai bater no limitador nas retas longas de Monza e Baku."`
+                    : topGearSpeedKmh > 350
+                    ? `"8ª marcha alongada (${topGearSpeedKmh.toFixed(0)} km/h): excelente final com Modo X aberto, mas o motor precisa de bom torque em baixa para não perder retomada."`
+                    : `"Escalonamento até ${topGearSpeedKmh.toFixed(0)} km/h bem casado com o mapa do ${engineFullName.split(' ')[0]} — boa faixa útil para circuitos mistos."`}
+                </p>
+                <p className="text-zinc-300 leading-snug border-t border-white/5 pt-1.5">
+                  <strong className="text-white">{chiefMechanic?.name || 'Chefe Mecânico'}:</strong>{' '}
+                  {vehicleParams.gearboxMaterial === 'carbon'
+                    ? `"Carcaça em CFRP economiza massa no CG, mas em toques ou zebras duras nossa equipe de garagem precisa redobrar a inspeção estrutural."`
+                    : vehicleParams.gearboxLayout === 'compact'
+                    ? `"Layout Compacto libera o difusor na pista; na garagem o acesso é mais apertado, então nossa equipe compensa com pré-montagem modular."`
+                    : `"Layout Volumoso agiliza em 12 min qualquer troca ou reparo nos boxes entre TL3 e Quali."`}
+                </p>
               </div>
             </div>
           </div>
@@ -736,28 +1119,35 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                 </div>
               </div>
 
-              {/* M03 Inertia & Collision Report */}
-              <div className="bg-[#15151E] border border-white/10 p-3.5 text-xs font-f1-mono space-y-1.5 tabular-nums">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">CG Composto SAE (x, y, z):</span>
-                  <span className="text-cyan-300 font-bold">
-                    ({pkg.cgM.x.toFixed(3)}, {pkg.cgM.y.toFixed(3)}, {pkg.cgM.z.toFixed(3)}) m
-                  </span>
+              {/* M03 Simplified Summary Box (Massa Total, Balanço %, Altura CG) */}
+              <div className="bg-[#15151E] border border-white/10 p-3.5 text-xs font-f1-mono space-y-2 tabular-nums">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 block uppercase">Massa Total</span>
+                    <span className={`font-bold text-sm ${pkg.totalMassKg >= FIA_2026_DEFAULT_EDITION.minMassKg ? 'text-white' : 'text-red-400'}`}>
+                      {pkg.totalMassKg.toFixed(1)} kg
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 block uppercase">Balanço Peso</span>
+                    <span className="text-cyan-300 font-bold text-sm">
+                      {pkg.staticAxleDist.frontPct.toFixed(1)}% / {pkg.staticAxleDist.rearPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-400 block uppercase">Altura do CG</span>
+                    <span className="text-amber-300 font-bold text-sm">
+                      {(pkg.cgM.z * 1000).toFixed(1)} mm
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Inércia Yaw (Izz):</span>
-                  <span className="text-white">
-                    {pkg.yawInertiaIzKgM2.toFixed(0)} kg·m² · Balanço {pkg.staticAxleDist.frontPct.toFixed(1)}% / {pkg.staticAxleDist.rearPct.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Colisões AABB 3D:</span>
-                  <span className={pkg.interferences.some((i) => i.hasCollision) ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
-                    {pkg.interferences.filter((i) => i.hasCollision).length} colisões detectadas
-                  </span>
-                </div>
-                {pkg.envelopeViolations.length > 0 && (
-                  <div className="text-red-400 text-[11px] pt-1 border-t border-white/10">
+                {(pkg.interferences.some((i) => i.hasCollision) || pkg.envelopeViolations.length > 0) && (
+                  <div className="text-red-400 text-[11px] pt-2 border-t border-white/10 space-y-1">
+                    {pkg.interferences.some((i) => i.hasCollision) && (
+                      <div>
+                        ⚠️ {pkg.interferences.filter((i) => i.hasCollision).length} colisão(ões) volumétrica(s) detectada(s) no empacotamento.
+                      </div>
+                    )}
                     {pkg.envelopeViolations.map((v, idx) => (
                       <div key={idx}>⚠️ {v}</div>
                     ))}
@@ -773,12 +1163,14 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                   INSPEÇÃO VOLUMÉTRICA 3D AO VIVO (THREE.JS · SAE/ISO 2026)
                 </span>
                 <span className="text-[10px] font-f1-mono text-cyan-300">
-                  Clique em qualquer subsistema para inspecionar massa e coordenadas
+                  Clique em qualquer subsistema para inspecionar massa e impacto no CG
                 </span>
               </div>
-              <Packaging3DViewport packaging={pkg} vehicleParams={vehicleParams} />
+              <Packaging3DViewport packaging={pkg} vehicleParams={effectiveVehicleParams} />
             </div>
           </div>
+
+          {scopeFeedback && renderScopeAlignmentCard(scopeFeedback)}
 
           <div className="flex justify-between pt-2">
             <button
@@ -822,6 +1214,11 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               <div className="grid grid-cols-3 gap-2">
                 {(['t800', 't1000', 'm40j'] as const).map((fib) => {
                   const spec = COMPOSITE_MATERIALS[fib];
+                  const previewCostUsd = computeMonocoqueChassisCostUsd({
+                    compositeFiber: fib,
+                    laminateThicknessMm: vehicleParams.laminateThicknessMm,
+                    localReinforcementPct: vehicleParams.localReinforcementPct,
+                  });
                   return (
                     <button
                       key={fib}
@@ -833,7 +1230,12 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                           : 'bg-[#15151E]/60 border-white/10 text-zinc-400'
                       }`}
                     >
-                      <div className="font-f1-wide font-bold uppercase">{fib.toUpperCase()}</div>
+                      <div className="flex items-center justify-between gap-1 font-f1-wide font-bold uppercase">
+                        <span>{fib.toUpperCase()}</span>
+                        <span className="text-[10px] font-f1-mono text-amber-300 tabular-nums">
+                          ${(previewCostUsd / 1e6).toFixed(1)}M
+                        </span>
+                      </div>
                       <div className="text-[10px] font-f1-mono text-cyan-300">{spec.fiberModulusGpa} GPa</div>
                       <div className="text-[10px] font-f1-mono text-zinc-400">{spec.tensileStrengthMpa} MPa</div>
                     </button>
@@ -943,6 +1345,8 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                   GATE 04: {gate04.passed ? 'APROVADO' : 'FALHA'}
                 </span>
               </div>
+
+              <CarSilhouette2026 params={effectiveVehicleParams} />
 
               <div className="grid grid-cols-2 gap-3 text-xs font-f1-mono">
                 <div>
@@ -1081,6 +1485,8 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               </div>
             </div>
           </div>
+
+          {scopeFeedback && renderScopeAlignmentCard(scopeFeedback)}
 
           <div className="flex justify-between pt-2">
             <button
@@ -1272,6 +1678,11 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                   <span className="text-amber-300 font-bold">{dyn.wheelLoadsN.closureErrorN.toFixed(2)} N</span>
                 </div>
               </div>
+
+              <CarSilhouette2026
+                params={effectiveVehicleParams}
+                title="Silhueta da Plataforma Dinâmica (Altura, Rake & Resposta Ativa X/Z)"
+              />
             </div>
 
             {/* M10 MDO & Pareto Frontier Quick Optimizer */}
@@ -1324,6 +1735,8 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
               </div>
             </div>
           </div>
+
+          {scopeFeedback && renderScopeAlignmentCard(scopeFeedback)}
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
             <button

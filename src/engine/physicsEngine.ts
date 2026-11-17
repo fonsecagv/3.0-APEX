@@ -295,6 +295,7 @@ export function solveVehiclePhysics(
 
   const effectiveIcePowerKw = (pu.shaftAndIce.icePowerW / 1000) * maturityMult;
   const effectiveMgukPowerKw = pu.ersAndBattery.mgukActualShaftW / 1000;
+  const peakCombinedPowerKw = effectiveIcePowerKw + Math.min(edition.maxMgukPowerW / 1000, params.mgukMaxKw);
   const totalWheelPowerKw = (transmission.kinematicsAndTorque.outputAxlePowerW / 1000) * maturityMult;
   const mechanicalLossesKw = transmission.kinematicsAndTorque.mechanicalPowerLossW / 1000;
 
@@ -452,6 +453,8 @@ export function solveVehiclePhysics(
     tireWearRateMultiplier,
     effectiveIcePowerKw: Number(effectiveIcePowerKw.toFixed(1)),
     effectiveMgukPowerKw: Number(effectiveMgukPowerKw.toFixed(1)),
+    peakCombinedPowerKw: Number(peakCombinedPowerKw.toFixed(1)),
+    peakCombinedPowerHp: Math.round(kwToHp(peakCombinedPowerKw)),
     totalWheelPowerKw: Number(totalWheelPowerKw.toFixed(1)),
     totalWheelPowerHp: Math.round(kwToHp(totalWheelPowerKw)),
     transmissionEfficiencyPct: Number((transmission.kinematicsAndTorque.gearboxEfficiency * 100).toFixed(2)),

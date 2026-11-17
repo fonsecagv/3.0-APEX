@@ -11,7 +11,7 @@ import { FinancialsTab } from './components/tabs/FinancialsTab';
 import { WeekendTab } from './components/tabs/WeekendTab';
 import { PuClientsTab } from './components/tabs/PuClientsTab';
 import { F1Logo } from './components/brand/F1Logo';
-import { X, CheckCircle2 } from 'lucide-react';
+import { X, CheckCircle2, AlertTriangle, UserCheck } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const {
@@ -23,11 +23,63 @@ const MainContent: React.FC = () => {
     completeOnboarding,
     resetToastMessage,
     setResetToastMessage,
-    onboardingSessionKey
+    onboardingSessionKey,
+    pendingHaasCamaraEvent,
+    resolveHaasCamaraEvent
   } = useGame();
 
   return (
     <>
+      {/* Modal de Decisão Dinâmica: Crise Ocon vs. Komatsu / Estreia Antecipada Rafael Câmara */}
+      {pendingHaasCamaraEvent && !showOnboarding && !showStartScreen && (
+        <div className="fixed inset-0 z-[180] bg-black/85 flex items-center justify-center p-4">
+          <div className="max-w-xl w-full bg-[#15151E] border-2 border-[#E10600] p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between border-b border-white/10 pb-3 gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#E10600]/20 border border-[#E10600] flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-[#E10600]" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-f1-mono text-[#E10600] font-bold uppercase tracking-widest block">
+                    EVENTO DE PADDOCK · ETAPA {pendingHaasCamaraEvent.round} ({pendingHaasCamaraEvent.gpName})
+                  </span>
+                  <h2 className="font-f1-wide font-black text-base sm:text-lg text-white uppercase">
+                    Crise na Garagem Haas: Ocon vs. Ayao Komatsu
+                  </h2>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#1C1C26] border border-white/10 p-4 text-xs font-f1-mono text-zinc-200 space-y-2 leading-relaxed">
+              <p>
+                Um desentendimento grave nos bastidores entre <strong className="text-white">Esteban Ocon (#31)</strong> e a liderança da equipe rompeu a confiança interna às vésperas do <strong className="text-amber-300">{pendingHaasCamaraEvent.gpName}</strong>.
+              </p>
+              <p className="text-zinc-400">
+                O brasileiro <strong className="text-emerald-300">Rafael Câmara</strong> — já pré-contratado pela Haas para 2027 — está com superlicença ativa no paddock e pronto para assumir o carro imediatamente em Interlagos.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => resolveHaasCamaraEvent(true)}
+                className="p-3.5 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <UserCheck className="w-4 h-4 shrink-0" />
+                <span>Demitir Ocon & Estrear Rafael Câmara</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => resolveHaasCamaraEvent(false)}
+                className="p-3.5 bg-[#1C1C26] hover:bg-[#262635] border border-white/15 text-zinc-200 font-f1-wide font-bold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                Manter Ocon até o Fim de 2026
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notificação Visual Rápida de Reset no Topo da Tela */}
       {resetToastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">

@@ -1,5 +1,5 @@
 import { COMPOSITE_MATERIALS } from '../data/physicsDatabase.ts';
-import type { StaffMember } from '../types/f1.ts';
+import type { Driver, StaffMember } from '../types/f1.ts';
 import type {
   CfdReportData,
   EngineerDiagnostic,
@@ -9,6 +9,7 @@ import type {
   ThermalReportData,
   VehicleEngineeringParameters,
 } from '../types/physics.ts';
+import { generateDriverSimulatorReport } from './engineeringFeedbackEngine.ts';
 import { evaluateStructures } from './modules/m07Structures.ts';
 import { solveVehiclePhysics } from './physicsEngine.ts';
 import { validateFia2026Compliance } from './regulatoryEngine.ts';
@@ -22,8 +23,54 @@ export interface SimulationRunContext {
   simulatorLevel?: number;
   dnaCorrelationModifier: number; // e.g. -0.35 or +0.15
   staff: StaffMember[];
+  teamName?: string;
   componentLevelAvg?: number;
   ambientTempC?: number;
+  leadDriver?: Driver;
+  components?: import('../types/f1.ts').ComponentSpec[];
+}
+
+export interface PitAndGarageOpsMetrics {
+  chiefMechanicRating: number;
+  pitTimeDeltaFromMechSec: number;
+  dnaPitBonusSec: number;
+  hqPitBonusSec: number;
+  totalPitDeltaSec: number;
+  pitErrorProbPct: number;
+  pitErrorDelaySec: number;
+  garageTurnaroundDeltaMin: number;
+}
+
+export function evaluatePitAndGarageOperations(options: {
+  chiefMechanicRating?: number;
+  principalBackground?: string;
+  isSakuraHq?: boolean;
+}): PitAndGarageOpsMetrics {
+  const chiefMechanicRating = Math.max(40, Math.min(99, options.chiefMechanicRating ?? 76));
+  const ratingDelta = chiefMechanicRating - 75;
+  const pitTimeDeltaFromMechSec = Number((-ratingDelta * 0.02).toFixed(2));
+  const dnaPitBonusSec =
+    options.principalBackground === 'legendary_mechanic'
+      ? -0.2
+      : options.principalBackground === 'born_strategist' || options.principalBackground === 'data_strategist'
+      ? -0.15
+      : 0;
+  const hqPitBonusSec = options.isSakuraHq ? -0.25 : 0;
+  const totalPitDeltaSec = Number((pitTimeDeltaFromMechSec + dnaPitBonusSec + hqPitBonusSec).toFixed(2));
+  const pitErrorProbPct = Number(Math.max(3.0, Math.min(20.0, 12.0 - ratingDelta * 0.5)).toFixed(1));
+  const pitErrorDelaySec = Number(Math.max(1.8, 3.5 - ratingDelta * 0.05).toFixed(1));
+  const garageTurnaroundDeltaMin = -Math.round(ratingDelta * 0.4);
+
+  return {
+    chiefMechanicRating,
+    pitTimeDeltaFromMechSec,
+    dnaPitBonusSec,
+    hqPitBonusSec,
+    totalPitDeltaSec,
+    pitErrorProbPct,
+    pitErrorDelaySec,
+    garageTurnaroundDeltaMin,
+  };
 }
 
 export function runMultiPhysicsSimulation(ctx: SimulationRunContext): SimulationReport {
@@ -140,16 +187,28 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
     classification: 'Simulado',
   };
 
+  const findTeamStaff = (role: StaffMember['role']) => {
+    if (ctx.teamName) {
+      const teamMatch = staff.find(
+        (s) => s.role === role && (s.currentTeam === ctx.teamName || s.currentTeam === 'APEX Grand Prix Team')
+      );
+      if (teamMatch) return teamMatch;
+    }
+    return staff.find((s) => s.role === role);
+  };
   const getStaffRating = (role: StaffMember['role'], fallback: number) =>
-    staff.find((s) => s.role === role)?.rating ?? fallback;
+    findTeamStaff(role)?.rating ?? fallback;
   const getStaffName = (role: StaffMember['role'], fallback: string) =>
-    staff.find((s) => s.role === role)?.name ?? fallback;
+    findTeamStaff(role)?.name ?? fallback;
 
   const techDirRating = getStaffRating('tech_director', 76);
   const aeroRating = getStaffRating('head_aero', 78);
   const chiefEngRating = getStaffRating('chief_engineer', 75);
   const puRating = getStaffRating('head_pu', 77);
   const sportRating = getStaffRating('sporting_director', 75);
+  const mechRating = getStaffRating('chief_mechanic', 76);
+  const pitOps = evaluatePitAndGarageOperations({ chiefMechanicRating: mechRating });
+  const effectiveMaintenanceMin = physics.maintenanceTurnaroundPenaltyMin + pitOps.garageTurnaroundDeltaMin;
 
   const calcUncertainty = (comp: number) =>
     Math.max(2.0, Number((finalCorrelationErrorPct * (1.28 - (comp / 100) * 0.55)).toFixed(1)));
@@ -274,7 +333,7 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
     },
     {
       specialistRole: 'Engenheiro de Materiais',
-      specialistName: getStaffName('sporting_director', 'Eng. de Materiais & Manufatura'),
+      specialistName: getStaffName('sporting_director', 'Eng. de Materiais & Operações'),
       competenceRating: sportRating,
       diagnostic: `Fibra ${fiber.name.split(' ')[1]} + Carcaça Câmbio ${params.gearboxMaterial.toUpperCase()} | Vida útil: ${physics.fatigueLifeRaces} GPs.`,
       physicalHypothesis:
@@ -283,7 +342,7 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
           : params.gearboxMaterial === 'aluminum'
           ? 'Alumínio possui menor razão de fadiga, exigindo maior largura de dentes ou cautela sobre zebras.'
           : 'Titânio 3D Ti-6Al-4V equilibra resistência à fadiga e tolerância térmica apesar da densidade maior.',
-      availableEvidence: `Massa total: ${physics.totalMassKg} kg | Margem impacto: ${physics.impactAbsorptionMarginPct}% | Manutenção garagem: ${physics.maintenanceTurnaroundPenaltyMin > 0 ? `+${physics.maintenanceTurnaroundPenaltyMin}` : physics.maintenanceTurnaroundPenaltyMin} min.`,
+      availableEvidence: `Massa total: ${physics.totalMassKg} kg | Margem impacto: ${physics.impactAbsorptionMarginPct}% | Turnaround garagem: ${effectiveMaintenanceMin > 0 ? `+${effectiveMaintenanceMin}` : effectiveMaintenanceMin} min.`,
       recommendedSolution:
         params.compositeFiber === 'm40j' && physics.delaminationRiskPct > 28
           ? 'Combinar reforços locais em T1000G nas bordas e furos para evitar propagação de trincas.'
@@ -292,6 +351,25 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
       riskLevel: physics.fatigueLifeRaces < 4 || physics.impactAbsorptionMarginPct < 88 ? 'Alto' : 'Baixo',
       uncertaintyPct: calcUncertainty(sportRating),
       dependencies: ['Layup 0°/±45°/90°', 'Liga do Câmbio', 'Largura dos Dentes'],
+    },
+    {
+      specialistRole: 'Chefe Mecânico',
+      specialistName: getStaffName('chief_mechanic', 'Chefe Mecânico (Garagem)'),
+      competenceRating: mechRating,
+      diagnostic: `Montagem & Pit Crew: impacto box ${pitOps.pitTimeDeltaFromMechSec > 0 ? `+${pitOps.pitTimeDeltaFromMechSec.toFixed(2)}` : pitOps.pitTimeDeltaFromMechSec.toFixed(2)}s | Risco de erro no pit: ${pitOps.pitErrorProbPct}%.`,
+      physicalHypothesis:
+        params.gearboxLayout === 'compact'
+          ? 'Carenagem traseira e câmbio compacto restringem acesso às conexões hidráulicas, exigindo maior precisão da equipe de garagem.'
+          : 'Layout de manutenção acessível favorece trocas rápidas de assoalho, suspensão e unidade de potência entre sessões.',
+      availableEvidence: `Tempo líquido de garagem: ${effectiveMaintenanceMin > 0 ? `+${effectiveMaintenanceMin}` : effectiveMaintenanceMin} min (base ${physics.maintenanceTurnaroundPenaltyMin > 0 ? `+${physics.maintenanceTurnaroundPenaltyMin}` : physics.maintenanceTurnaroundPenaltyMin} min, staff ${pitOps.garageTurnaroundDeltaMin > 0 ? `+${pitOps.garageTurnaroundDeltaMin}` : pitOps.garageTurnaroundDeltaMin} min) | Atraso médio por erro: ${pitOps.pitErrorDelaySec}s.`,
+      recommendedSolution:
+        mechRating < 75 || params.gearboxLayout === 'compact'
+          ? 'Padronizar pré-montagem de módulos traseiros e treinar sincronia das pistolas pneumáticas antes do fim de semana.'
+          : 'Garagem calibrada para trocas rápidas de componentes e paradas abaixo da média do grid.',
+      estimatedCostUsd: 350000,
+      riskLevel: pitOps.pitErrorProbPct >= 14 || effectiveMaintenanceMin > 18 ? 'Moderado' : 'Baixo',
+      uncertaintyPct: calcUncertainty(mechRating),
+      dependencies: ['Layout do Câmbio', 'Suspensão', 'Pit Crew & Box'],
     },
   ];
 
@@ -320,6 +398,14 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
     `Pneus: Magic Formula estima pico lateral de ${(physics.tirePeakLateralN / 1000).toFixed(1)} kN com janela térmica de ${physics.tireThermalWindowHealthPct}% e desgaste x${physics.tireWearRateMultiplier}.`,
   ];
 
+  const pilotReport = generateDriverSimulatorReport({
+    vehicleParams: params,
+    vehiclePhysics: physics,
+    components: ctx.components ?? [],
+    leadDriver: ctx.leadDriver,
+    correlationErrorPct: finalCorrelationErrorPct,
+  });
+
   const approved =
     regulatory.compliant &&
     physics.thermalMarginC >= 0 &&
@@ -343,5 +429,6 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
     checklist,
     checklistScore,
     consequenceChain,
+    pilotReport,
   };
 }

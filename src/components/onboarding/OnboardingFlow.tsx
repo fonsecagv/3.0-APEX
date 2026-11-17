@@ -21,7 +21,8 @@ import {
 } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { DEFAULT_VEHICLE_PARAMS, solveVehiclePhysics } from '../../engine/physicsEngine';
-import { FIA_2026_DEFAULT_EDITION } from '../../engine/modules/m03Packaging';
+import { evaluatePitAndGarageOperations } from '../../engine/simulationEngine';
+import { FIA_2026_DEFAULT_EDITION, buildPackagingArchitecture } from '../../engine/modules/m03Packaging';
 import { evaluatePowerUnit } from '../../engine/modules/m08PowerUnit';
 import { runRaceSimulation } from '../../engine/modules/m11RaceSimulation';
 import type { VehiclePhilosophyCode } from '../../engine/modules/m02Philosophy';
@@ -34,6 +35,8 @@ import {
 } from '../../data/puMaterials2026';
 import { OnboardingM02PhilosophySelector } from './OnboardingM02PhilosophySelector';
 import { OnboardingCarConceptionLab, type ConceptionSubStep } from './OnboardingCarConceptionLab';
+import { CarLaunchModal } from './CarLaunchModal';
+import { getDefaultChassisSuggestions } from '../../engine/chassisLaunchAndSeasonLoop';
 import { Step3OrganizationAndStaff } from './Step3OrganizationAndStaff';
 import {
   DriverMarketCard,
@@ -45,13 +48,21 @@ import {
 import {
   PROJECT_AMBITION_OPTIONS,
   calculateStaffInterest,
+  evaluateCascadingRdImpact,
+  evaluateCombinedLeadershipDna,
+  evaluatePuFitWithPhilosophy,
   evaluateStaffPhilosophyConflict,
   getDriverMarketAnalysis,
   getDriverTeamName,
+  getPuRecommendationForCarPhilosophy,
   getRecommendedDriverTraitsForPhilosophy,
   getStaffFullProfile,
   type DriverMarketAnalysis
 } from '../../utils/profileSheets';
+import {
+  computeNormalizedOfficialPuCard,
+  evaluateBoardroomPuVerdict,
+} from '../../utils/puBenchHelpers';
 import {
   Shield,
   Award,
@@ -279,6 +290,11 @@ export interface ThirdPartyErsOption {
   locksBatteryHardware: boolean;
   requiresLargerSidepods: boolean;
   harmonyPenaltyPct: number;
+  hardwareNote: string;
+  softwareDeployLabel: string;
+  softwareControlNote: string;
+  aeroDemandLevel: string;
+  aeroImpactText: string;
   tradeoffTitle: string;
   tradeoffSummary: string;
   accentColor: string;
@@ -302,8 +318,13 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     locksBatteryHardware: true,
     requiresLargerSidepods: false,
     harmonyPenaltyPct: 0,
-    tradeoffTitle: 'Segurança Brixworth · Hardware Travado',
-    tradeoffSummary: 'Trava sliders 9 e 10 da bateria. Software (sliders 7 e 8) focado em segurança com Anti-Clipping a 100%.',
+    hardwareNote: 'Pack selado Brixworth: trava os sliders 9 e 10 (Química e Arquitetura da Bateria).',
+    softwareDeployLabel: 'Alta Eficiência Térmica (92/100)',
+    softwareControlNote: 'Firmware focado em durabilidade e Anti-Clipping 100% (sliders 7 e 8 liberados; trava apenas no hardware da bateria).',
+    aeroDemandLevel: 'Demanda Térmica: Baixa',
+    aeroImpactText: 'Nenhum impacto nos Sidepods. O sistema de refrigeração da Mercedes não exige alargamento da carenagem.',
+    tradeoffTitle: 'Pack Selado Brixworth · Foco em Durabilidade',
+    tradeoffSummary: 'Hardware da bateria selado (trava sliders 9 e 10). Software liberado com Anti-Clipping 100% e sem impacto nos Sidepods.',
     accentColor: '#00D2BE'
   },
   Ferrari: {
@@ -314,7 +335,7 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     delayWeeks: 2,
     weightKg: 24,
     weightDeltaKg: -2,
-    coolingLabel: 'Crítica · Exige Sidepods Maiores (52/100)',
+    coolingLabel: 'Demanda Térmica Alta · Sidepods Maiores (52/100)',
     coolingScore: 52,
     reliabilityScore: 84,
     pwrDelta: 0,
@@ -323,8 +344,13 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     locksBatteryHardware: false,
     requiresLargerSidepods: true,
     harmonyPenaltyPct: 0,
-    tradeoffTitle: 'Demanda Térmica · Sidepods Maiores',
-    tradeoffSummary: 'Exige aumentar o tamanho dos Sidepods no P&D (penalidade de arrasto) para não ferver.',
+    hardwareNote: 'Células de alta descarga (-2 kg vs. base), operando com menor margem térmica interna.',
+    softwareDeployLabel: 'Deploy Agressivo (52/100)',
+    softwareControlNote: 'Sliders 7 a 10 livres. Calibração agressiva eleva risco de corte térmico (+8% derating) sem arrefecimento extra.',
+    aeroDemandLevel: 'Demanda Térmica: Alta',
+    aeroImpactText: 'O sistema de bateria gera muito calor e exigirá refrigeração extra (Sidepods maiores no P&D, com penalidade de arrasto).',
+    tradeoffTitle: 'Células Leves (-2kg) · Exige Sidepods Maiores',
+    tradeoffSummary: 'Ganha 2 kg no conjunto elétrico, mas exige aumentar a admissão dos Sidepods no P&D (penalidade de arrasto).',
     accentColor: '#E8002D'
   },
   Honda: {
@@ -344,8 +370,13 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     locksBatteryHardware: false,
     requiresLargerSidepods: false,
     harmonyPenaltyPct: 10,
-    tradeoffTitle: 'Ultra-Leve (-5kg) · Vibração (-10% Harmonia)',
-    tradeoffSummary: 'Peso total cai -5kg, porém o Índice de Harmonia sofre penalidade de -10% pela vibração do bloco.',
+    hardwareNote: 'Pack ultraleve (-5 kg vs. base), porém com vibração mecânica de alta frequência.',
+    softwareDeployLabel: 'Recuperação Compacta (76/100)',
+    softwareControlNote: 'Sliders 7 a 10 livres. Exige acerto fino de recuperação para conter cortes de energia (+5% derating).',
+    aeroDemandLevel: 'Demanda Térmica: Moderada',
+    aeroImpactText: 'Conjunto compacto que dispensa Sidepods maiores, mas pede dutos limpos para dissipar calor sob vibração.',
+    tradeoffTitle: 'Ultra-Leve (-5kg) · Vibração no Acoplamento',
+    tradeoffSummary: 'Reduz o peso em -5 kg, porém a vibração do conjunto penaliza o acoplamento e o desempenho final do motor.',
     accentColor: '#F59E0B'
   },
   'Red Bull-Ford': {
@@ -365,8 +396,13 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     locksBatteryHardware: false,
     requiresLargerSidepods: false,
     harmonyPenaltyPct: 0,
-    tradeoffTitle: '+5 PWR Potência · Risco de Derating Elevado',
-    tradeoffSummary: 'Entrega ganho direto de +5 PWR (Potência), mas eleva o risco de Derating (corte térmico de potência).',
+    hardwareNote: 'Inversor e células de alto pico (+1 kg vs. base; +5 PWR direto na entrega elétrica).',
+    softwareDeployLabel: 'Descarga Máxima · +5 PWR (68/100)',
+    softwareControlNote: 'Sliders 7 a 10 livres. Prioriza potência máxima nas retas, mas eleva risco de Derating (+25%).',
+    aeroDemandLevel: 'Demanda Térmica: Elevada',
+    aeroImpactText: 'Não obriga Sidepods largos, mas picos de descarga no MGU-K exigem atenção às saídas de ar quente.',
+    tradeoffTitle: '+5 PWR Elétrico · Risco de Derating Elevado',
+    tradeoffSummary: 'Entrega ganho direto de +5 PWR combinado, porém eleva o risco de Derating (corte térmico de potência).',
     accentColor: '#3B82F6'
   },
   Audi: {
@@ -386,8 +422,13 @@ export const THIRD_PARTY_ERS_OPTIONS: Record<CustomerEngineSupplier, ThirdPartyE
     locksBatteryHardware: false,
     requiresLargerSidepods: false,
     harmonyPenaltyPct: 0,
-    tradeoffTitle: 'Menor Custo · 2x Risco de Falha no Dinamômetro',
-    tradeoffSummary: 'Mais barato ($6M), porém com +3 semanas de integração e chance de falha catastrófica no dinamômetro dobrada.',
+    hardwareNote: 'Protótipo Solid-State experimental (+3 kg; chance de falha no dinamômetro 2× maior).',
+    softwareDeployLabel: 'Firmware Experimental (60/100)',
+    softwareControlNote: 'Sliders 7 a 10 livres. Mapeamento preliminar de estreante com risco elevado de corte térmico (+12% derating).',
+    aeroDemandLevel: 'Demanda Térmica: Alta (Protótipo)',
+    aeroImpactText: 'Arquitetura larga e pesada exige adaptações no empacotamento traseiro e dutos de arrefecimento maiores.',
+    tradeoffTitle: 'Menor Custo ($6M) · 2× Risco no Dinamômetro',
+    tradeoffSummary: 'Mais barato ($6.0M), porém exige +3 semanas de integração no chassi e dobra a chance de falha no dinamômetro.',
     accentColor: '#EF4444'
   }
 };
@@ -1139,7 +1180,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     homologarMotorFIA,
     financials,
     setFinancials,
-    addNotification
+    addNotification,
+    soundEnabled
   } = useGame();
 
   // Wizard Step: 1 to 7
@@ -1198,6 +1240,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
   const [showDynamoReportModal, setShowDynamoReportModal] = useState<boolean>(false);
   const [showConfirmGoToDynamoModal, setShowConfirmGoToDynamoModal] = useState<boolean>(false);
   const [showFiaHomologationConfirmModal, setShowFiaHomologationConfirmModal] = useState<boolean>(false);
+  const [customEngineName, setCustomEngineName] = useState<string>('');
 
   // Custos Industriais do Motor (Protótipo vs Produção Final)
   const [prototypeCostSpent, setPrototypeCostSpent] = useState<number>(0);
@@ -1220,6 +1263,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
   const [gearboxLayout, setGearboxLayout] = useState<'compact' | 'voluminous'>('compact');
   const [gearboxFinalized, setGearboxFinalized] = useState<boolean>(false);
   const [gearboxCostSpent, setGearboxCostSpent] = useState<number>(0);
+
+  // Fase 7 -> Fase 8: Cerimônia de Lançamento Oficial & Nomeação de Chassi
+  const [chassisName, setChassisName] = useState<string>('APX-01');
+  const [showCarLaunchModal, setShowCarLaunchModal] = useState<boolean>(false);
+  const [chassisLaunchConfirmed, setChassisLaunchConfirmed] = useState<boolean>(false);
 
   const [chassisSidepodConcept, setChassisSidepodConcept] = useState<'conventional' | 'downwash' | 'zeropod'>('downwash');
   const [chassisSuspensionFront, setChassisSuspensionFront] = useState<'pushrod' | 'pullrod'>('pullrod');
@@ -1624,8 +1672,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
 
   const [driverContractSalaries, setDriverContractSalaries] = useState<Record<string, number>>({});
 
-  // Sub-tabs & Search for Step 6 Market (Drivers + Race Radio Engineers)
-  const [step6MainTab, setStep6MainTab] = useState<'drivers' | 'radio_engineers'>('drivers');
+  // Sub-tabs & Search for Step 6 Market (Drivers + Race Radio Engineers + Chief Mechanic)
+  const [step6MainTab, setStep6MainTab] = useState<'drivers' | 'radio_engineers' | 'chief_mechanic'>('drivers');
   const [driverCategory, setDriverCategory] = useState<'F1' | 'F2' | 'F3' | 'FREE_AGENTS'>('F1');
   const [marketSearch, setMarketSearch] = useState<string>('');
   const [expandedDriverProfile, setExpandedDriverProfile] = useState<Driver | null>(null);
@@ -1667,7 +1715,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         setSelectedChiefMechanic('staff_mech_lee');
         setSelectedRaceEngineer1('staff_re_bono');
         setSelectedRaceEngineer2('staff_re_fic_2');
-      } else if (selectedRealTeamId === 'aston_martin') {
+      } else if (selectedRealTeamId === 'astonmartin') {
         setSelectedHeadAero('staff_aero_newey');
         setSelectedHeadPU('staff_pu_watanabe');
         setSelectedSportingDirector('staff_sport_cowell');
@@ -1692,7 +1740,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     }
   }, [careerPath, selectedRealTeamId]);
 
-  // Check if engine choice was locked in Phase 4 (Ponto de Não Retorno FIA)
+  // Check if engine choice was locked in Phase 5 (Ponto de Não Retorno FIA)
   React.useEffect(() => {
     try {
       const saved = localStorage.getItem('apex_f1_engine_locked');
@@ -1701,22 +1749,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         if (parsed.engineChoice) setEngineChoice(parsed.engineChoice);
         if (parsed.selectedFactoryId) setSelectedFactoryId(parsed.selectedFactoryId);
         if (parsed.customerSupplier) setCustomerSupplier(parsed.customerSupplier);
-        if (parsed.locked && currentStep < 4) {
-          setCurrentStep(4);
+        if (parsed.locked && currentStep < 5) {
+          setCurrentStep(5);
           setPuPhaseStage(parsed.puStage || 'dossier');
         }
       }
     } catch (_) {}
   }, []);
 
-  // Trava Fase 3: Os 3 Pilares Técnicos obrigatórios (Chefe Aero + Chefe PU + Chefe de Gerenciamento)
+  // Trava Fase 3: Os 3 Pilares Técnicos de Projeto & Organização (Chefe Aero + Chefe PU + Chefe de Gerenciamento)
   const isStep3Complete = Boolean(
     selectedHeadAero &&
     selectedHeadPU &&
     selectedSportingDirector
   );
 
-  // Trava Fase 6: 2 Pilotos Titulares + 1 Reserva + 2 Engenheiros de Corrida (Rádio) distintos
+  // Trava Fase 6: Equipe Operacional de Pista (2 Titulares + 1 Reserva + 2 Rádio + Chefe Mecânico)
   const isStep6Complete = Boolean(
     selectedDriver1 &&
     selectedDriver2 &&
@@ -1724,7 +1772,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     selectedReserveDriver &&
     selectedRaceEngineer1 &&
     selectedRaceEngineer2 &&
-    selectedRaceEngineer1 !== selectedRaceEngineer2
+    selectedRaceEngineer1 !== selectedRaceEngineer2 &&
+    selectedChiefMechanic
   );
 
   // Step 5: Car Philosophy (M02 - 6 Filosofias Oficiais) & Staff Conflict Evaluator
@@ -1951,7 +2000,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         rank: 11,
         porpoising: false,
         reliability: 45,
-        delayWeeks: Math.abs(currentWeeksRemaining)
+        delayWeeks: abandonedToZero ? 4 : 0
       });
       setPreSeasonRan(true);
       return;
@@ -2001,21 +2050,45 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     setPreSeasonRan(true);
   };
 
-  // Staff hired objects & Phase 5 Philosophy Conflict / Packaging Lockout report
+  // Staff hired objects & Combined Leadership DNA (Player + 3 Chiefs)
   const hiredHeadAeroObj = ALL_STAFF_MEMBERS.find(s => s.id === selectedHeadAero) || null;
   const hiredHeadPuObj = ALL_STAFF_MEMBERS.find(s => s.id === selectedHeadPU) || null;
   const hiredSportingObj = ALL_STAFF_MEMBERS.find(s => s.id === selectedSportingDirector) || null;
+  const combinedLeadershipDna = React.useMemo(
+    () =>
+      evaluateCombinedLeadershipDna({
+        principalBackground: selectedBackground,
+        headAero: hiredHeadAeroObj,
+        headPu: hiredHeadPuObj,
+        sportingDirector: hiredSportingObj
+      }),
+    [selectedBackground, hiredHeadAeroObj, hiredHeadPuObj, hiredSportingObj]
+  );
   const philosophyConflict = React.useMemo(
     () =>
       evaluateStaffPhilosophyConflict({
         philosophyCode: normalizeToM02Philosophy(philosophy),
+        principalBackground: selectedBackground,
         headAero: hiredHeadAeroObj,
         headPu: hiredHeadPuObj,
+        sportingDirector: hiredSportingObj,
         engineOrigin: engineChoice,
         customerSupplier,
-        thirdPartyErsSupplier
+        thirdPartyErsSupplier,
+        includePowerUnitConstraints: currentStep >= 5
       }),
-    [philosophy, hiredHeadAeroObj, hiredHeadPuObj, engineChoice, customerSupplier, thirdPartyErsSupplier]
+    [philosophy, selectedBackground, hiredHeadAeroObj, hiredHeadPuObj, hiredSportingObj, engineChoice, customerSupplier, thirdPartyErsSupplier, currentStep]
+  );
+  const cascadingRdImpact = React.useMemo(
+    () =>
+      evaluateCascadingRdImpact({
+        philosophyCode: normalizeToM02Philosophy(philosophy),
+        principalBackground: selectedBackground,
+        headAero: hiredHeadAeroObj,
+        headPu: hiredHeadPuObj,
+        sportingDirector: hiredSportingObj
+      }),
+    [philosophy, selectedBackground, hiredHeadAeroObj, hiredHeadPuObj, hiredSportingObj]
   );
 
   // Enforce Zero-Pod lockout automatically if Mercedes Customer or Ferrari ERS requires larger sidepods
@@ -2047,6 +2120,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
       return;
     }
     if (currentStep === 4) {
+      setCurrentStep(5);
+      return;
+    }
+    if (currentStep === 5) {
       if (puPhaseStage === 'select') {
         setPuPhaseStage(engineChoice === 'phoenix' ? 'phoenix_assembly' : 'dossier');
         return;
@@ -2056,7 +2133,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         return;
       }
       if (puPhaseStage === 'dossier') {
-        setCurrentStep(5);
+        setCurrentStep(6);
         return;
       }
     }
@@ -2074,6 +2151,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
       }
       if (chassisSubStep === 'monocoque') {
         setChassisSubStep('dynamics');
+        return;
+      }
+      if (chassisSubStep === 'dynamics') {
+        if (!chassisLaunchConfirmed) {
+          setShowCarLaunchModal(true);
+          return;
+        }
+        setCurrentStep(8);
         return;
       }
     }
@@ -2109,7 +2194,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         puInjectionMapping: engineChoice !== 'customer' ? puInjectionMapping : undefined,
         driver1Id: selectedDriver1 || 'f2_browning',
         driver2Id: selectedDriver2 || 'free_drugovich',
-        affiliateId: selectedReserveDriver || selectedAffiliate || 'f3_lindblad',
+        affiliateId: selectedReserveDriver || selectedAffiliate || 'f2_camara',
         reserveDriverId: selectedReserveDriver || undefined,
         headAeroId: selectedHeadAero || undefined,
         headPUId: selectedHeadPU || undefined,
@@ -2122,6 +2207,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         boardPressureLevel: ambitionSpec.pressureLevel,
         initialProjectBudgetUsd: ambitionSpec.budgetUsd,
         staffPhilosophyPenaltyPct: philosophyConflict.efficiencyDeltaPct,
+        boardSynergyPct: cascadingRdImpact.boardSynergyPct,
+        rdTimePenaltyMultiplier: cascadingRdImpact.rdTimeMultiplier,
+        silentSabotageAeroPct: cascadingRdImpact.silentSabotageAeroPct,
+        boardroomConflictMoralePenalty: cascadingRdImpact.moralePenalty,
+        cascadingNarrativeEvent: cascadingRdImpact.narrativeEventTitle && cascadingRdImpact.narrativeEventText
+          ? {
+              title: cascadingRdImpact.narrativeEventTitle,
+              message: cascadingRdImpact.narrativeEventText,
+              mediaHeadline: cascadingRdImpact.mediaRumourText
+            }
+          : null,
         hqLogisticsCostFactor: selectedHq.modifiers.logisticsCostMultiplier,
         hqEuropeanStaffAppeal: selectedHq.modifiers.europeanStaffAppeal,
         semanasParaTeste: currentWeeksRemaining,
@@ -2142,6 +2238,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         emergencyPenaltyDescription: isEmergencyActive ? EMERGENCY_ENGINE_OPTIONS[effectiveEmergencySupplier].penaltyDetail : undefined,
         emergencyMercedesCost: 20000000,
         abandonedToZero,
+        preseasonMissed: currentWeeksRemaining < 0 && !abandonedToZero,
+        preseasonOverrunWeeks: currentWeeksRemaining < 0 ? Math.abs(currentWeeksRemaining) : 0,
         customCorrelationErrorMod: isEmergencyActive ? 0.15 : 0,
         dynamoFailed,
         prototypeCostPaid: prototypeCostSpent,
@@ -2160,6 +2258,58 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           suspensionRear: vehicleParamsDraft.rearSuspensionType
         },
         vehicleParams: vehicleParamsDraft,
+        chassisName: chassisName || getDefaultChassisSuggestions(
+          careerPath === 'custom_team' ? customTeamShort : (realTeamObj?.shortName || 'FER'),
+          careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name || 'Scuderia Ferrari HP')
+        )[0],
+        customEngineName: (() => {
+          const baseName = customEngineName.trim() || (
+            isEmergencyActive
+              ? CUSTOMER_ENGINES[effectiveEmergencySupplier].fullName
+              : (engineChoice === 'customer'
+                  ? CUSTOMER_ENGINES[customerSupplier].fullName
+                  : (engineChoice === 'bought_factory'
+                      ? `${AVAILABLE_FACTORIES[selectedFactoryId].name} Spec-I`
+                      : `${customTeamName} Apex Works Spec-I`))
+          );
+          if (!isEmergencyActive && thirdPartyErsSupplier && !baseName.toLowerCase().includes(thirdPartyErsSupplier.toLowerCase())) {
+            return `${baseName} + ERS ${thirdPartyErsSupplier}`;
+          }
+          return baseName;
+        })(),
+        homologatedPeakPowerHp: (() => {
+          const m08Final = evaluatePowerUnit(
+            vehicleParamsDraft,
+            {
+              rpm: 11600,
+              throttleRatio: 1.0,
+              vehicleSpeedMs: 75,
+              ambientTempK: 298.15,
+              airPressurePa: 101325,
+              initialSoc01: 0.72,
+              cycleDurationS: 5.0,
+              regenPowerCommandW: 110000,
+              deployCommandRatio: Math.max(0.25, Math.min(1.0, vehicleParamsDraft.ersDeployBiasPct / 85)),
+              cumulativeRaceCycles: 120,
+            },
+            FIA_2026_DEFAULT_EDITION
+          );
+          const ersHarmonyPowerDeltaHp = activeErsHarmonyInfo ? Math.round(activeErsHarmonyInfo.delta * 0.75) : 0;
+          const ersBonusHp =
+            (activeThirdPartyErs?.pwrDelta ? Math.round(activeThirdPartyErs.pwrDelta * 2.4) : 0) +
+            ersHarmonyPowerDeltaHp;
+          const rawIceHp = Math.round((m08Final.shaftAndIce.icePowerW / 1000) * 1.34102209) + ersBonusHp;
+          const adjIceHp = Math.round(rawIceHp * (1 + combinedLeadershipDna.puPowerDeltaPct / 100));
+          return adjIceHp + Math.round(Math.min(350, vehicleParamsDraft.mgukMaxKw) * 1.34102209);
+        })(),
+        puDevelopmentCeilingPct:
+          !isEmergencyActive && engineChoice === 'bought_factory'
+            ? (thirdPartyErsSupplier ? 92 : 94)
+            : 100,
+        puCoolingAeroPenaltyPct:
+          !isEmergencyActive && thirdPartyErsSupplier
+            ? 3.0
+            : (!isEmergencyActive && engineChoice === 'customer' ? 1.5 : 0),
         testResult
       });
       try {
@@ -2170,11 +2320,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
 
   const prevStep = () => {
     playRadioSound();
-    if (currentStep === 4 && puPhaseStage === 'dossier') {
+    if (currentStep === 5 && puPhaseStage === 'dossier') {
       // Ponto de Não Retorno: O contrato de PU já foi homologado pela FIA
       return;
     }
-    if (currentStep === 4 && puPhaseStage === 'phoenix_assembly') {
+    if (currentStep === 5 && puPhaseStage === 'phoenix_assembly') {
       setPuPhaseStage('select');
       return;
     }
@@ -2221,7 +2371,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
     } catch (_) {}
 
     setShowWorksTeamModal(false);
-    setCurrentStep(4);
+    setCurrentStep(5);
     setPuPhaseStage(nextPuStage);
   };
 
@@ -2286,6 +2436,127 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           </button>
         </div>
       </header>
+
+      {/* Persistent Season Budget Telemetry Strip (Fases 1 a 8) */}
+      {(() => {
+        const availableBudgetUsd = initialBudgetUsd;
+        const lockedEngineCommitUsd =
+          currentStep > 5 || (currentStep === 5 && puPhaseStage === 'dossier')
+            ? (isEmergencyActive
+                ? 20_000_000
+                : engineChoice === 'bought_factory'
+                ? 24_000_000
+                : engineChoice === 'phoenix'
+                ? 32_000_000
+                : 0) +
+              (ersSupplierCostUsd > 0 && prototypeCostSpent < ersSupplierCostUsd ? ersSupplierCostUsd : 0)
+            : 0;
+        const committedSpentUsd =
+          prototypeCostSpent + productionCostSpent + gearboxCostSpent + lockedEngineCommitUsd;
+
+        const sumStaffSalaries = (ids: Array<string | null>) =>
+          ids.reduce((acc, id) => {
+            if (!id) return acc;
+            const st = ALL_STAFF_MEMBERS.find(s => s.id === id) || staff.find(s => s.id === id);
+            return acc + (st?.salary || 0);
+          }, 0);
+
+        const sumDriverSalaries = (ids: Array<string | null>) =>
+          ids.reduce((acc, id) => {
+            if (!id) return acc;
+            const drv = ALL_MARKET_DRIVERS.find(d => d.id === id) || drivers.find(d => d.id === id);
+            if (!drv) return acc;
+            return acc + (driverContractSalaries[id] || drv.salary || 0);
+          }, 0);
+
+        let phaseProjectionUsd = 0;
+        let phaseProjectionLabel = `Projeção Fase 0${currentStep}`;
+
+        if (currentStep === 1 || currentStep === 2) {
+          phaseProjectionUsd = 0;
+          phaseProjectionLabel = currentStep === 1 ? 'Base Orçamentária' : 'Teto FIA ($135M)';
+        } else if (currentStep === 3) {
+          phaseProjectionUsd = sumStaffSalaries([selectedHeadAero, selectedHeadPU, selectedSportingDirector]);
+          phaseProjectionLabel = 'Folha Diretoria Técnica';
+        } else if (currentStep === 4) {
+          phaseProjectionUsd = 0;
+          phaseProjectionLabel = 'Conceito M02 ($0)';
+        } else if (currentStep === 5) {
+          if (puPhaseStage === 'dossier') {
+            phaseProjectionUsd = productionCostSpent === 0 ? custoProducaoTotal : 0;
+            phaseProjectionLabel = productionCostSpent === 0 ? 'Lote Produção (8 UPs)' : 'Produção Homologada';
+          } else {
+            phaseProjectionUsd =
+              (isEmergencyActive
+                ? 20_000_000
+                : engineChoice === 'bought_factory'
+                ? 24_000_000
+                : engineChoice === 'phoenix'
+                ? 32_000_000
+                : 15_000_000) + ersSupplierCostUsd;
+            phaseProjectionLabel =
+              engineChoice === 'customer' ? 'Contrato Cliente / Ano' : 'Aquisição / Fênix + ERS';
+          }
+        } else if (currentStep === 6) {
+          phaseProjectionUsd =
+            sumDriverSalaries([selectedDriver1, selectedDriver2, selectedReserveDriver]) +
+            sumStaffSalaries([selectedRaceEngineer1, selectedRaceEngineer2, selectedChiefMechanic]);
+          phaseProjectionLabel = 'Folha Pista (Pilotos + Box)';
+        } else if (currentStep === 7) {
+          phaseProjectionUsd = gearboxFinalized ? 0 : getGearboxSpecs().totalCost;
+          phaseProjectionLabel = gearboxFinalized ? 'Câmbio Homologado' : 'Câmbio & Carcaça M09';
+        } else if (currentStep === 8) {
+          phaseProjectionUsd = currentWeeksRemaining < 0 && !abandonedToZero ? 1_500_000 : 0;
+          phaseProjectionLabel = phaseProjectionUsd > 0 ? 'Multa / Logística Extra' : 'Testes Bahrein';
+        }
+
+        const remainingBalanceUsd = availableBudgetUsd - committedSpentUsd;
+        const isNegative = remainingBalanceUsd < 0;
+        const isTight = remainingBalanceUsd >= 0 && remainingBalanceUsd < 15_000_000;
+
+        return (
+          <div className="relative z-10 border-b border-[#2C2C3A] bg-[#101017]/95 px-6 py-2">
+            <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3 text-[11px] font-f1-mono">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-[#E10600] inline-block shrink-0" />
+                <span className="font-f1-wide font-black text-[10px] tracking-widest text-zinc-300 uppercase">
+                  ORÇAMENTO DA TEMPORADA
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 items-center">
+                <div>
+                  <span className="text-[9px] text-zinc-500 uppercase block">Verba Inicial</span>
+                  <span className="text-white font-bold tabular-nums">
+                    ${(availableBudgetUsd / 1_000_000).toFixed(1)}M
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-zinc-500 uppercase block">Comprometido</span>
+                  <span className="text-amber-300 font-bold tabular-nums">
+                    -${(committedSpentUsd / 1_000_000).toFixed(1)}M
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-zinc-500 uppercase block">{phaseProjectionLabel}</span>
+                  <span className="text-cyan-300 font-bold tabular-nums">
+                    ${(phaseProjectionUsd / 1_000_000).toFixed(1)}M
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-zinc-500 uppercase block">Saldo Disponível</span>
+                  <span
+                    className={`font-f1-wide font-black tabular-nums ${
+                      isNegative ? 'text-red-400' : isTight ? 'text-amber-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    ${(remainingBalanceUsd / 1_000_000).toFixed(1)}M
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Step Content Canvas */}
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8 flex-1 w-full">
@@ -3357,7 +3628,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             selectedHeadAero={selectedHeadAero}
             selectedHeadPU={selectedHeadPU}
             selectedSportingDirector={selectedSportingDirector}
-            selectedChiefMechanic={selectedChiefMechanic}
             onToggleStaff={staffObj => {
               playRadioSound();
               if (staffObj.role === 'head_aero') {
@@ -3366,8 +3636,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 setSelectedHeadPU(prev => (prev === staffObj.id ? null : staffObj.id));
               } else if (staffObj.role === 'sporting_director') {
                 setSelectedSportingDirector(prev => (prev === staffObj.id ? null : staffObj.id));
-              } else if (staffObj.role === 'chief_mechanic') {
-                setSelectedChiefMechanic(prev => (prev === staffObj.id ? null : staffObj.id));
               }
             }}
             onExpandStaff={setExpandedStaffProfile}
@@ -3376,76 +3644,78 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         )}
 
         {/* ========================================================== */}
-        {/* STEP 4: ESCOLHA DA PU, MONTAGEM FÊNIX & DOSSIÊ/DINAMÔMETRO */}
+        {/* STEP 5: ESCOLHA DA PU, MONTAGEM FÊNIX & DOSSIÊ/DINAMÔMETRO */}
         {/* ========================================================== */}
-        {currentStep === 4 && puPhaseStage !== 'dossier' && (
+        {currentStep === 5 && puPhaseStage !== 'dossier' && (
           <div className="space-y-6">
             {puPhaseStage === 'select' ? (
               <>
                 <div className="space-y-1">
                   <span className="text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
-                    FASE 4 · ETAPA 01: ESCOLHA DA UNIDADE DE POTÊNCIA (PU)
+                    FASE 5 · ETAPA 01: ESCOLHA DA UNIDADE DE POTÊNCIA (PU)
                   </span>
                   <h2 className="font-f1-wide font-black text-2xl sm:text-3xl text-white uppercase">
-                    A Decisão que Bloqueia o Tempo
+                    O Motor Certo para o Conceito Aprovado
                   </h2>
                   <p className="text-sm text-zinc-400">
-                    Com seu Corpo Técnico contratado, o chassi e a suspensão dependem do gabarito do motor. Escolha a origem da Unidade de Potência 2026:
+                    Com o conceito do carro definido na Fase 4 e sua diretoria técnica reunida, escolha a Unidade de Potência 2026 que melhor atende ao empacotamento, refrigeração e metas do projeto:
                   </p>
                 </div>
 
                 {/* Reunião Técnica à Mesa com Seu Staff */}
-                <div className="bg-[#181822] border border-cyan-500/35 p-4 space-y-3 f1-pattern-micro-grid">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-cyan-400" />
-                      <span className="font-f1-wide font-black text-xs text-white uppercase tracking-wider">
-                        REUNIÃO TÉCNICA À MESA COM SEU STAFF
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-f1-mono text-amber-300 bg-amber-950/50 border border-amber-500/35 px-2 py-0.5 uppercase font-bold">
-                      META DO CONSELHO: {ambitionSpec.boardExpectationText}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-f1-mono">
-                    <div className="bg-[#12121A] border border-white/10 p-3 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-emerald-400 font-bold uppercase text-[10px]">
-                          CHEFE DE PU · {hiredHeadPuObj?.name || 'Engenheiro de Propulsão'}
-                        </span>
-                        <span className="text-[10px] text-zinc-400">OVR {hiredHeadPuObj?.rating || 75}</span>
-                      </div>
-                      <p className="text-zinc-300 leading-relaxed text-[11px]">
-                        {engineChoice === 'phoenix'
-                          ? '“Desenvolver a PU do zero no Protocolo Fênix dá liberdade total de calibração e integração, mas consome $50M do nosso Teto e 8 semanas críticas do cronograma.”'
-                          : engineChoice === 'bought_factory'
-                          ? `“Adquirir a planta ${AVAILABLE_FACTORIES[selectedFactoryId].name} garante status de Montadora e controle de evolução, exigindo ${AVAILABLE_FACTORIES[selectedFactoryId].integrationWeeks} semanas para calibrar bancadas.”`
-                          : customerSupplier === 'Mercedes'
-                          ? '“A PU Mercedes HPP entrega excelente eficiência e Anti-Clipping, mas a alta demanda de refrigeração exige radiadores volumosos nos sidepods.”'
-                          : customerSupplier === 'Ferrari'
-                          ? '“O bloco Ferrari tem resposta rápida de turbo, porém seu sistema ERS aquece bastante e obriga abertura lateral maior na carenagem.”'
-                          : `“O pacote cliente ${customerSupplier} chega homologado sem atraso de fábrica, liberando nosso orçamento para focar em chassi e aero.”`}
-                      </p>
-                    </div>
-                    <div className="bg-[#12121A] border border-white/10 p-3 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-cyan-400 font-bold uppercase text-[10px]">
-                          CHEFE DE AERO · {hiredHeadAeroObj?.name || 'Diretor Aerodinâmico'}
-                        </span>
-                        <span className="text-[10px] text-zinc-400">
-                          {hiredHeadAeroObj ? getStaffFullProfile(hiredHeadAeroObj).designDna : 'Aero Balanceado'}
+                {(() => {
+                  const approvedPhilCode = normalizeToM02Philosophy(philosophy);
+                  const puMeetingAdvice = getPuRecommendationForCarPhilosophy({
+                    philosophyCode: approvedPhilCode,
+                    headPu: hiredHeadPuObj,
+                    headAero: hiredHeadAeroObj,
+                    engineOrigin: engineChoice,
+                    customerSupplier,
+                    selectedFactoryName: AVAILABLE_FACTORIES[selectedFactoryId].name,
+                    selectedFactoryWeeks: AVAILABLE_FACTORIES[selectedFactoryId].integrationWeeks
+                  });
+                  return (
+                    <div className="bg-[#181822] border border-cyan-500/35 p-4 space-y-3 f1-pattern-micro-grid">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-cyan-400" />
+                          <span className="font-f1-wide font-black text-xs text-white uppercase tracking-wider">
+                            REUNIÃO TÉCNICA À MESA · ESCOLHA DE MOTOR PARA: {puMeetingAdvice.philosophyName.toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-f1-mono text-amber-300 bg-amber-950/50 border border-amber-500/35 px-2 py-0.5 uppercase font-bold">
+                          META DO CONSELHO: {ambitionSpec.boardExpectationText}
                         </span>
                       </div>
-                      <p className="text-zinc-300 leading-relaxed text-[11px]">
-                        {engineChoice === 'customer' && customerSupplier === 'Mercedes'
-                          ? '“Aviso de Packaging (M03/M04): Com o motor Mercedes, o conceito Zero-Pod fica BLOQUEADO por insuficiência térmica. Precisaremos de sidepods Downwash ou Convencionais.”'
-                          : engineChoice === 'phoenix'
-                          ? '“Se entregarmos o bloco compacto da Fênix no prazo, consigo esculpir um Coke Bottle agressivo para maximizar o difusor em curvas rápidas.”'
-                          : `“Com base na aposta ${ambitionSpec.title}, recomendo alinhar o pacote de refrigeração desta PU com nossa filosofia de carro na Fase 5 para evitar conflito de eficiência.”`}
-                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-f1-mono">
+                        <div className="bg-[#12121A] border border-white/10 p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-emerald-400 font-bold uppercase text-[10px]">
+                              CHEFE DE PU · {hiredHeadPuObj?.name || 'Engenheiro de Propulsão'}
+                            </span>
+                            <span className="text-[10px] text-zinc-400 tabular-nums">OVR {hiredHeadPuObj?.rating || 75}</span>
+                          </div>
+                          <p className="text-zinc-300 leading-relaxed text-[11px]">
+                            {puMeetingAdvice.puChiefAdvice}
+                          </p>
+                        </div>
+                        <div className="bg-[#12121A] border border-white/10 p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-cyan-400 font-bold uppercase text-[10px]">
+                              CHEFE DE AERO · {hiredHeadAeroObj?.name || 'Diretor Aerodinâmico'}
+                            </span>
+                            <span className="text-[10px] text-zinc-400">
+                              {hiredHeadAeroObj ? getStaffFullProfile(hiredHeadAeroObj).designDna : 'Aero Balanceado'}
+                            </span>
+                          </div>
+                          <p className="text-zinc-300 leading-relaxed text-[11px]">
+                            {puMeetingAdvice.aeroChiefAdvice}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Alerta do Relógio da Pré-Temporada (Time Budget) */}
                 <div className={`p-4 border font-f1-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
@@ -3632,6 +3902,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       {(['Mercedes', 'Ferrari', 'Red Bull-Ford', 'Honda', 'Audi'] as CustomerEngineSupplier[]).map(sup => {
                         const engine = CUSTOMER_ENGINES[sup];
                         const isSelected = customerSupplier === sup;
+                        const fit = evaluatePuFitWithPhilosophy({
+                          philosophyCode: normalizeToM02Philosophy(philosophy),
+                          supplierOrFactoryId: sup,
+                          isFactory: false
+                        });
                         return (
                           <button
                             key={sup}
@@ -3657,8 +3932,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                               <div className="font-f1-wide uppercase font-black text-xs text-white truncate">
                                 {sup}
                               </div>
+                              <div
+                                className={`text-[9px] font-f1-mono font-bold mt-1 ${
+                                  fit.fitTone === 'emerald'
+                                    ? 'text-emerald-400'
+                                    : fit.fitTone === 'amber'
+                                    ? 'text-amber-400'
+                                    : 'text-cyan-400'
+                                }`}
+                              >
+                                {fit.fitLabel}
+                              </div>
                             </div>
-                            <div className="mt-2 pt-2 border-t border-white/5 text-[9px] font-f1-mono text-zinc-400 space-y-0.5">
+                            <div className="mt-2 pt-2 border-t border-white/5 text-[9px] font-f1-mono text-zinc-400 space-y-0.5 tabular-nums">
                               <div className="flex justify-between"><span>POT:</span><span className="text-white font-bold">{engine.power}</span></div>
                               <div className="flex justify-between"><span>REL:</span><span className="text-emerald-400 font-bold">{engine.reliability}%</span></div>
                               <div className="flex justify-between"><span>E-FUEL:</span><span className="text-lime-400 font-bold">{engine.fuelEfficiency}</span></div>
@@ -3671,6 +3957,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     {/* Painel Inferior de Detalhes: Barras de Atributos + Prós / Contras + Botão de Confirmação */}
                     {(() => {
                       const sel = CUSTOMER_ENGINES[customerSupplier];
+                      const selectedFit = evaluatePuFitWithPhilosophy({
+                        philosophyCode: normalizeToM02Philosophy(philosophy),
+                        supplierOrFactoryId: customerSupplier,
+                        isFactory: false
+                      });
                       return (
                         <div className="bg-[#15151E] p-5 border border-white/10 space-y-5 f1-container-roof">
                           {/* Header do Motor Selecionado */}
@@ -3811,13 +4102,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                                 </div>
                               </div>
 
-                              <div className="text-[11px] font-f1-mono text-zinc-400 bg-[#1C1C26] p-2.5 border border-white/5">
-                                Homologação 2026: Ao confirmar o motor da <span className="text-white font-bold">{customerSupplier}</span>, o gabarito das dimensões traseiras é liberado para o CAD do chassi na Fase 4.
+                              <div className="text-[11px] font-f1-mono text-zinc-300 bg-[#1C1C26] p-3 border border-white/10 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] uppercase font-bold text-zinc-400">
+                                    COMPATIBILIDADE C/ CONCEITO DA FASE 4:
+                                  </span>
+                                  <span
+                                    className={`font-bold ${
+                                      selectedFit.fitTone === 'emerald'
+                                        ? 'text-emerald-400'
+                                        : selectedFit.fitTone === 'amber'
+                                        ? 'text-amber-400'
+                                        : 'text-cyan-400'
+                                    }`}
+                                  >
+                                    {selectedFit.fitLabel}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-300">{selectedFit.reason}</p>
+                                <div className="text-zinc-400 pt-1 border-t border-white/5">
+                                  Homologação 2026: Ao confirmar o motor da <span className="text-white font-bold">{customerSupplier}</span>, o gabarito traseiro é liberado para a Fase 6 (Pista) e CAD na Fase 7.
+                                </div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Botão de Confirmação Direta para a Fase 4 */}
+                          {/* Botão de Confirmação Direta para Dossiê / Gabarito */}
                           <div className="pt-2 border-t border-white/5">
                             <button
                               onClick={() => {
@@ -3872,6 +4182,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       {(Object.keys(AVAILABLE_FACTORIES) as EngineFactoryId[]).map(fid => {
                         const factory = AVAILABLE_FACTORIES[fid];
                         const isSelected = selectedFactoryId === fid;
+                        const fit = evaluatePuFitWithPhilosophy({
+                          philosophyCode: normalizeToM02Philosophy(philosophy),
+                          supplierOrFactoryId: fid,
+                          isFactory: true
+                        });
                         return (
                           <div
                             key={fid}
@@ -3903,9 +4218,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                               <div className="font-f1-wide font-black text-sm text-white uppercase">
                                 {factory.name}
                               </div>
+                              <div
+                                className={`text-[9px] font-f1-mono font-bold ${
+                                  fit.fitTone === 'emerald'
+                                    ? 'text-emerald-400'
+                                    : fit.fitTone === 'amber'
+                                    ? 'text-amber-400'
+                                    : 'text-cyan-400'
+                                }`}
+                              >
+                                {fit.fitLabel}
+                              </div>
                             </div>
                             <div className="pt-2 mt-2 border-t border-white/5 space-y-0.5">
-                              <div className="flex items-center justify-between text-[11px] font-f1-mono">
+                              <div className="flex items-center justify-between text-[11px] font-f1-mono tabular-nums">
                                 <span className="text-emerald-400 font-bold">${factory.costM}M</span>
                                 <span className="text-zinc-400">{factory.integrationWeeks} Semanas</span>
                               </div>
@@ -3918,6 +4244,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     {/* Painel de Detalhes da Fábrica Selecionada */}
                     {(() => {
                       const selFactory = AVAILABLE_FACTORIES[selectedFactoryId];
+                      const factoryFit = evaluatePuFitWithPhilosophy({
+                        philosophyCode: normalizeToM02Philosophy(philosophy),
+                        supplierOrFactoryId: selectedFactoryId,
+                        isFactory: true
+                      });
                       return (
                         <div className="bg-[#15151E] p-5 border border-white/10 space-y-5 f1-pattern-micro-grid">
                           {/* Header do Painel */}
@@ -4043,13 +4374,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                                 </div>
                               </div>
 
-                              <div className="text-[11px] font-f1-mono text-zinc-400 bg-[#1C1C26] p-2.5 border border-white/5">
-                                Homologação 2026: Ao confirmar a aquisição de <span className="text-white font-bold">{selFactory.fullName}</span>, sua equipe assume a titularidade da propriedade intelectual e o gabarito é liberado para a Fase 4.
+                              <div className="text-[11px] font-f1-mono text-zinc-300 bg-[#1C1C26] p-3 border border-white/10 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] uppercase font-bold text-zinc-400">
+                                    COMPATIBILIDADE C/ CONCEITO DA FASE 4:
+                                  </span>
+                                  <span
+                                    className={`font-bold ${
+                                      factoryFit.fitTone === 'emerald'
+                                        ? 'text-emerald-400'
+                                        : factoryFit.fitTone === 'amber'
+                                        ? 'text-amber-400'
+                                        : 'text-cyan-400'
+                                    }`}
+                                  >
+                                    {factoryFit.fitLabel}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-300">{factoryFit.reason}</p>
+                                <div className="text-zinc-400 pt-1 border-t border-white/5">
+                                  Homologação 2026: Ao confirmar a aquisição de <span className="text-white font-bold">{selFactory.fullName}</span>, sua equipe assume a propriedade intelectual e libera o gabarito para a Fase 6 e Fase 7.
+                                </div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Botão de Confirmação Direta para a Fase 4 */}
+                          {/* Botão de Confirmação Direta para Dossiê / Bancada */}
                           <div className="pt-2 border-t border-white/5">
                             <button
                               onClick={() => {
@@ -4398,9 +4748,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         )}
 
         {/* ========================================================== */}
-        {/* STEP 4 (ETAPA 02): DOSSIÊ TÉCNICO, BANCADA & DINAMÔMETRO   */}
+        {/* STEP 5 (ETAPA 02): DOSSIÊ TÉCNICO, BANCADA & DINAMÔMETRO   */}
         {/* ========================================================== */}
-        {currentStep === 4 && puPhaseStage === 'dossier' && (() => {
+        {currentStep === 5 && puPhaseStage === 'dossier' && (() => {
           const isEmergency = emergencyMercedesDeal || Boolean(emergencySupplier);
           const effectiveEmergencySupplier: CustomerEngineSupplier = emergencySupplier || 'Mercedes';
 
@@ -4451,14 +4801,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             ? Math.max(2, Math.round((100 - activeThirdPartyErs.reliabilityScore) * 0.2))
             : (engineChoice === 'bought_factory' && selectedFactoryId === 'cosworth' ? 3 : 0);
           const stressFactorPct = compStress + turboStress + batteryHeatStress + thirdPartyIntegrationStress;
-          const netStressDelta = modConfiabilidade - stressFactorPct;
+          const leadershipRelBonus = combinedLeadershipDna.puRiskMitigated ? 4 : 0;
+          const netStressDelta = modConfiabilidade + leadershipRelBonus - stressFactorPct;
           const relFinalCalculado = Math.min(
             98,
             Math.max(40, puReliabilityBase + netStressDelta + (recalibrateBench ? 4 : 0))
           );
 
-          const ersPowerBonusHp = activeThirdPartyErs?.pwrDelta ? Math.round(activeThirdPartyErs.pwrDelta * 2.4) : 0;
-          const displayedPowerHp = Math.round((m08Live.shaftAndIce.icePowerW / 1000) * 1.34102209) + ersPowerBonusHp;
+          const ersHarmonyPowerDeltaHp = activeErsHarmonyInfo ? Math.round(activeErsHarmonyInfo.delta * 0.75) : 0;
+          const ersPowerBonusHp =
+            (activeThirdPartyErs?.pwrDelta ? Math.round(activeThirdPartyErs.pwrDelta * 2.4) : 0) +
+            ersHarmonyPowerDeltaHp;
+          const rawDisplayedPowerHp = Math.round((m08Live.shaftAndIce.icePowerW / 1000) * 1.34102209) + ersPowerBonusHp;
+          const displayedPowerHp = Math.round(rawDisplayedPowerHp * (1 + combinedLeadershipDna.puPowerDeltaPct / 100));
+          const peakCombinedPowerHp = displayedPowerHp + Math.round(Math.min(350, vehicleParamsDraft.mgukMaxKw) * 1.34102209);
           const resolvedIceSpec = ICE_METALLURGY_2026[resolveIceMetallurgyId(vehicleParamsDraft.iceMetallurgyId, vehicleParamsDraft.iceMaterial)];
           const displayedIceWeightKg = 142 + resolvedIceSpec.massDeltaKg;
           const baseBatteryWeightKg =
@@ -4476,6 +4832,112 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             : engineChoice === 'bought_factory'
             ? AVAILABLE_FACTORIES[selectedFactoryId].name
             : 'In-House Fênix';
+
+          const philosophyCodeM02 = normalizeToM02Philosophy(philosophy);
+          const philosophyDisplayMap: Record<VehiclePhilosophyCode, string> = {
+            low_drag: 'Baixo Arrasto (Low Drag)',
+            high_downforce: 'Alta Carga (High Downforce)',
+            stable_platform: 'Plataforma Estável',
+            aero_efficiency: 'Eficiência Aerodinâmica (L/D)',
+            mechanical_grip: 'Aderência Mecânica',
+            balanced_adaptive: 'Equilibrado / Adaptativo',
+          };
+          const philosophyDisplayLabel = philosophyDisplayMap[philosophyCodeM02];
+
+          const headPuProfileInfo = hiredHeadPuObj ? getStaffFullProfile(hiredHeadPuObj) : null;
+          const headAeroProfileInfo = hiredHeadAeroObj ? getStaffFullProfile(hiredHeadAeroObj) : null;
+
+          const boardroomVerdictStep5 = evaluateBoardroomPuVerdict({
+            vehicleParams: vehicleParamsDraft,
+            puOutputs: m08Live,
+            relFinalPct: relFinalCalculado,
+            headPuName: hiredHeadPuObj?.name || 'Gabriel Santos',
+            headPuTag: headPuProfileInfo?.staffPhilosophyTag || 'INOVADOR',
+            headAeroName: hiredHeadAeroObj?.name || 'Marcus Vance',
+            headAeroTag: headAeroProfileInfo?.staffPhilosophyTag || 'ALTO DOWNFORCE',
+            philosophyCode: philosophyCodeM02,
+            philosophyName: philosophyDisplayLabel,
+            requiresLargerSidepods: Boolean(activeThirdPartyErs?.requiresLargerSidepods || engineChoice === 'customer'),
+          });
+
+          // Detecção de customização pelo jogador vs gabarito original de fábrica
+          const modifiedParamCount =
+            (isBlockAngleChanged ? 1 : 0) +
+            (isPistonStrokeChanged ? 1 : 0) +
+            (isTurboLayoutChanged ? 1 : 0) +
+            (isBlocoChanged ? 1 : 0) +
+            (isVirabrequimChanged ? 1 : 0) +
+            (isBateriaChanged ? 1 : 0) +
+            (isErsArqChanged ? 1 : 0) +
+            (isEficPotChanged ? 1 : 0) +
+            (isTorqueChanged ? 1 : 0) +
+            (isCombustivelChanged ? 1 : 0) +
+            (isErsSoftChanged ? 1 : 0) +
+            (isAntiClipChanged ? 1 : 0) +
+            (Math.abs(liveCompRatio - 15.2) >= 0.2 ? 1 : 0) +
+            (activeThirdPartyErs ? 1 : 0);
+          const isPlayerModifiedProject =
+            (engineChoice === 'bought_factory' || engineChoice === 'phoenix') &&
+            (modifiedParamCount > 0 || modifiedWeeks > 0 || totalIndustrialChanges > 0);
+          const customizationExtraCostUsd = Math.max(0, custoPrototipo - 2000000) + (softwareDelayWeeks * 250000);
+          const baseFactoryRel =
+            engineChoice === 'bought_factory'
+              ? Math.max(70, AVAILABLE_FACTORIES[selectedFactoryId].rel)
+              : 76;
+          const netRelDeltaVsBase = relFinalCalculado - baseFactoryRel;
+
+          const baseFactoryM08 = evaluatePowerUnit(
+            {
+              ...DEFAULT_VEHICLE_PARAMS,
+              iceMetallurgyId:
+                engineChoice === 'bought_factory' && selectedFactoryId === 'porsche'
+                  ? 'ferrari_steel_head'
+                  : 'fia_iron_ams6487',
+            },
+            {
+              rpm: 11600,
+              throttleRatio: 1.0,
+              vehicleSpeedMs: 75,
+              ambientTempK: 298.15,
+              airPressurePa: 101325,
+              initialSoc01: 0.72,
+              cycleDurationS: 5.0,
+              regenPowerCommandW: 110000,
+              deployCommandRatio: Math.max(0.25, Math.min(1.0, DEFAULT_VEHICLE_PARAMS.ersDeployBiasPct / 85)),
+              cumulativeRaceCycles: 120,
+            },
+            FIA_2026_DEFAULT_EDITION
+          );
+          const baseFactoryIceHp = Math.round(
+            ((baseFactoryM08.shaftAndIce.icePowerW / 1000) * 1.34102209) *
+              (1 + combinedLeadershipDna.puPowerDeltaPct / 100)
+          );
+          const baseFactoryCombinedPowerHp =
+            baseFactoryIceHp + Math.round(Math.min(350, DEFAULT_VEHICLE_PARAMS.mgukMaxKw) * 1.34102209);
+          const netPowerDeltaVsBase = peakCombinedPowerHp - baseFactoryCombinedPowerHp;
+
+          const defaultCustomEngineName =
+            engineChoice === 'customer'
+              ? CUSTOMER_ENGINES[customerSupplier].fullName
+              : isEmergency
+              ? `${effectiveEmergencySupplier} Emergencial`
+              : `${(customTeamShort || 'APX').toUpperCase()}-01 Evo`;
+          const effectiveCustomEngineName = customEngineName.trim() || defaultCustomEngineName;
+
+          const officialCardMetrics = computeNormalizedOfficialPuCard({
+            vehicleParams: vehicleParamsDraft,
+            puOutputs: m08Live,
+            displayedPowerHp: peakCombinedPowerHp,
+            relFinalCalculado,
+            iceWeightKg: displayedIceWeightKg,
+            batteryWeightKg: displayedBatteryWeightKg,
+            fuelPartner,
+            activeThirdPartyErsName: activeThirdPartyErs?.supplier || null,
+            requiresLargerSidepods: Boolean(activeThirdPartyErs?.requiresLargerSidepods || engineChoice === 'customer'),
+            dnaLabel: `${selectedBackground.name} · ${philosophyDisplayLabel}`,
+            engineOrigin: isEmergency ? 'customer' : engineChoice,
+            isYear1Project: careerPath === 'custom_team' && !isEmergency && engineChoice !== 'customer',
+          });
 
           // Sinergia / Balanço Térmico ICE + ERS reage diretamente a Turbo, Compressão, Bateria e Margem M08
           const turboThermalPenalty = liveTurboDiamMm > 91 ? Math.round((liveTurboDiamMm - 91) * 1.2) : 0;
@@ -4547,22 +5009,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           // Impacto Técnico conectado com GDD Seção 20 e 21 (Aerodinâmica e Filosofia do Carro)
           const computeChassisAndAeroImpact = (): string => {
             if (isEmergency) {
-              return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): Integração emergencial do bloco ${effectiveEmergencySupplier} altera os pontos de fixação no monocoque (+15% de erro de correlação no túnel de vento). ${EMERGENCY_ENGINE_OPTIONS[effectiveEmergencySupplier].penaltyDetail}`;
+              return `Integração emergencial do bloco ${effectiveEmergencySupplier} altera os pontos de fixação no monocoque (+15% de erro de correlação no túnel de vento). ${EMERGENCY_ENGINE_OPTIONS[effectiveEmergencySupplier].penaltyDetail}`;
             }
             if (engineChoice === 'customer' || Boolean(activeThirdPartyErs)) {
               const dragLossKmh = activeThirdPartyErs?.requiresLargerSidepods || engineChoice === 'customer' ? '2 a 3 km/h' : '1 a 2 km/h';
-              return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): A ausência de integração nativa do ERS exige tubulações externas para refrigerar o MGU-K, alargando os sidepods (+4% de Arrasto / Drag). Você perde cerca de ${dragLossKmh} em retas longas (Monza/Baku), mas o volume extra traseiro pode alimentar um difusor mais agressivo e dar estabilidade em curvas lentas.`;
+              return `Ausência de integração nativa do ERS exige tubulações externas para refrigerar o MGU-K, alargando os sidepods (+4% de Arrasto / +${displayedBatteryWeightKg - 35} kg). Você perde cerca de ${dragLossKmh} em retas longas, mas o volume traseiro estabiliza curvas lentas.`;
             }
             if (resolvedIceSpec.id === 'ferrari_steel_head') {
-              return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): O cabeçote de aço especial suporta temperaturas mais altas e permite sidepods mais estreitos (-3% de Arrasto / +2 km/h na reta), favorecendo a filosofia Aero Efficiency apesar dos +8 kg na traseira.`;
+              return `O cabeçote de aço especial suporta calor extremo e permite sidepods mais estreitos (-3% de Arrasto / +2 km/h na reta), favorecendo ${philosophyDisplayLabel} apesar de +8 kg extras na traseira.`;
             }
             if (liveTurboDiamMm >= 98 || liveCompRatio >= 15.8) {
-              return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): A carga térmica elevada de compressão/turbo obriga abrir as saídas de ar quente (+3% de Arrasto / -2 km/h em reta), prejudicando configurações Low Drag para proteger o conjunto ICE + ERS.`;
+              return `A carga térmica elevada obriga abrir as saídas de ar quente (+3% de Arrasto / -2 km/h em reta), penalizando a aerodinâmica para proteger o conjunto ICE + ERS.`;
             }
             if (liveBatteryTech === 'dense_pack') {
-              return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): O Pack Alta Densidade adiciona +6 kg no assoalho central, reduzindo agilidade em chicanes (-0,08s em curvas rápidas) e exigindo ajuste de lastro frontal para manter o equilíbrio aerodinâmico.`;
+              return `O Pack Alta Densidade adiciona +6 kg no assoalho central, exigindo ajuste de balanço das asas para manter a agilidade em chicanes.`;
             }
-            return `Impacto Técnico (Aero & Chassi — GDD Seção 20/21): Empacotamento compacto favorece a filosofia Aero Efficiency — permite cintura traseira estreita ("coke bottle") para ganhar downforce no difusor sem sacrificar velocidade máxima nas retas.`;
+            return `Empacotamento compacto (${displayedIceWeightKg + displayedBatteryWeightKg} kg totais) libera cintura traseira estreita ("Coke Bottle") para ganhar +3% de downforce no difusor sem sacrificar velocidade máxima.`;
           };
 
           // Apply live M08 SI values onto the Dossier
@@ -4625,10 +5087,31 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             if (engineChoice === 'bought_factory') {
               const factoryName = AVAILABLE_FACTORIES[selectedFactoryId].name;
               const missingOwnErs = !activeThirdPartyErs && selectedFactoryId === 'cosworth';
+              if (activeThirdPartyErs) {
+                const originAdj =
+                  activeThirdPartyErs.supplier === 'Mercedes'
+                    ? 'alemã'
+                    : activeThirdPartyErs.supplier === 'Ferrari'
+                    ? 'italiana'
+                    : activeThirdPartyErs.supplier === 'Honda'
+                    ? 'japonesa'
+                    : activeThirdPartyErs.supplier === 'Audi'
+                    ? 'alemã'
+                    : 'anglo-americana';
+                const blockOriginAdj =
+                  selectedFactoryId === 'cosworth'
+                    ? 'inglesa'
+                    : selectedFactoryId === 'porsche' || selectedFactoryId === 'bmw'
+                    ? 'alemã'
+                    : selectedFactoryId === 'renault'
+                    ? 'francesa'
+                    : 'japonesa';
+                return `O bloco ${factoryName} é leve, mas casar o ERS da ${activeThirdPartyErs.supplier} com ele foi um parto. A fiação externa e o calor gerado pela bateria ${originAdj} estão estressando a base ${blockOriginAdj} (sincronia ${dossier.integration.thermalSync}%)${
+                  weightPenaltyKg > 0 ? `, além de adicionar +${weightPenaltyKg} kg na traseira.` : '.'
+                }`;
+              }
               return `Assumimos a base ${factoryName} com ${pistonBrief} (sincronia ${dossier.integration.thermalSync}%). ${
-                activeThirdPartyErs
-                  ? `Integramos o ERS da ${activeThirdPartyErs.supplier}, o que garante entrega de 350 kW mas exige adaptações externas no chassi`
-                  : missingOwnErs
+                missingOwnErs
                   ? 'Como o pacote Cosworth não traz ERS nativo, dependemos de unidade elétrica de terceiros e sua fiação externa'
                   : `O calor do MGU-K (${Math.round(m08Live.thermalAndLubrication.heatElectricalW / 1000)} kW elétricos) combinado ao ICE está pressionando a área do cockpit`
               }${weightPenaltyKg > 0 ? `, com +${weightPenaltyKg} kg extras no conjunto de baterias.` : '.'}`;
@@ -4644,13 +5127,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             <div className="space-y-6">
               <div className="space-y-1">
                 <span className="text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
-                  FASE 4 · ETAPA 02: DOSSIÊ TÉCNICO, BANCADA & DINAMÔMETRO
+                  FASE 5 · ETAPA 02: DOSSIÊ TÉCNICO, BANCADA & DINAMÔMETRO
                 </span>
                 <h2 className="font-f1-wide font-black text-2xl sm:text-3xl text-white uppercase">
                   Dossiê Técnico & Gabarito do Motor
                 </h2>
                 <p className="text-sm text-zinc-400">
-                  Especificações detalhadas de combustão, cadeia elétrica e integração termo-mecânica para liberação no CAD.
+                  Ajuste o comportamento do motor e valide o equilíbrio com o conceito aerodinâmico aprovado na Fase 4 antes de homologar na FIA.
                 </p>
               </div>
 
@@ -4660,20 +5143,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   <div className="flex items-center gap-3">
                     <span className="w-3.5 h-3.5 bg-[#E10600] inline-block shrink-0 shadow-[0_0_8px_#E10600]" />
                     <div>
-                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase tracking-widest block">UNIDADE DE POTÊNCIA HOMOLOGADA (FIA 2026)</span>
+                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase tracking-widest block">
+                        {motorHomologadoFIA ? 'UNIDADE DE POTÊNCIA HOMOLOGADA (FIA 2026)' : 'PROJETO DE UNIDADE DE POTÊNCIA (FIA 2026)'}
+                      </span>
                       <div className="flex flex-wrap items-center gap-2 mt-0.5">
                         <span className="font-f1-wide font-black text-base sm:text-lg text-white uppercase tracking-wider">
-                          {engineFullName}
+                          {motorHomologadoFIA ? effectiveCustomEngineName : engineFullName}
                         </span>
                         {motorHomologadoFIA ? (
-                          <span className="text-[10px] font-f1-mono bg-zinc-800 text-amber-400 border border-amber-500/40 px-2 py-0.5 font-bold uppercase inline-flex items-center gap-1 shadow-sm">
-                            <Lock className="w-3 h-3 text-amber-400" />
-                            <span>MOTOR HOMOLOGADO 🔒</span>
+                          <span className="text-[10px] font-f1-mono bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 font-bold uppercase inline-flex items-center gap-1 shadow-sm">
+                            <Lock className="w-3 h-3 text-emerald-400" />
+                            <span>HOMOLOGADO FIA 🔒</span>
                           </span>
                         ) : (
                           <span className="text-[10px] font-f1-mono bg-amber-500/20 text-amber-300 border border-amber-500/50 px-2.5 py-0.5 font-bold uppercase inline-flex items-center gap-1.5 shadow-sm">
                             <Wrench className="w-3 h-3 text-amber-400" />
                             <span>PROJETO PRÉ-HOMOLOGADO (EDITÁVEL)</span>
+                          </span>
+                        )}
+                        {isPlayerModifiedProject && (
+                          <span className="text-[10px] font-f1-mono bg-cyan-950/60 text-cyan-300 border border-cyan-500/50 px-2.5 py-0.5 font-bold uppercase inline-flex items-center gap-1.5">
+                            <span>🛠️ PROJETO MODIFICADO PELO JOGADOR</span>
                           </span>
                         )}
                       </div>
@@ -4686,10 +5176,83 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       </span>
                     ) : (
                       <span className="text-xs font-f1-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 font-bold shrink-0">
-                        GABARITO: HOMOLOGAÇÃO 2026
+                        FILOSOFIA: {philosophyDisplayLabel.toUpperCase()}
                       </span>
                     )}
                   </div>
+                </div>
+
+                {/* CHECKLIST DE ALINHAMENTO (FASE 3/4 ↔ FASE 5) + HISTÓRICO DE CUSTOMIZAÇÃO DE FÁBRICA */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                  <div className={`${isPlayerModifiedProject ? 'lg:col-span-7' : 'lg:col-span-12'} bg-[#15151E] border border-white/10 p-3.5 space-y-2 text-xs font-f1-mono`}>
+                    <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                      <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+                        Checklist de Alinhamento · Diretoria (Fase 3) & Conceito (Fase 4)
+                      </span>
+                      <span className="text-[10px] text-zinc-400">{boardroomVerdictStep5.chassisRdDelayNote}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className={`p-2.5 border flex items-center justify-between gap-2 ${
+                        boardroomVerdictStep5.puAlignmentPct >= 75
+                          ? 'bg-emerald-950/20 border-emerald-500/35 text-emerald-200'
+                          : 'bg-amber-950/25 border-amber-500/40 text-amber-200'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          {boardroomVerdictStep5.puAlignmentPct >= 75 ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                          )}
+                          <span>Alinhamento com Chefe de PU ({boardroomVerdictStep5.puChiefName})</span>
+                        </div>
+                        <strong className="tabular-nums text-white">{boardroomVerdictStep5.puAlignmentPct}%</strong>
+                      </div>
+
+                      <div className={`p-2.5 border flex items-center justify-between gap-2 ${
+                        boardroomVerdictStep5.aeroAlignmentPct >= 75
+                          ? 'bg-emerald-950/20 border-emerald-500/35 text-emerald-200'
+                          : 'bg-red-950/25 border-red-500/40 text-red-200'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          {boardroomVerdictStep5.aeroAlignmentPct >= 75 ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                          )}
+                          <span>Alinhamento com Chefe de Aero ({boardroomVerdictStep5.aeroChiefName})</span>
+                        </div>
+                        <strong className="tabular-nums text-white">{boardroomVerdictStep5.aeroAlignmentPct}%</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isPlayerModifiedProject && (
+                    <div className="lg:col-span-5 bg-cyan-950/20 border border-cyan-500/40 p-3.5 space-y-1.5 text-xs font-f1-mono">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-cyan-300 uppercase">
+                          Fábrica Customizada pelo Jogador
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-300 tabular-nums">
+                          Trade-offs aplicados ({modifiedParamCount})
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-zinc-200 leading-snug">
+                        Alterações no Projeto:{' '}
+                        <strong className={netRelDeltaVsBase >= 0 ? 'text-emerald-400' : 'text-amber-300'}>
+                          {netRelDeltaVsBase >= 0 ? `+${netRelDeltaVsBase}%` : `${netRelDeltaVsBase}%`} confiabilidade
+                        </strong>{' '}
+                        |{' '}
+                        <strong className={netPowerDeltaVsBase >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {netPowerDeltaVsBase >= 0 ? `+${netPowerDeltaVsBase}` : `${netPowerDeltaVsBase}`} CV
+                        </strong>{' '}
+                        <span className="text-zinc-400 tabular-nums">(Total: {peakCombinedPowerHp} CV)</span>.
+                      </div>
+                      <div className="text-[11px] text-amber-300 font-bold pt-1 border-t border-cyan-500/20 tabular-nums">
+                        Custo de Customização: ${(customizationExtraCostUsd / 1000000).toFixed(1)}M{' '}
+                        <span className="text-zinc-400 font-normal">(Horas extras de usinagem e testes)</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Nota de Congelamento / Pré-Homologação FIA */}
@@ -4698,14 +5261,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <>
                       <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>
-                        <strong className="text-amber-400">Nota FIA:</strong> O hardware desta PU está congelado até o fim da temporada. Modificações permitidas apenas via Software ou Janelas ADUO.
+                        <strong className="text-amber-400">Nota FIA:</strong> O hardware de {effectiveCustomEngineName} está congelado até o fim da temporada. Modificações permitidas apenas via Software ou Janelas ADUO.
                       </span>
                     </>
                   ) : (
                     <>
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>
-                        <strong className="text-amber-400">Nota FIA:</strong> O prazo de homologação é no fim da pré-temporada. Você ainda pode alterar a arquitetura do motor, mas isso custará tempo de desenvolvimento.
+                        <strong className="text-amber-400">Nota FIA:</strong> O prazo de homologação é no fim da pré-temporada. Você ainda pode ajustar a bancada, mas modificações estruturais consomem semanas e orçamento.
                       </span>
                     </>
                   )}
@@ -4750,6 +5313,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     )}
                   </button>
 
+                  {motorHomologadoFIA && !dynamoFailed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playRadioSound();
+                        setShowDynamoReportModal(true);
+                      }}
+                      className="w-full sm:w-auto px-5 py-3 border border-emerald-500/40 bg-emerald-950/25 hover:bg-emerald-950/45 text-emerald-300 font-f1-wide font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Shield className="w-4 h-4 text-emerald-400" />
+                      <span>VER CARD OFICIAL HOMOLOGADO</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -4765,8 +5342,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   >
                     {motorHomologadoFIA ? (
                       <>
-                        <Compass className="w-4 h-4" />
-                        <span>Avançar para Filosofia do Carro (M02)</span>
+                        <Users className="w-4 h-4" />
+                        <span>Avançar para Equipe de Pista (Fase 6)</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     ) : (
@@ -4826,6 +5403,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     ? ['fia_iron_ams6487', 'ferrari_steel_head', 'lightweight_lithium', 'dense_pack']
                     : ['fia_iron_ams6487', 'lightweight_lithium', 'dense_pack']
                 }
+                headPuName={hiredHeadPuObj?.name || 'Gabriel Santos'}
+                headPuTag={headPuProfileInfo?.staffPhilosophyTag || 'INOVADOR'}
+                headAeroName={hiredHeadAeroObj?.name || 'Marcus Vance'}
+                headAeroTag={headAeroProfileInfo?.staffPhilosophyTag || 'ALTO DOWNFORCE'}
+                philosophyCode={philosophyCodeM02}
+                philosophyName={philosophyDisplayLabel}
+                fuelPartner={fuelPartner}
+                relFinalPct={relFinalCalculado}
+                requiresLargerSidepods={Boolean(activeThirdPartyErs?.requiresLargerSidepods || engineChoice === 'customer')}
+                isBoughtFactoryModified={isPlayerModifiedProject}
+                modifiedParamsCount={modifiedParamCount}
               />
 
               {/* 3 CARDS GRANDES: ICE, ERS, CASAMENTO E INTEGRAÇÃO */}
@@ -5243,8 +5831,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 >
                   {motorHomologadoFIA ? (
                     <>
-                      <Compass className="w-4 h-4" />
-                      <span>Avançar para Filosofia do Carro (M02)</span>
+                      <Users className="w-4 h-4" />
+                      <span>Avançar para Equipe de Pista (Fase 6)</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   ) : (
@@ -5605,7 +6193,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                           <div className="font-f1-wide font-black text-xs text-white uppercase truncate" title={baseArch.injectionType}>
                             {baseArch.injectionType}
                           </div>
-                          <span className="text-[8px] font-f1-mono text-zinc-500 block">Bicos & câmara 500 bar</span>
+                          <span className="text-[8px] font-f1-mono text-zinc-500 block">Injeção direta de alta pressão FIA</span>
                         </div>
                       </div>
                     </div>
@@ -5680,9 +6268,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                               : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
                           }`}>
                             <div>
-                              Compatibilidade ICE × ERS {activeThirdPartyErs.supplier}:{' '}
+                              Acoplamento ICE × ERS {activeThirdPartyErs.supplier}:{' '}
                               <span className="tabular-nums">
-                                {activeErsHarmonyInfo.delta >= 0 ? `+${activeErsHarmonyInfo.delta}%` : `${activeErsHarmonyInfo.delta}%`} Harmonia
+                                {activeErsHarmonyInfo.delta >= 0 ? `+${activeErsHarmonyInfo.delta}%` : `${activeErsHarmonyInfo.delta}%`} no desempenho e harmonia
                               </span>
                             </div>
                             <div className="text-[9px] font-normal opacity-90 mt-0.5">{activeErsHarmonyInfo.reason}</div>
@@ -5703,7 +6291,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                         </div>
 
                         <div className="space-y-1.5 pt-0.5">
-                          {/* Custo do Protótipo */}
+                          {/* Custo do Protótipo + Customização */}
                           <div className="bg-[#1C1C26] p-2 border border-white/5 space-y-0.5">
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] text-zinc-400 uppercase">Custo do Protótipo:</span>
@@ -5714,6 +6302,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                             <span className="text-[9px] text-zinc-500 block leading-tight">
                               Base: $2.0M {totalIndustrialChanges > 0 ? `+ $${(totalIndustrialChanges * 0.5).toFixed(1)}M (${totalIndustrialChanges} mod.)` : ''}{activeThirdPartyErs ? ` + ${activeThirdPartyErs.costText} (ERS ${activeThirdPartyErs.supplier})` : totalIndustrialChanges === 0 ? '(Sem alterações físicas)' : ''}
                             </span>
+                            {totalIndustrialChanges > 0 && (
+                              <div className="text-[10px] text-amber-300 font-bold pt-1 border-t border-white/5 tabular-nums">
+                                Custo de Customização: ${((custoPrototipo - 2000000) / 1000000).toFixed(1)}M (Horas extras de usinagem e testes)
+                              </div>
+                            )}
                           </div>
 
                           {/* Custo de Produção */}
@@ -5979,22 +6572,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                           </div>
 
                           {activeThirdPartyErs ? (
-                            <div className="space-y-2">
-                              <p className="text-xs text-emerald-300 font-f1-mono leading-relaxed">
-                                ✓ <strong>{activeThirdPartyErs.fullName}</strong>: {activeThirdPartyErs.tradeoffSummary}
-                              </p>
-                              <div className="grid grid-cols-3 gap-1.5 text-[10px] font-f1-mono bg-[#15151E] p-2 border border-white/5">
-                                <div>
-                                  <span className="text-zinc-500 block">PESO ERS</span>
-                                  <span className="text-white font-bold">{activeThirdPartyErs.weightKg} kg ({activeThirdPartyErs.weightDeltaKg >= 0 ? `+${activeThirdPartyErs.weightDeltaKg}` : activeThirdPartyErs.weightDeltaKg}kg)</span>
+                            <div className="space-y-2 text-[10px] font-f1-mono">
+                              <div className="text-xs text-emerald-300 leading-relaxed">
+                                ✓ <strong>{activeThirdPartyErs.fullName}</strong>
+                              </div>
+                              <div className="bg-[#15151E] p-2.5 border border-white/5 space-y-2">
+                                <div className="grid grid-cols-3 gap-1.5 pb-1.5 border-b border-white/5">
+                                  <div>
+                                    <span className="text-zinc-500 block">HARDWARE · PESO</span>
+                                    <span className="text-white font-bold tabular-nums">
+                                      {activeThirdPartyErs.weightKg} kg ({activeThirdPartyErs.weightDeltaKg === 0 ? 'Base' : `${activeThirdPartyErs.weightDeltaKg > 0 ? `+${activeThirdPartyErs.weightDeltaKg}` : activeThirdPartyErs.weightDeltaKg}kg`})
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500 block">CONFIABILIDADE</span>
+                                    <span className="text-cyan-300 font-bold tabular-nums">{activeThirdPartyErs.reliabilityScore}/100</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500 block">INSTALAÇÃO</span>
+                                    <span className="text-amber-300 font-bold tabular-nums">{activeThirdPartyErs.costText} · +{activeThirdPartyErs.delayWeeks} sem.</span>
+                                  </div>
                                 </div>
-                                <div>
-                                  <span className="text-zinc-500 block">CONFIABILIDADE</span>
-                                  <span className="text-cyan-300 font-bold">{activeThirdPartyErs.reliabilityScore}/100</span>
+                                <div className="text-zinc-300 leading-snug">
+                                  <span className="text-blue-300 font-bold">Software:</span> {activeThirdPartyErs.softwareDeployLabel} · {activeThirdPartyErs.softwareControlNote}
                                 </div>
-                                <div>
-                                  <span className="text-zinc-500 block">IMPACTO</span>
-                                  <span className="text-amber-300 font-bold">{activeThirdPartyErs.costText} · +{activeThirdPartyErs.delayWeeks} sem.</span>
+                                <div className="text-zinc-300 leading-snug pt-1 border-t border-white/5">
+                                  <span className="text-amber-300 font-bold">Integração no Carro:</span> {activeThirdPartyErs.aeroImpactText}
                                 </div>
                               </div>
                             </div>
@@ -6321,26 +6924,29 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
               {/* MODAL DE SELEÇÃO DE FORNECEDOR DE ERS (5 MONTADORAS) */}
               {showErsMarketModal && (
                 <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-                  <div className="bg-[#1C1C26] border-2 border-cyan-500/60 max-w-5xl w-full p-5 sm:p-6 f1-container-bucket space-y-5 shadow-2xl animate-in zoom-in-95 my-auto">
-                    <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                      <div>
+                  <div className="bg-[#1C1C26] border-2 border-cyan-500/60 max-w-[1360px] w-full p-5 sm:p-6 f1-container-bucket space-y-5 shadow-2xl animate-in zoom-in-95 my-auto">
+                    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                      <div className="space-y-1">
                         <span className="text-[10px] font-f1-mono text-cyan-400 font-bold uppercase tracking-widest block">
                           MERCADO DE SUBSISTEMAS ELÉTRICOS · 350KW FIA 2026
                         </span>
                         <h3 className="font-f1-wide font-black text-lg text-white uppercase tracking-wider">
                           SELECIONAR FORNECEDOR DE ERS
                         </h3>
+                        <p className="text-[11px] font-f1-mono text-zinc-400">
+                          Cada pacote separa o <strong className="text-cyan-300">Hardware Elétrico</strong>, o <strong className="text-blue-300">Software de Controle</strong> e a <strong className="text-amber-300">Integração no Carro</strong> (acoplamento com o ICE e demanda nos Sidepods).
+                        </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowErsMarketModal(false)}
-                        className="p-2 border border-white/10 bg-[#15151E] hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                        className="p-2 border border-white/10 bg-[#15151E] hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer shrink-0"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3.5 items-stretch">
                       {(['Mercedes', 'Ferrari', 'Honda', 'Red Bull-Ford', 'Audi'] as CustomerEngineSupplier[]).map((sup) => {
                         const opt = THIRD_PARTY_ERS_OPTIONS[sup];
                         const isSelected = thirdPartyErsSupplier === sup;
@@ -6349,54 +6955,105 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                         return (
                           <div
                             key={sup}
-                            className={`p-3.5 border flex flex-col justify-between space-y-3 transition-all ${
+                            className={`p-4 border flex flex-col justify-between gap-4 transition-all ${
                               isSelected
                                 ? 'bg-[#15151E] border-cyan-400 ring-1 ring-cyan-400'
                                 : 'bg-[#15151E] border-white/10 hover:border-white/30'
                             }`}
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-2">
-                                <span className="font-f1-wide font-black text-xs text-white uppercase">
-                                  {sup}
-                                </span>
-                                <span className="text-[10px] font-f1-mono font-bold text-amber-300 tabular-nums">
+                            <div className="space-y-3">
+                              {/* Cabeçalho do Fornecedor */}
+                              <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2.5">
+                                <div>
+                                  <span className="font-f1-wide font-black text-sm text-white uppercase block leading-tight">
+                                    {sup}
+                                  </span>
+                                  <span className="text-[10px] font-f1-mono text-zinc-400 block mt-0.5">
+                                    {opt.fullName}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-f1-mono font-bold text-amber-300 tabular-nums whitespace-nowrap shrink-0">
                                   {opt.costText}
                                 </span>
                               </div>
 
-                              <div className="space-y-1 text-[10px] font-f1-mono">
-                                <div className="flex justify-between">
-                                  <span className="text-zinc-400">Integração:</span>
-                                  <span className="text-white font-bold">+{opt.delayWeeks} {opt.delayWeeks === 1 ? 'semana' : 'semanas'}</span>
+                              {/* 1. HARDWARE ELÉTRICO (350kW) */}
+                              <div className="space-y-1.5 text-[11px] font-f1-mono">
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+                                  <Zap className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Hardware Elétrico (350kW)</span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-zinc-400">Peso:</span>
-                                  <span className={opt.weightDeltaKg < 0 ? 'text-emerald-400 font-bold' : 'text-zinc-200 font-bold'}>
-                                    {opt.weightKg} kg ({opt.weightDeltaKg >= 0 ? `+${opt.weightDeltaKg}` : opt.weightDeltaKg}kg)
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-400">Peso do Pack:</span>
+                                  <span className={`font-bold tabular-nums text-right ${opt.weightDeltaKg < 0 ? 'text-emerald-400' : opt.weightDeltaKg > 0 ? 'text-amber-300' : 'text-zinc-200'}`}>
+                                    {opt.weightKg} kg ({opt.weightDeltaKg === 0 ? 'Base' : `${opt.weightDeltaKg > 0 ? `+${opt.weightDeltaKg}` : opt.weightDeltaKg}kg vs. Base`})
                                   </span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-zinc-400">Confiabilidade:</span>
-                                  <span className="text-cyan-300 font-bold">{opt.reliabilityScore}/100</span>
-                                </div>
-                                <div className="pt-1 border-t border-white/5">
-                                  <span className="text-zinc-500 block">Refrigeração:</span>
-                                  <span className={`font-bold leading-tight block ${opt.coolingScore < 60 ? 'text-red-400' : 'text-zinc-300'}`}>
-                                    {opt.coolingLabel}
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-400">Confiabilidade Base:</span>
+                                  <span className={`font-bold tabular-nums ${opt.reliabilityScore >= 85 ? 'text-cyan-300' : opt.reliabilityScore < 70 ? 'text-red-400' : 'text-zinc-200'}`}>
+                                    {opt.reliabilityScore}/100
                                   </span>
                                 </div>
-                                <div className="pt-1 border-t border-white/5 flex justify-between">
-                                  <span className="text-zinc-400">Harmonia c/ ICE:</span>
-                                  <span className={`font-bold tabular-nums ${harmonyPreview.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {harmonyPreview.delta >= 0 ? `+${harmonyPreview.delta}%` : `${harmonyPreview.delta}%`}
+                                <p className="text-[10px] text-zinc-400 leading-snug pt-0.5">
+                                  {opt.hardwareNote}
+                                </p>
+                              </div>
+
+                              {/* 2. SOFTWARE & CONTROLE */}
+                              <div className="pt-2.5 border-t border-white/10 space-y-1.5 text-[11px] font-f1-mono">
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                                  <Cpu className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Software & Controle</span>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-400 block text-[10px]">Deploy & Eficiência:</span>
+                                  <span className="text-white font-bold leading-snug block">
+                                    {opt.softwareDeployLabel}
                                   </span>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-400 block text-[10px]">Segurança & Sliders:</span>
+                                  <p className="text-[10px] text-zinc-300 leading-snug">
+                                    {opt.softwareControlNote}
+                                  </p>
                                 </div>
                               </div>
 
-                              <div className="bg-[#1C1C26] border border-white/10 p-2 text-[10px] font-f1-mono space-y-1">
-                                <div className="text-white font-bold leading-tight">{opt.tradeoffTitle}</div>
-                                <p className="text-zinc-400 leading-snug">{opt.tradeoffSummary}</p>
+                              {/* 3. INTEGRAÇÃO NO CARRO */}
+                              <div className="pt-2.5 border-t border-white/10 space-y-2 text-[11px] font-f1-mono">
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                                  <Wrench className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Integração no Carro</span>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between gap-2">
+                                    <span className="text-zinc-400">Acoplamento c/ Motor:</span>
+                                    <span className={`font-bold tabular-nums ${harmonyPreview.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {harmonyPreview.delta >= 0 ? `+${harmonyPreview.delta}%` : `${harmonyPreview.delta}%`}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-zinc-400 leading-snug mt-0.5">
+                                    {harmonyPreview.delta >= 0
+                                      ? `Soma ao desempenho final e harmonia do motor (${harmonyPreview.reason}).`
+                                      : `Aplicado como penalidade direta ao desempenho final do motor e margem de quebra (${harmonyPreview.reason}).`}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-400 block text-[10px]">Impacto Aerodinâmico:</span>
+                                  <span className={`font-bold leading-snug block ${opt.requiresLargerSidepods || opt.coolingScore < 65 ? 'text-amber-300' : 'text-emerald-400'}`}>
+                                    {opt.aeroDemandLevel}
+                                  </span>
+                                  <p className="text-[10px] text-zinc-300 leading-snug mt-0.5">
+                                    {opt.aeroImpactText}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between gap-2 pt-1 border-t border-white/5">
+                                  <span className="text-zinc-400">Tempo de Instalação:</span>
+                                  <span className="text-white font-bold tabular-nums">
+                                    +{opt.delayWeeks} {opt.delayWeeks === 1 ? 'Semana' : 'Semanas'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
@@ -6427,7 +7084,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                                 }
                                 setShowErsMarketModal(false);
                               }}
-                              className={`w-full py-2 font-f1-wide font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                              className={`w-full py-2.5 font-f1-wide font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                                 isSelected
                                   ? 'bg-emerald-600 text-white'
                                   : 'bg-[#E10600] hover:bg-[#c20500] text-white'
@@ -6724,14 +7381,303 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                           </div>
                         </div>
                       </div>
+                    ) : motorHomologadoFIA ? (
+                      /* CENÁRIO 3 (PÓS-HOMOLOGAÇÃO FIA): CARD PADRONIZADO DO MOTOR OFICIAL DA EQUIPE */
+                      <div className="space-y-5">
+                        {/* Cabeçalho do Card Oficial Homologado */}
+                        <div className="bg-[#15151E] border border-emerald-500/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-f1-mono bg-emerald-600 text-white px-2.5 py-0.5 font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                                <Lock className="w-3 h-3" />
+                                <span>UNIDADE DE POTÊNCIA HOMOLOGADA</span>
+                              </span>
+                              <span className="text-[10px] font-f1-mono text-cyan-300 bg-cyan-950/50 border border-cyan-500/30 px-2 py-0.5 uppercase font-bold">
+                                DNA: {officialCardMetrics.dnaBadge}
+                              </span>
+                            </div>
+                            <h3 className="font-f1-wide font-black text-xl text-white uppercase tracking-wider mt-1.5">
+                              {effectiveCustomEngineName} 2026
+                            </h3>
+                          </div>
+                          <div className="text-left sm:text-right font-f1-mono shrink-0">
+                            <span className="text-[10px] text-zinc-400 uppercase block">Custo de Produção</span>
+                            <span className="text-sm font-black text-emerald-400 tabular-nums">
+                              -${(custoProducaoTotal / 1000000).toFixed(1)}M (Pago)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Formato Padrão de 2 Colunas (Igual aos Cards de Fornecedores) */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          {/* Coluna Esquerda: 5 Barras Visuais 0-100 */}
+                          <div className="space-y-3 bg-[#15151E] p-4 border border-white/10">
+                            <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block font-bold tracking-wider">
+                              ATRIBUTOS OFICIAIS HOMOLOGADOS (FIA 2026)
+                            </span>
+
+                            {/* 1. Potência de Pico */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-xs font-f1-mono">
+                                <span className="text-zinc-300 font-bold">POTÊNCIA DE PICO ({officialCardMetrics.totalPowerCv} CV)</span>
+                                <span className="text-white font-bold tabular-nums">{officialCardMetrics.powerScore} / 100</span>
+                              </div>
+                              <div className="h-2.5 w-full bg-black/50 border border-white/10 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-amber-500 to-[#E10600] transition-all duration-300"
+                                  style={{ width: `${officialCardMetrics.powerScore}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 2. Confiabilidade */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-xs font-f1-mono">
+                                <span className="text-zinc-300 font-bold">CONFIABILIDADE TÉRMICA & MECÂNICA</span>
+                                <span
+                                  className={`font-bold tabular-nums ${
+                                    officialCardMetrics.reliabilityScore >= 75
+                                      ? 'text-emerald-400'
+                                      : officialCardMetrics.reliabilityScore >= 65
+                                      ? 'text-amber-400'
+                                      : 'text-red-400'
+                                  }`}
+                                >
+                                  {officialCardMetrics.reliabilityScore} / 100
+                                </span>
+                              </div>
+                              <div className="h-2.5 w-full bg-black/50 border border-white/10 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    officialCardMetrics.reliabilityScore >= 75
+                                      ? 'bg-gradient-to-r from-emerald-600 to-emerald-400'
+                                      : officialCardMetrics.reliabilityScore >= 65
+                                      ? 'bg-gradient-to-r from-amber-600 to-amber-400'
+                                      : 'bg-gradient-to-r from-red-700 to-red-500'
+                                  }`}
+                                  style={{ width: `${officialCardMetrics.reliabilityScore}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 3. Eficiência (100% E-Fuel) */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-xs font-f1-mono">
+                                <span className="text-zinc-300 font-bold">EFICIÊNCIA DE COMBUSTÍVEL (E-FUEL)</span>
+                                <span className="text-lime-400 font-bold tabular-nums">{officialCardMetrics.fuelEfficiencyScore} / 100</span>
+                              </div>
+                              <div className="h-2.5 w-full bg-black/50 border border-white/10 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-700 to-lime-400 transition-all duration-300"
+                                  style={{ width: `${officialCardMetrics.fuelEfficiencyScore}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 4. Gestão de Energia ERS */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-xs font-f1-mono">
+                                <span className="text-zinc-300 font-bold">GESTÃO DE ENERGIA (ERS 350kW)</span>
+                                <span className="text-indigo-400 font-bold tabular-nums">{officialCardMetrics.ersManagementScore} / 100</span>
+                              </div>
+                              <div className="h-2.5 w-full bg-black/50 border border-white/10 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-blue-700 to-indigo-400 transition-all duration-300"
+                                  style={{ width: `${officialCardMetrics.ersManagementScore}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 5. Índice de Leveza */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-xs font-f1-mono">
+                                <span className="text-zinc-300 font-bold">ÍNDICE DE LEVEZA ({officialCardMetrics.totalWeightKg} kg)</span>
+                                <span className="text-cyan-400 font-bold tabular-nums">{officialCardMetrics.lightweightScore} / 100</span>
+                              </div>
+                              <div className="h-2.5 w-full bg-black/50 border border-white/10 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300"
+                                  style={{ width: `${officialCardMetrics.lightweightScore}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Coluna Direita: Prós (Verde), Contras (Vermelho) e Compatibilidade com o Chassi (Azul Escuro) */}
+                          <div className="space-y-3 flex flex-col justify-between">
+                            <div className="space-y-3">
+                              <div className="bg-emerald-950/40 border border-emerald-500/40 p-3.5 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span>PRÓS DO SEU PROJETO</span>
+                                </div>
+                                <ul className="space-y-1 text-xs font-bold text-emerald-200 leading-relaxed">
+                                  {officialCardMetrics.pros.map((item, idx) => (
+                                    <li key={idx}>• {item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              <div className="bg-red-950/40 border border-red-500/40 p-3.5 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-red-400 font-bold text-[10px] uppercase tracking-wider">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                  <span>CONTRAS & PONTOS DE ATENÇÃO</span>
+                                </div>
+                                <ul className="space-y-1 text-xs font-bold text-red-200 leading-relaxed">
+                                  {officialCardMetrics.cons.map((item, idx) => (
+                                    <li key={idx}>• {item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              <div className="bg-slate-900/80 border border-cyan-500/35 p-3.5 space-y-1">
+                                <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-[10px] uppercase tracking-wider">
+                                  <Layers className="w-3.5 h-3.5 shrink-0" />
+                                  <span>COMPATIBILIDADE COM O CHASSI (FASE 4 / 7)</span>
+                                </div>
+                                <p className="text-xs text-zinc-200 leading-relaxed font-f1-mono">
+                                  {officialCardMetrics.chassisCompatibility}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Painel de Análise de Risco do Projeto & Maturidade Ano 1 vs Grid 2026 */}
+                        {officialCardMetrics.riskAnalysis.isYear1Project && (
+                          <div className="bg-[#15151E] border border-amber-500/40 p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                              <span className="text-[11px] font-f1-wide font-bold text-amber-300 uppercase flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>ANÁLISE DE RISCO DO PROJETO &amp; CUSTO REAL DE PROPRIEDADE (ANO 1)</span>
+                              </span>
+                              <span className="text-[10px] font-f1-mono text-zinc-400 tabular-nums">
+                                Bancada Bruta {officialCardMetrics.riskAnalysis.rawUncappedPowerScore}/100 · Pista Ano 1 {officialCardMetrics.powerScore}/100
+                              </span>
+                            </div>
+
+                            <p className="text-xs font-f1-mono text-zinc-300 leading-relaxed">
+                              {officialCardMetrics.riskAnalysis.summaryWarning}
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs font-f1-mono tabular-nums">
+                              <div className="bg-amber-950/25 p-2.5 border border-amber-500/45">
+                                <span className="text-[10px] text-amber-200 uppercase flex items-center gap-1.5 font-bold">
+                                  <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span>TETO DE DESENVOLVIMENTO</span>
+                                </span>
+                                <span className="text-amber-300 font-bold text-sm block mt-0.5">{officialCardMetrics.riskAnalysis.developmentCeilingPct}% Máx. Ano 1</span>
+                                <span className="text-[10px] text-zinc-400 block">Trava arquitetônica — satura até ADUO/Ano 2</span>
+                              </div>
+                              <div className="bg-[#1C1C26] p-2.5 border border-white/10">
+                                <span className="text-[10px] text-zinc-400 uppercase block">ÔNUS TÉRMICO / AERO</span>
+                                <span className={officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct > 0 ? 'text-red-400 font-bold text-sm' : 'text-emerald-400 font-bold text-sm'}>
+                                  {officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct > 0
+                                    ? `-${officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct.toFixed(1)}% Eficiência Aero`
+                                    : '0.0% Neutro'}
+                                </span>
+                                <span className="text-[10px] text-zinc-500 block">
+                                  {officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct > 0 ? '+20% fluxo nos sidepods' : 'Empacotamento limpo'}
+                                </span>
+                              </div>
+                              <div className="bg-[#1C1C26] p-2.5 border border-white/10">
+                                <span className="text-[10px] text-zinc-400 uppercase block">PROJEÇÃO 24 GPs</span>
+                                <span className={officialCardMetrics.reliabilityScore < 72 ? 'text-red-400 font-bold text-xs' : 'text-emerald-400 font-bold text-xs'}>
+                                  {officialCardMetrics.riskAnalysis.estimatedSeasonDnfs24Races}
+                                </span>
+                                <span className="text-[10px] text-zinc-500 block">
+                                  {officialCardMetrics.riskAnalysis.extraMaintenanceCostAnnualM > 0
+                                    ? `Manutenção extra: +$${officialCardMetrics.riskAnalysis.extraMaintenanceCostAnnualM.toFixed(1)}M/ano`
+                                    : 'Custo operacional padrão'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5 pt-1 border-t border-white/10">
+                              <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block font-bold">
+                                COMPARATIVO DE MATURIDADE ANO 1 NO GRID 2026 (PISO DE ESTREIA)
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] font-f1-mono tabular-nums">
+                                {officialCardMetrics.riskAnalysis.year1GridComparison.map((row) => (
+                                  <div
+                                    key={row.label}
+                                    className={`flex items-center justify-between px-2.5 py-1.5 border ${
+                                      row.tier === 'player'
+                                        ? 'bg-amber-950/35 border-amber-500/50 text-amber-200 font-bold'
+                                        : 'bg-[#1C1C26] border-white/5 text-zinc-300'
+                                    }`}
+                                  >
+                                    <span className="truncate pr-2">{row.label}</span>
+                                    <span className="font-bold shrink-0">{row.score}/100</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {productionNotification && (
+                          <div className="bg-emerald-950/60 border border-emerald-500/50 p-3 text-xs font-f1-mono text-emerald-200 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span className="font-bold">{productionNotification}</span>
+                          </div>
+                        )}
+
+                        <div className="pt-1 flex flex-col sm:flex-row gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowDynamoReportModal(false)}
+                            className="sm:w-1/3 py-4 border border-white/15 bg-[#15151E] hover:bg-white/5 text-zinc-300 font-f1-wide font-bold text-xs uppercase tracking-wider cursor-pointer"
+                          >
+                            Ver Dossiê
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playRadioSound();
+                              setShowDynamoReportModal(false);
+                              nextStep();
+                            }}
+                            className="sm:w-2/3 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Aprovar Relatório e Ir para a Pista (Fase 6)</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      /* CENÁRIO 2: O MOTOR FUNCIONOU (GABARITO E CHASSI APROVADOS) */
+                      /* CENÁRIO 2: DINAMÔMETRO APROVADO (PRÉ-HOMOLOGAÇÃO FIA) */
                       <div className="space-y-4">
                         <div className="bg-[#15151E] p-4 border border-white/10 space-y-2 font-f1-mono text-xs">
                           <p className="text-zinc-300 leading-relaxed">
-                            O trem de força completou a puxada de 15.000 RPM sem desvios de pressão e com curva de torque e dissipação térmica homologadas pela FIA.
+                            O trem de força completou o ensaio a 15.000 RPM com curva de torque e dissipação térmica aprovadas. Batize sua unidade de potência antes de selar a homologação na FIA.
                           </p>
                         </div>
+
+                        {/* Campo editável para Nome do Motor Customizado */}
+                        {engineChoice !== 'customer' && !isEmergency && (
+                          <div className="bg-[#15151E] border border-white/10 p-4 space-y-2">
+                            <label
+                              htmlFor="custom-engine-name-input"
+                              className="text-[10px] font-f1-mono text-amber-400 uppercase font-bold tracking-wider block"
+                            >
+                              NOME OFICIAL DA SUA UNIDADE DE POTÊNCIA 2026
+                            </label>
+                            <input
+                              id="custom-engine-name-input"
+                              type="text"
+                              maxLength={32}
+                              value={customEngineName}
+                              placeholder={defaultCustomEngineName}
+                              onChange={(e) => setCustomEngineName(e.target.value)}
+                              className="w-full bg-[#1C1C26] border border-white/20 focus:border-emerald-400 px-3 py-2 text-sm font-f1-wide font-bold text-white uppercase outline-none"
+                            />
+                            <span className="text-[10px] font-f1-mono text-zinc-400 block">
+                              Este nome aparecerá no certificado oficial da FIA e na ficha técnica do carro.
+                            </span>
+                          </div>
+                        )}
 
                         {/* Card de Dimensões e Chassi (Gabarito Físico 2026) */}
                         <div className="bg-[#15151E] border border-white/10 p-4 space-y-3 f1-pattern-micro-grid">
@@ -6746,10 +7692,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                           </div>
 
                           {/* 4 KPIs de Dimensões e Performance */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-f1-mono">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-f1-mono tabular-nums">
                             <div className="bg-[#1C1C26] p-3 border border-white/5">
                               <span className="text-[9px] text-zinc-400 uppercase block font-bold">POTÊNCIA FINAL</span>
-                              <span className="text-white font-f1-wide font-black text-lg">{displayedPowerHp} CV</span>
+                              <span className="text-white font-f1-wide font-black text-lg tabular-nums">{peakCombinedPowerHp} CV</span>
                               <span className="text-[9px] text-emerald-400 block mt-0.5">Combustão + 350kW</span>
                             </div>
 
@@ -6771,32 +7717,55 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                               <span className="text-[9px] text-zinc-500 block mt-0.5">Estimativa Base 2026</span>
                             </div>
                           </div>
-
-                          {/* Detalhes de Integração no Chassi */}
-                          <div className="text-[11px] font-f1-mono text-zinc-300 leading-relaxed bg-[#1C1C26] p-3 border border-white/5 space-y-1">
-                            <div>
-                              • <span className="font-bold text-white">Pontos de Montagem:</span> Fixações traseiras da carcaça do câmbio e montagem frontal do monocoque exportadas com sucesso para a modelagem CFD.
-                            </div>
-                            <div>
-                              • <span className="font-bold text-white">Índice de Harmonia:</span> {indiceHarmonia}/100 — Resposta linear de aceleração e transição híbrida balanceada.
-                            </div>
-                            <div>
-                              • <span className="font-bold text-white">Cronograma Pré-Temporada:</span>{' '}
-                              <span className={currentWeeksRemaining >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
-                                {currentWeeksRemaining >= 0 ? `${currentWeeksRemaining} semanas para os testes no Bahrein` : `Atraso de ${Math.abs(currentWeeksRemaining)} semanas (pré-temporada perdida)`}
-                              </span>
-                            </div>
-                          </div>
                         </div>
 
-                        {/* Feedback Financeiro e Alertas de Orçamento */}
+                        {officialCardMetrics.riskAnalysis.isYear1Project && (
+                          <div className="bg-[#15151E] border border-amber-500/40 p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                              <span className="text-[11px] font-f1-wide font-bold text-amber-300 uppercase flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>MATURIDADE ANO 1 &amp; CUSTO REAL DE PROPRIEDADE</span>
+                              </span>
+                              <span className="text-[10px] font-f1-mono text-zinc-400 tabular-nums">
+                                Força Real Ano 1: {officialCardMetrics.powerScore}/100 (vs Audi 78 · Ferrari 92)
+                              </span>
+                            </div>
+                            <p className="text-xs font-f1-mono text-zinc-300 leading-relaxed">
+                              {officialCardMetrics.riskAnalysis.summaryWarning}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-f1-mono tabular-nums">
+                              <div className="bg-amber-950/25 p-2.5 border border-amber-500/45">
+                                <span className="text-[9px] text-amber-200 uppercase flex items-center gap-1 font-bold">
+                                  <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span>TETO ARQUITETÔNICO</span>
+                                </span>
+                                <span className="text-amber-300 font-bold block mt-0.5">{officialCardMetrics.riskAnalysis.developmentCeilingPct}% Máx. Ano 1</span>
+                              </div>
+                              <div className="bg-[#1C1C26] p-2.5 border border-white/5">
+                                <span className="text-[9px] text-zinc-400 uppercase block">IMPACTO AERO</span>
+                                <span className={officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct > 0 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                  {officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct > 0
+                                    ? `-${officialCardMetrics.riskAnalysis.coolingAeroPenaltyPct.toFixed(1)}% Eficiência`
+                                    : '0.0% Neutro'}
+                                </span>
+                              </div>
+                              <div className="bg-[#1C1C26] p-2.5 border border-white/5">
+                                <span className="text-[9px] text-zinc-400 uppercase block">RISCO EM 24 GPs</span>
+                                <span className={officialCardMetrics.reliabilityScore < 72 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                  {officialCardMetrics.riskAnalysis.estimatedSeasonDnfs24Races}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {dynoNotification && (
                           <div className="bg-[#15151E] border border-white/10 p-3 text-xs font-f1-mono text-zinc-300 flex items-center justify-between">
                             <span className="flex items-center gap-2">
                               <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                               <span>{dynoNotification}</span>
                             </span>
-                            <span className="text-[10px] text-zinc-400">Caixa: ${(financials.bankBalance / 1000000).toFixed(1)}M</span>
+                            <span className="text-[10px] text-zinc-400 tabular-nums">Caixa: ${(financials.bankBalance / 1000000).toFixed(1)}M</span>
                           </div>
                         )}
 
@@ -6807,64 +7776,37 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                           </div>
                         )}
 
-                        {productionNotification && (
-                          <div className="bg-emerald-950/80 border-2 border-emerald-500 p-3 text-xs font-f1-mono text-emerald-200 flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span className="font-bold">{productionNotification}</span>
+                        <div className="bg-[#15151E] p-3 border border-white/10 flex items-center justify-between text-xs font-f1-mono">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] text-zinc-400 uppercase font-bold">CUSTO DE PRODUÇÃO DA FROTA (8 MOTORES):</span>
+                            <span className="text-[10px] text-zinc-500 block">4 PUs por piloto (Art. 5 FIA 2026) · $1.5M/un</span>
                           </div>
-                        )}
+                          <span className="text-white font-f1-wide font-black text-sm tabular-nums">
+                            -${(custoProducaoTotal / 1000000).toFixed(1)}M
+                          </span>
+                        </div>
 
-                        {/* Bloco de Custo de Produção da Frota */}
-                        {!motorHomologadoFIA && (
-                          <div className="bg-[#15151E] p-3 border border-white/10 flex items-center justify-between text-xs font-f1-mono">
-                            <div className="space-y-0.5">
-                              <span className="text-[10px] text-zinc-400 uppercase font-bold">CUSTO DE PRODUÇÃO DA FROTA (8 MOTORES):</span>
-                              <span className="text-[10px] text-zinc-500 block">4 PUs por piloto (Art. 5 FIA 2026) · $1.5M/un</span>
-                            </div>
-                            <span className="text-white font-f1-wide font-black text-sm">
-                              -${(custoProducaoTotal / 1000000).toFixed(1)}M
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Botão de Homologação / Avanço */}
                         <div className="pt-2">
-                          {!motorHomologadoFIA ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                playRadioSound();
-                                const totalFrota = custoProducaoTotal;
-                                const hasCash = financials.bankBalance >= totalFrota;
-                                const hasCap = (financials.costCapSpent + totalFrota) <= financials.costCapLimit;
-                                if (!hasCash || !hasCap) {
-                                  setBudgetErrorMessage("Orçamento insuficiente para produção da frota. Ajuste suas finanças.");
-                                  return;
-                                }
-                                setBudgetErrorMessage(null);
-                                setShowFiaHomologationConfirmModal(true);
-                              }}
-                              className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Aprovar e Homologar Motor (-${(custoProducaoTotal / 1000000).toFixed(1)}M)</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                playRadioSound();
-                                setShowDynamoReportModal(false);
-                                nextStep();
-                              }}
-                              className="w-full py-4 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-                            >
-                              <Compass className="w-4 h-4" />
-                              <span>Avançar para Filosofia do Carro (M02)</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playRadioSound();
+                              const totalFrota = custoProducaoTotal;
+                              const hasCash = financials.bankBalance >= totalFrota;
+                              const hasCap = (financials.costCapSpent + totalFrota) <= financials.costCapLimit;
+                              if (!hasCash || !hasCap) {
+                                setBudgetErrorMessage("Orçamento insuficiente para produção da frota. Ajuste suas finanças.");
+                                return;
+                              }
+                              setBudgetErrorMessage(null);
+                              setShowFiaHomologationConfirmModal(true);
+                            }}
+                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Aprovar e Homologar Motor (-${(custoProducaoTotal / 1000000).toFixed(1)}M)</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     )}
@@ -6876,48 +7818,62 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         })()}
 
         {/* ========================================================== */}
-        {/* STEP 5: FILOSOFIA DO CARRO (M02) · DNA VS PROJETO & E-FUEL */}
+        {/* STEP 4: CONCEITO E FILOSOFIA DO CARRO (M02) & E-FUEL       */}
         {/* ========================================================== */}
-        {currentStep === 5 && (() => {
+        {currentStep === 4 && (() => {
+          const fuelHpBonus = fuelPartner === 'shell' ? 3 : fuelPartner === 'aramco' ? 2 : 0;
           const solvedM02Preview = solveVehiclePhysics(vehicleParamsDraft, {
             componentLevelAvg: 1,
             aeroDownforceOffset: selectedBackground.modifiers.floorDownforceBonus || 0
           });
           const aeroProfile = hiredHeadAeroObj ? getStaffFullProfile(hiredHeadAeroObj) : null;
           const puProfile = hiredHeadPuObj ? getStaffFullProfile(hiredHeadPuObj) : null;
+          const sportProfile = hiredSportingObj ? getStaffFullProfile(hiredSportingObj) : null;
 
           return (
             <div className="space-y-6">
               <div className="space-y-1">
                 <span className="text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
-                  FASE 5 · M02 FILOSOFIA DO VEÍCULO, CONFLITOS DE STAFF & E-FUEL
+                  FASE 4 · M02 CONCEITO DO CARRO, SINERGIA DO STAFF & E-FUEL
                 </span>
                 <h2 className="font-f1-wide font-black text-2xl sm:text-3xl text-white uppercase">
-                  Filosofia do Carro 2026 & DNA Técnico
+                  Conceito do Carro 2026 & Reunião de Diretoria
                 </h2>
                 <p className="text-sm text-zinc-400">
-                  Separe o DNA histórico da organização (Imutável) da Filosofia do carro desta temporada (Mutável). Escolha uma das 6 arquiteturas M02 e verifique a sinergia com seus engenheiros.
+                  Com sua diretoria técnica contratada na Fase 3, defina o conceito do carro desta temporada. Escolher uma filosofia alinhada ao seu Chefe de Aero acelera o desenvolvimento; ir contra o DNA dele gera perda de eficiência e moral.
                 </p>
               </div>
 
-              {/* Comparativo: DNA da Equipe (Imutável) vs. Filosofia do Ano (Mutável) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-[#181822] border border-purple-500/35 p-4 space-y-2">
+              {/* Comparativo: DNA Combinado da Diretoria (Você + 3 Chefes) vs. Sinergia/Conflito com o Conceito do Carro */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                <div className="bg-[#181822] border border-purple-500/35 p-4 space-y-2.5">
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <span className="text-[10px] font-f1-mono font-bold text-purple-300 uppercase tracking-widest">
-                      DNA DA ORGANIZAÇÃO (IMUTÁVEL)
+                      DNA COMBINADO DA DIRETORIA (FASE 3 · IMUTÁVEL)
                     </span>
-                    <Lock className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="text-[10px] font-f1-mono font-bold text-cyan-300 tabular-nums">
+                      Sinergia {combinedLeadershipDna.synergyPct}%
+                    </span>
                   </div>
                   <div className="text-xs font-f1-mono space-y-1 text-zinc-300">
-                    <div>Origem Chefe: <span className="text-white font-bold">{selectedBackground.name}</span></div>
-                    <div>Aposta do Conselho: <span className="text-amber-300 font-bold">{ambitionSpec.title} ({ambitionSpec.boardExpectationText})</span></div>
+                    <div>
+                      Você (Team Principal): <span className="text-white font-bold">{selectedBackground.name}</span>{' '}
+                      <span className="text-[#E10600] font-bold">· [{combinedLeadershipDna.principalCard.leadershipTag}]</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-400">
+                      Seu Bônus Global: {selectedBackground.bonusShort}
+                    </div>
                     <div>Chefe de Aero: <span className="text-cyan-300 font-bold">{hiredHeadAeroObj?.name || 'Não definido'}</span> {aeroProfile ? `· [${aeroProfile.staffPhilosophyTag}]` : ''}</div>
                     <div>Chefe de PU: <span className="text-emerald-300 font-bold">{hiredHeadPuObj?.name || 'Não definido'}</span> {puProfile ? `· [${puProfile.staffPhilosophyTag}]` : ''}</div>
+                    <div>Chefe de Gerenciamento: <span className="text-zinc-100 font-bold">{hiredSportingObj?.name || 'Não definido'}</span> {sportProfile ? `· [${sportProfile.staffPhilosophyTag}]` : ''}</div>
+                  </div>
+                  <div className="pt-1.5 border-t border-white/10 text-[10px] font-f1-mono text-zinc-300">
+                    <span className="font-bold text-white block">{combinedLeadershipDna.combinedHeadline}</span>
+                    <span className="text-zinc-400">{combinedLeadershipDna.narrativeSummary}</span>
                   </div>
                 </div>
 
-                <div className={`p-4 border space-y-2 ${
+                <div className={`p-4 border space-y-2.5 ${
                   philosophyConflict.hasConflict
                     ? 'bg-red-950/35 border-red-500/60'
                     : philosophyConflict.efficiencyDeltaPct > 0
@@ -6926,9 +7882,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 }`}>
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <span className="text-[10px] font-f1-mono font-bold uppercase tracking-widest text-white">
-                      IMPACTO STAFF × FILOSOFIA DO ANO (MUTÁVEL)
+                      {philosophyConflict.hasConflict
+                        ? 'ALERTA VERMELHO · CONFLITO DE DNA'
+                        : philosophyConflict.efficiencyDeltaPct > 0
+                        ? 'ALERTA VERDE · SINERGIA DETECTADA'
+                        : 'DIAGNÓSTICO STAFF × CONCEITO DO CARRO'}
                     </span>
-                    <span className={`text-[10px] font-f1-mono font-bold px-2 py-0.5 border ${
+                    <span className={`text-[10px] font-f1-mono font-bold px-2 py-0.5 border tabular-nums ${
                       philosophyConflict.efficiencyDeltaPct < 0
                         ? 'bg-red-950/80 border-red-500/50 text-red-300'
                         : philosophyConflict.efficiencyDeltaPct > 0
@@ -6938,12 +7898,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       {philosophyConflict.efficiencyDeltaPct > 0 ? `+${philosophyConflict.efficiencyDeltaPct}% Eficiência P&D` : philosophyConflict.efficiencyDeltaPct < 0 ? `${philosophyConflict.efficiencyDeltaPct}% Eficiência P&D` : '0% Neutro'}
                     </span>
                   </div>
-                  <div className="space-y-1.5 text-[11px] font-f1-mono leading-relaxed">
+                  <div className="space-y-2 text-[11px] font-f1-mono leading-relaxed">
                     {philosophyConflict.warnings.map((w, idx) => (
-                      <p key={`w_${idx}`} className="text-red-200 font-bold">{w}</p>
+                      <div key={`w_${idx}`} className="flex items-start gap-2 text-red-200 font-bold">
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                        <span>{w}</span>
+                      </div>
                     ))}
                     {philosophyConflict.bonuses.map((b, idx) => (
-                      <p key={`b_${idx}`} className="text-emerald-300 font-bold">{b}</p>
+                      <div key={`b_${idx}`} className="flex items-start gap-2 text-emerald-300 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span>{b}</span>
+                      </div>
                     ))}
                     {philosophyConflict.warnings.length === 0 && philosophyConflict.bonuses.length === 0 && (
                       <p className="text-zinc-300">
@@ -6951,12 +7917,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       </p>
                     )}
                   </div>
-                  {philosophyConflict.packagingConstraintReason && (
-                    <div className="p-2 bg-amber-950/60 border border-amber-500/50 text-[10px] font-f1-mono text-amber-200 flex items-start gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                      <span>{philosophyConflict.packagingConstraintReason}</span>
-                    </div>
-                  )}
+                  <div className="pt-1 border-t border-white/10 text-[10px] font-f1-mono text-zinc-400">
+                    Próximo passo (Fase 5): O conceito aprovado aqui orientará seu Chefe de PU na escolha do motor ideal.
+                  </div>
                 </div>
               </div>
 
@@ -6970,51 +7933,68 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 vehicleParams={vehicleParamsDraft}
                 tradeoffsAcknowledged={tradeoffsAcknowledged}
                 onToggleTradeoffsAck={setTradeoffsAcknowledged}
+                principalBackground={selectedBackground}
+                headAero={hiredHeadAeroObj}
+                headPu={hiredHeadPuObj}
+                sportingDirector={hiredSportingObj}
               />
 
-              {/* Briefing SI ao Vivo do Carro Configurado até aqui */}
-              <div className="bg-[#15151E] p-4 border border-white/10 space-y-2">
+              {/* Resumo Simplificado do Carro Configurado */}
+              <div className="bg-[#15151E] p-4 border border-white/10 space-y-2.5">
                 <div className="flex items-center justify-between border-b border-white/5 pb-2">
                   <span className="text-xs font-f1-wide font-bold text-white uppercase">
-                    BRIEFING TÉCNICO SI · LINHA DE BASE DO CARRO (M01–M09)
+                    RESUMO DO CARRO CONFIGURADO
                   </span>
-                  <span className="text-[10px] font-f1-mono text-zinc-400">ATUALIZAÇÃO EM TEMPO REAL</span>
+                  <span className="text-[11px] text-zinc-400">Atualização em tempo real</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-f1-mono">
-                  <div className="bg-[#1C1C26] p-2.5 border border-white/5">
-                    <span className="text-[10px] text-zinc-400 block uppercase">EFICIÊNCIA AERO (L/D)</span>
-                    <span className="text-emerald-400 font-bold text-sm tabular-nums">
-                      {solvedM02Preview.cornerMode.aeroEfficiencyLD.toFixed(2)} (CL {solvedM02Preview.cornerMode.clTotal.toFixed(2)})
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div
+                    className="bg-[#1C1C26] p-3 border border-white/5"
+                    title={`Dados de engenharia: CL ${solvedM02Preview.cornerMode.clTotal.toFixed(2)} · Downforce ${Math.round(solvedM02Preview.cornerMode.downforceTotalN)} N`}
+                  >
+                    <span className="text-[11px] text-zinc-400 block">Equilíbrio Aero</span>
+                    <span className="text-emerald-400 font-mono font-bold text-base tabular-nums">
+                      L/D {solvedM02Preview.cornerMode.aeroEfficiencyLD.toFixed(2)}
                     </span>
-                    <span className="text-[10px] text-zinc-500 block mt-0.5">
-                      DF Z: {Math.round(solvedM02Preview.cornerMode.downforceTotalN)} N
-                    </span>
-                  </div>
-                  <div className="bg-[#1C1C26] p-2.5 border border-white/5">
-                    <span className="text-[10px] text-zinc-400 block uppercase">POTÊNCIA NA RODA</span>
-                    <span className="text-cyan-400 font-bold text-sm tabular-nums">
-                      {solvedM02Preview.totalWheelPowerKw.toFixed(0)} kW ({solvedM02Preview.totalWheelPowerHp} CV)
-                    </span>
-                    <span className="text-[10px] text-zinc-500 block mt-0.5">
-                      Margem Térmica: {solvedM02Preview.thermalMarginC.toFixed(1)} °C
+                    <span className="text-[11px] text-zinc-400 block mt-0.5">
+                      {solvedM02Preview.cornerMode.aeroEfficiencyLD >= 3.8
+                        ? 'Ótima eficiência reta/curva'
+                        : solvedM02Preview.cornerMode.clTotal >= 3.5
+                        ? 'Forte pressão em curva'
+                        : 'Ajuste equilibrado'}
                     </span>
                   </div>
-                  <div className="bg-[#1C1C26] p-2.5 border border-white/5">
-                    <span className="text-[10px] text-zinc-400 block uppercase">MASSA & RIGIDEZ PLT</span>
-                    <span className="text-white font-bold text-sm tabular-nums">
-                      {solvedM02Preview.totalMassKg.toFixed(1)} kg · {(solvedM02Preview.torsionalStiffnessNmDeg / 1000).toFixed(1)} kNm/°
+                  <div
+                    className="bg-[#1C1C26] p-3 border border-white/5"
+                    title={`Potência na roda: ${solvedM02Preview.totalWheelPowerKw.toFixed(0)} kW`}
+                  >
+                    <span className="text-[11px] text-zinc-400 block">Potência do Motor</span>
+                    <span className="text-cyan-400 font-mono font-bold text-base tabular-nums">
+                      {solvedM02Preview.totalWheelPowerHp + fuelHpBonus} cv
                     </span>
-                    <span className="text-[10px] text-zinc-500 block mt-0.5">
-                      Mínimo FIA 2026: {solvedM02Preview.legalMinMassKg} kg
+                    <span className="text-[11px] text-zinc-400 block mt-0.5">
+                      {fuelHpBonus > 0 ? `Inclui +${fuelHpBonus} cv do E-Fuel` : 'Potência base configurada'}
                     </span>
                   </div>
-                  <div className="bg-[#1C1C26] p-2.5 border border-white/5">
-                    <span className="text-[10px] text-zinc-400 block uppercase">CAIXA DISPONÍVEL</span>
-                    <span className="text-emerald-400 font-bold text-sm tabular-nums">
+                  <div
+                    className="bg-[#1C1C26] p-3 border border-white/5"
+                    title={`Rigidez torcional do chassi: ${(solvedM02Preview.torsionalStiffnessNmDeg / 1000).toFixed(1)} kNm/°`}
+                  >
+                    <span className="text-[11px] text-zinc-400 block">Peso do Carro</span>
+                    <span className="text-white font-mono font-bold text-base tabular-nums">
+                      {solvedM02Preview.totalMassKg.toFixed(1)} kg
+                    </span>
+                    <span className="text-[11px] text-zinc-400 block mt-0.5">
+                      Limite FIA: {solvedM02Preview.legalMinMassKg} kg
+                    </span>
+                  </div>
+                  <div className="bg-[#1C1C26] p-3 border border-white/5">
+                    <span className="text-[11px] text-zinc-400 block">Caixa Disponível</span>
+                    <span className="text-emerald-400 font-mono font-bold text-base tabular-nums">
                       ${(financials.bankBalance / 1000000).toFixed(1)}M
                     </span>
-                    <span className="text-[10px] text-zinc-500 block mt-0.5">
-                      Cost Cap Gasto: ${(financials.costCapSpent / 1000000).toFixed(1)}M / $135M
+                    <span className="text-[11px] text-zinc-400 block mt-0.5">
+                      Teto Gasto: ${(financials.costCapSpent / 1000000).toFixed(1)}M / $135M
                     </span>
                   </div>
                 </div>
@@ -7027,17 +8007,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <span className="text-xs font-f1-wide font-black text-white uppercase block">
                       Parceria de Combustível Sustentável (E-Fuel 2026)
                     </span>
-                    <span className="text-[10px] font-f1-mono text-zinc-400">
-                      Selecione a petrolífera técnica para desenvolver o combustível 100% sintético e neutro em carbono da equipe:
+                    <span className="text-[11px] text-zinc-400">
+                      Escolha a petrolífera técnica: ela define se o carro foca em menos peso no tanque ou mais potência na reta.
                     </span>
                   </div>
-                  <span className="text-[10px] font-f1-mono text-lime-400 bg-lime-950/40 border border-lime-500/30 px-2.5 py-0.5 uppercase font-bold shrink-0">
-                    FIA ART. 16 REGULATION
+                  <span className="text-[10px] font-mono text-lime-400 bg-lime-950/40 border border-lime-500/30 px-2.5 py-0.5 uppercase font-bold shrink-0">
+                    FIA 100% Sustentável
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* 1. Petronas (Eficiência) */}
+                  {/* 1. Petronas (Economia de Combustível) */}
                   <button
                     type="button"
                     onClick={() => {
@@ -7053,21 +8033,21 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-f1-wide font-black text-white uppercase">Petronas</span>
-                        <span className="text-[10px] font-f1-mono text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 border border-emerald-500/30">
-                          +5 E-Fuel
+                        <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 border border-emerald-500/30">
+                          +5% Eficiência
                         </span>
                       </div>
-                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block font-bold">Foco em Eficiência Híbrida</span>
+                      <span className="text-[11px] text-zinc-400 font-semibold block">Economia de Combustível</span>
                       <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
-                        Fórmula de alta densidade por kg. Reduz o consumo específico e viabiliza largar com carro até 15 kg mais leve.
+                        O carro larga com menos litros no tanque (até 15 kg mais leve) e permite usar modo Ataque por mais voltas sem faltar combustível.
                       </p>
                     </div>
-                    <div className="mt-2 pt-2 border-t border-white/5 text-[10px] font-f1-mono text-emerald-400 font-bold">
-                      ✓ Bônus: +5 Eficiência E-Fuel (Sem Fuel Saving)
+                    <div className="mt-2 pt-2 border-t border-white/5 text-[11px] text-emerald-400 font-semibold">
+                      ✓ Bônus: O carro fica mais leve (menos litros no tanque)
                     </div>
                   </button>
 
-                  {/* 2. Shell (Potência) */}
+                  {/* 2. Shell (Potência Máxima) */}
                   <button
                     type="button"
                     onClick={() => {
@@ -7083,17 +8063,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-f1-wide font-black text-white uppercase">Shell</span>
-                        <span className="text-[10px] font-f1-mono text-amber-400 font-bold bg-amber-950/40 px-1.5 py-0.5 border border-amber-500/30">
-                          +3 PWR
+                        <span className="text-[10px] font-mono text-amber-400 font-bold bg-amber-950/40 px-1.5 py-0.5 border border-amber-500/30">
+                          +3 cv
                         </span>
                       </div>
-                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block font-bold">Foco em Potência Bruta</span>
+                      <span className="text-[11px] text-zinc-400 font-semibold block">Potência Máxima</span>
                       <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
-                        Combustão ultra-rápida na câmara V6, entregando pico de pressão para saídas de curva e aceleração pura.
+                        Combustão de alta pressão para entregar mais cavalos de potência nas saídas de curva e retas longas.
                       </p>
                     </div>
-                    <div className="mt-2 pt-2 border-t border-white/5 text-[10px] font-f1-mono text-amber-400 font-bold">
-                      ✓ Bônus: +3 Potência de Pico (PWR)
+                    <div className="mt-2 pt-2 border-t border-white/5 text-[11px] text-amber-400 font-semibold">
+                      ✓ Bônus: +3 cv extras para ultrapassagens
                     </div>
                   </button>
 
@@ -7113,30 +8093,30 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-f1-wide font-black text-white uppercase">Aramco</span>
-                        <span className="text-[10px] font-f1-mono text-cyan-400 font-bold bg-cyan-950/40 px-1.5 py-0.5 border border-cyan-500/30">
-                          +2 / +2
+                        <span className="text-[10px] font-mono text-cyan-400 font-bold bg-cyan-950/40 px-1.5 py-0.5 border border-cyan-500/30">
+                          +2 cv / +2%
                         </span>
                       </div>
-                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block font-bold">Foco Equilibrado</span>
+                      <span className="text-[11px] text-zinc-400 font-semibold block">Equilibrado</span>
                       <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
-                        Equilíbrio de hidrocarbonetos sintéticos, combinando rendimento térmico de consumo com cavalaria extra.
+                        Entrega cavalaria extra no motor combinada com leve economia de combustível para aliviar o peso na largada.
                       </p>
                     </div>
-                    <div className="mt-2 pt-2 border-t border-white/5 text-[10px] font-f1-mono text-cyan-400 font-bold">
-                      ✓ Bônus: +2 E-Fuel e +2 Potência (PWR)
+                    <div className="mt-2 pt-2 border-t border-white/5 text-[11px] text-cyan-400 font-semibold">
+                      ✓ Bônus: +2 cv e leve economia de peso no tanque
                     </div>
                   </button>
                 </div>
               </div>
 
-              {/* Botão de Avanço da Fase 5 para a Fase 6 */}
+              {/* Botão de Avanço da Fase 4 para a Fase 5 */}
               <div className="pt-2 flex justify-end">
                 <button
                   type="button"
                   onClick={nextStep}
                   className="w-full sm:w-auto px-6 py-3.5 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-black text-xs uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                 >
-                  <span>Confirmar Filosofia & Contratar Pilotos e Engenheiros</span>
+                  <span>Confirmar Conceito do Carro & Escolher Motor (Fase 5)</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -7162,13 +8142,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           const drvRes = getDriverObj(selectedReserveDriver);
           const re1 = getStaffObj(selectedRaceEngineer1);
           const re2 = getStaffObj(selectedRaceEngineer2);
+          const mechObj = getStaffObj(selectedChiefMechanic);
+          const mechPitOps = evaluatePitAndGarageOperations({
+            chiefMechanicRating: mechObj?.rating ?? 76,
+            principalBackground,
+            isSakuraHq: selectedHq.id === 'sakura',
+          });
 
           const filledStep6Count = [
             Boolean(selectedDriver1),
             Boolean(selectedDriver2 && selectedDriver2 !== selectedDriver1),
             Boolean(selectedReserveDriver),
             Boolean(selectedRaceEngineer1),
-            Boolean(selectedRaceEngineer2 && selectedRaceEngineer2 !== selectedRaceEngineer1)
+            Boolean(selectedRaceEngineer2 && selectedRaceEngineer2 !== selectedRaceEngineer1),
+            Boolean(selectedChiefMechanic)
           ].filter(Boolean).length;
 
           const driverRec = getRecommendedDriverTraitsForPhilosophy(normalizeToM02Philosophy(philosophy));
@@ -7198,6 +8185,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             );
           });
 
+          const filteredChiefMechanics = CHIEF_MECHANIC_STAFF_MEMBERS.filter(s => {
+            if (!query) return true;
+            const profile = getStaffFullProfile(s);
+            return (
+              s.name.toLowerCase().includes(query) ||
+              (s.currentTeam || s.teamOrigin || '').toLowerCase().includes(query) ||
+              (s.specialty || '').toLowerCase().includes(query) ||
+              profile.designDna.toLowerCase().includes(query)
+            );
+          });
+
           const missingSlots: string[] = [];
           if (!selectedDriver1) missingSlots.push('Piloto Titular #1');
           if (!selectedDriver2) missingSlots.push('Piloto Titular #2');
@@ -7206,23 +8204,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           if (!selectedRaceEngineer1) missingSlots.push('Engenheiro de Corrida (Carro #1)');
           if (!selectedRaceEngineer2) missingSlots.push('Engenheiro de Corrida (Carro #2)');
           if (selectedRaceEngineer1 && selectedRaceEngineer2 && selectedRaceEngineer1 === selectedRaceEngineer2) missingSlots.push('Engenheiros de Rádio Duplicados');
+          if (!selectedChiefMechanic) missingSlots.push('Chefe Mecânico (Garagem & Pit Crew)');
 
           return (
             <div className="space-y-6">
               {/* Header Title */}
               <div className="space-y-1">
                 <span className="text-xs font-f1-mono text-[#E10600] font-bold tracking-widest uppercase">
-                  FASE 6: FORMAÇÃO DA DUPLA DE PILOTOS & ENGENHEIROS DE RÁDIO
+                  FASE 6: EQUIPE OPERACIONAL DE PISTA, PILOTOS & GARAGEM
                 </span>
                 <h2 className="font-f1-wide font-black text-2xl sm:text-3xl text-white uppercase">
-                  Pilotos & Engenheiros de Corrida
+                  Pilotos, Rádio & Chefe Mecânico
                 </h2>
                 <p className="text-sm text-zinc-400">
-                  Contrate os 2 pilotos titulares, 1 reserva e os 2 engenheiros de corrida responsáveis pela comunicação de rádio de cada carro.
+                  Monte toda a operação de pista: contrate os 2 pilotos titulares, 1 reserva, os 2 engenheiros de corrida (rádio) e o Chefe Mecânico da garagem e pit stops.
                 </p>
               </div>
 
-              {/* Recomendação Dinâmica de Atributos por Filosofia do Carro (Fase 5) */}
+              {/* Recomendação Dinâmica de Atributos por Filosofia do Carro (Fase 4) */}
               <div className="bg-[#181822] border border-cyan-500/40 p-4 space-y-2 f1-pattern-micro-grid">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -7247,7 +8246,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 </p>
               </div>
 
-              {/* Checklist Obrigatório (5 Slots Fase 6 + Resumo do Corpo Técnico Fase 3) */}
+              {/* Checklist Obrigatório (6 Slots Operacionais de Pista + Resumo Diretoria Fase 3) */}
               <div className={`p-4 border transition-all ${
                 isStep6Complete
                   ? 'bg-[#101C15] border-emerald-500/50 shadow-lg shadow-emerald-950/20'
@@ -7262,16 +8261,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     )}
                     <div>
                       <h3 className="font-f1-wide font-bold text-sm text-white uppercase tracking-wider">
-                        GARAGEM DE CORRIDA OBRIGATÓRIA ({filledStep6Count}/5 SLOTS)
+                        EQUIPE OPERACIONAL DE PISTA ({filledStep6Count}/6 SLOTS)
                       </h3>
                       <span className="text-[11px] font-f1-mono text-zinc-400">
                         {isStep6Complete
-                          ? '✓ Dupla titular, reserva e engenheiros de rádio homologados.'
-                          : 'Preencha todos os 5 slots da garagem de pista para liberar a concepção M03–M10.'}
+                          ? '✓ Dupla titular, reserva, engenheiros de rádio e chefe mecânico homologados.'
+                          : 'Preencha todos os 6 slots operacionais de pista para liberar a concepção M03–M10.'}
                       </span>
                     </div>
                   </div>
-                  <span className={`text-xs font-f1-mono px-3 py-1 font-bold uppercase tracking-wider border ${
+                  <span className={`text-xs font-f1-mono px-3 py-1 font-bold uppercase tracking-wider border whitespace-nowrap shrink-0 ${
                     isStep6Complete
                       ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
                       : 'bg-amber-950/80 text-amber-300 border-amber-500/50'
@@ -7280,7 +8279,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
                   {/* Slot 1: Titular 1 */}
                   <div className={`p-2.5 border text-xs font-f1-mono flex flex-col justify-between min-h-[92px] ${
                     drv1 ? 'bg-[#15151E] border-emerald-500/40' : 'bg-amber-950/15 border-dashed border-amber-500/50'
@@ -7434,14 +8433,84 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       </button>
                     )}
                   </div>
+
+                  {/* Slot 6: Chefe Mecânico (Garagem & Pit Crew) */}
+                  <div
+                    onClick={() => {
+                      if (!mechObj) setStep6MainTab('chief_mechanic');
+                    }}
+                    className={`p-2.5 border text-xs font-f1-mono flex flex-col justify-between min-h-[92px] ${
+                      mechObj
+                        ? 'bg-[#15151E] border-emerald-500/40'
+                        : 'bg-amber-950/15 border-dashed border-amber-500/50 cursor-pointer'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold mb-1">
+                        <span>CHEFE MECÂNICO</span>
+                        {mechObj ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                      </div>
+                      {mechObj ? (
+                        <div>
+                          <div className="font-f1-wide font-bold text-white text-xs truncate">{mechObj.name}</div>
+                          <div className="text-[10px] text-zinc-400 tabular-nums">
+                            OVR {mechObj.rating} · Pit {mechPitOps.totalPitDeltaSec > 0 ? `+${mechPitOps.totalPitDeltaSec.toFixed(2)}` : mechPitOps.totalPitDeltaSec.toFixed(2)}s
+                          </div>
+                          <div className="text-[9px] font-f1-mono text-emerald-300 tabular-nums">
+                            Erro Box: {mechPitOps.pitErrorProbPct}%
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-amber-400 font-bold text-[11px] block mt-1">Pendente (Garagem)</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {mechObj ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setStep6MainTab('chief_mechanic');
+                            }}
+                            className="text-[9px] text-cyan-300 hover:text-cyan-200 underline cursor-pointer"
+                          >
+                            Trocar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedChiefMechanic(null);
+                            }}
+                            className="text-[9px] text-red-400 hover:text-red-300 underline cursor-pointer"
+                          >
+                            Desmarcar
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setStep6MainTab('chief_mechanic');
+                          }}
+                          className="text-[9px] text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                        >
+                          Contratar
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Resumo da Diretoria Técnica contratada na Fase 3 */}
+                {/* Resumo da Diretoria Técnica (Fase 3) + Conceito (Fase 4) + Motor (Fase 5) */}
                 <div className="mt-3 pt-2.5 border-t border-white/10 flex flex-wrap items-center gap-3 text-[10px] font-f1-mono text-zinc-300">
-                  <span className="text-zinc-400 uppercase font-bold">Liderança Técnica (Fase 3):</span>
+                  <span className="text-zinc-400 uppercase font-bold">Liderança & Projeto (Fases 3–5):</span>
                   <span>Aero: <strong className="text-white">{hiredHeadAeroObj?.name || '—'}</strong></span>
                   <span>· PU: <strong className="text-white">{hiredHeadPuObj?.name || '—'}</strong></span>
-                  <span>· Esportivo: <strong className="text-white">{hiredSportingObj?.name || '—'}</strong></span>
+                  <span>· Gerenciamento: <strong className="text-white">{hiredSportingObj?.name || '—'}</strong></span>
+                  <span>· Conceito F4: <strong className="text-cyan-300 uppercase">{philosophy.replace('_', ' ')}</strong></span>
                 </div>
 
                 {!isStep6Complete && missingSlots.length > 0 && (
@@ -7509,14 +8578,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 </div>
               </div>
 
-              {/* NAVEGAÇÃO PRINCIPAL: PILOTOS vs ENGENHEIROS DE CORRIDA (RÁDIO) */}
+              {/* NAVEGAÇÃO PRINCIPAL: PILOTOS vs RÁDIO vs CHEFE MECÂNICO */}
               <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setStep6MainTab('drivers')}
-                      className={`px-4 py-2 text-xs font-f1-wide font-bold uppercase transition-all flex items-center gap-2 border whitespace-nowrap cursor-pointer ${
+                      className={`px-4 py-2 text-xs font-f1-wide font-bold uppercase transition-all flex items-center gap-2 border whitespace-nowrap shrink-0 cursor-pointer ${
                         step6MainTab === 'drivers'
                           ? 'bg-[#E10600] text-white border-[#E10600] shadow-md'
                           : 'bg-[#15151E] text-zinc-400 border-white/10 hover:text-white'
@@ -7529,7 +8598,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     <button
                       type="button"
                       onClick={() => setStep6MainTab('radio_engineers')}
-                      className={`px-4 py-2 text-xs font-f1-wide font-bold uppercase transition-all flex items-center gap-2 border whitespace-nowrap cursor-pointer ${
+                      className={`px-4 py-2 text-xs font-f1-wide font-bold uppercase transition-all flex items-center gap-2 border whitespace-nowrap shrink-0 cursor-pointer ${
                         step6MainTab === 'radio_engineers'
                           ? 'bg-[#E10600] text-white border-[#E10600] shadow-md'
                           : 'bg-[#15151E] text-zinc-400 border-white/10 hover:text-white'
@@ -7537,6 +8606,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     >
                       <Wrench className="w-4 h-4" />
                       <span>Engenheiros de Corrida (Rádio)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStep6MainTab('chief_mechanic')}
+                      className={`px-4 py-2 text-xs font-f1-wide font-bold uppercase transition-all flex items-center gap-2 border whitespace-nowrap shrink-0 cursor-pointer ${
+                        step6MainTab === 'chief_mechanic'
+                          ? 'bg-[#E10600] text-white border-[#E10600] shadow-md'
+                          : 'bg-[#15151E] text-zinc-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      <Sliders className="w-4 h-4" />
+                      <span>Chefe Mecânico (Garagem & Box)</span>
                     </button>
                   </div>
 
@@ -7546,7 +8628,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                       type="text"
                       value={marketSearch}
                       onChange={e => setMarketSearch(e.target.value)}
-                      placeholder={step6MainTab === 'drivers' ? 'Buscar piloto, país, sigla...' : 'Buscar engenheiro de rádio, equipe...'}
+                      placeholder={
+                        step6MainTab === 'drivers'
+                          ? 'Buscar piloto, país, sigla...'
+                          : step6MainTab === 'radio_engineers'
+                          ? 'Buscar engenheiro de rádio, equipe...'
+                          : 'Buscar chefe mecânico, especialidade...'
+                      }
                       className="w-full bg-[#15151E] border border-white/10 pl-9 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 font-f1-mono focus:outline-none focus:border-[#E10600]"
                     />
                   </div>
@@ -7724,6 +8812,47 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     </div>
                   </div>
                 )}
+
+                {/* SUB-ABA: CHEFE MECÂNICO (GARAGEM & PIT CREW) */}
+                {step6MainTab === 'chief_mechanic' && (
+                  <div className="space-y-4">
+                    <div className="bg-[#181822] border border-white/10 p-3 text-[11px] font-f1-mono text-zinc-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span>
+                        O <strong className="text-white">Chefe Mecânico</strong> lidera a garagem na pista: governa a velocidade da troca de pneus, reduz a chance de falha na pistola pneumática e acelera a montagem/manutenção entre sessões.
+                      </span>
+                      {mechObj && (
+                        <span className="text-emerald-300 font-bold whitespace-nowrap shrink-0 tabular-nums">
+                          Atual: {mechObj.name} (Pit {mechPitOps.totalPitDeltaSec > 0 ? `+${mechPitOps.totalPitDeltaSec.toFixed(2)}` : mechPitOps.totalPitDeltaSec.toFixed(2)}s · Erro {mechPitOps.pitErrorProbPct}%)
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredChiefMechanics.map(s => {
+                        const isAssigned = selectedChiefMechanic === s.id;
+                        const interest = calculateStaffInterest({
+                          staff: s,
+                          projectAmbition,
+                          hqOption: selectedHq,
+                          isRealTeam: careerPath === 'real_team',
+                          realTeamReputation
+                        });
+                        return (
+                          <StaffMarketCard
+                            key={s.id}
+                            staffMember={s}
+                            isAssigned={isAssigned}
+                            interest={interest}
+                            onExpand={setExpandedStaffProfile}
+                            onToggleAssign={staffObj => {
+                              playRadioSound();
+                              setSelectedChiefMechanic(prev => (prev === staffObj.id ? null : staffObj.id));
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -7743,6 +8872,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             ? `${AVAILABLE_FACTORIES[selectedFactoryId].name} Spec-I`
             : `${customTeamName} Apex Works Spec-I`;
           const specs = getGearboxSpecs();
+          const lockedEngineBankUsd = isEmergency
+            ? 20_000_000
+            : engineChoice === 'bought_factory'
+            ? 24_000_000
+            : engineChoice === 'phoenix'
+            ? 32_000_000
+            : 0;
+          const lockedEngineCapUsd = isEmergency
+            ? 15_000_000
+            : engineChoice === 'bought_factory'
+            ? 18_000_000
+            : engineChoice === 'phoenix'
+            ? 25_000_000
+            : 0;
+          const externalErsPendingUsd =
+            ersSupplierCostUsd > 0 && prototypeCostSpent < ersSupplierCostUsd ? ersSupplierCostUsd : 0;
+          const committedCarCostUsd =
+            prototypeCostSpent + productionCostSpent + gearboxCostSpent + lockedEngineBankUsd + externalErsPendingUsd;
+          const availableBudgetBeforePendingPhase7 = initialBudgetUsd - committedCarCostUsd;
+          const costCapCommittedBeforePendingPhase7 =
+            38_000_000 + prototypeCostSpent + productionCostSpent + gearboxCostSpent + lockedEngineCapUsd + externalErsPendingUsd;
 
           return (
             <OnboardingCarConceptionLab
@@ -7773,10 +8923,21 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
               gearboxCostUsd={specs.totalCost}
               gearboxWeeks={specs.totalWeeks}
               onFinalizeGearbox={handleFinalizeGearbox}
-              onReleaseToBahrain={nextStep}
+              onReleaseToBahrain={() => {
+                playRadioSound();
+                setShowCarLaunchModal(true);
+              }}
               ferrariErsSidepodMandatory={thirdPartyErsSupplier === 'Ferrari'}
               sidepodZeroPodBlocked={philosophyConflict.lockedSidepodConcepts.includes('zeropod')}
               coolingSidepodConstraintReason={philosophyConflict.packagingConstraintReason}
+              headAero={hiredHeadAeroObj}
+              headPU={hiredHeadPuObj}
+              sportingDirector={hiredSportingObj}
+              chiefMechanic={ALL_STAFF_MEMBERS.find(s => s.id === selectedChiefMechanic) || null}
+              availableBudgetUsd={availableBudgetBeforePendingPhase7}
+              committedCarCostUsd={committedCarCostUsd}
+              costCapCommittedUsd={costCapCommittedBeforePendingPhase7}
+              costCapLimitUsd={135_000_000}
             />
           );
         })()}
@@ -7800,14 +8961,28 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
 
             {/* Se o cronograma estourou, pré-temporada perdida */}
             {(currentWeeksRemaining < 0 || abandonedToZero) && (
-              <div className="bg-red-950/40 border-2 border-[#E10600] p-4 text-xs font-f1-mono text-red-200 space-y-2">
+              <div className="bg-red-950/40 border-2 border-[#E10600] p-4 text-xs font-f1-mono text-red-200 space-y-3">
                 <div className="flex items-center gap-2 text-white font-f1-wide font-black text-sm uppercase">
-                  <AlertTriangle className="w-5 h-5 text-[#E10600]" />
-                  <span>PRÉ-TEMPORADA CANCELADA POR ATRASO NO CRONOGRAMA ({currentWeeksRemaining} SEMANAS)</span>
+                  <AlertTriangle className="w-5 h-5 text-[#E10600] shrink-0" />
+                  <span>CRONOGRAMA ESTOURADO · PRÉ-TEMPORADA PERDIDA ({currentWeeksRemaining} SEMANAS)</span>
                 </div>
-                <p>
-                  O tempo de integração da fábrica e as modificações de bancada estouraram o prazo oficial da FIA. A equipe não enviou o carro ao Bahrein e irá direto para a abertura do campeonato (GP1) sem dados prévios de telemetria!
+                <p className="leading-relaxed">
+                  ⚠️ Devido ao atraso na homologação, a equipe não pôde realizar os testes de shakedown em Sakhir e não possui dados de telemetria de pré-temporada. O acerto do carro no GP1 começará do zero no Treino Livre 1 (TL1).
                 </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="bg-[#15151E] border border-red-500/40 p-2.5">
+                    <span className="text-[10px] text-zinc-400 uppercase block font-bold">Dados de Setup (TL1)</span>
+                    <span className="text-red-400 font-bold">0% Telemetria (Começa do Zero)</span>
+                  </div>
+                  <div className="bg-[#15151E] border border-red-500/40 p-2.5">
+                    <span className="text-[10px] text-zinc-400 uppercase block font-bold">Frete Aéreo & Multa FIA</span>
+                    <span className="text-amber-300 font-bold tabular-nums">-$1.5M no Caixa</span>
+                  </div>
+                  <div className="bg-[#15151E] border border-red-500/40 p-2.5">
+                    <span className="text-[10px] text-zinc-400 uppercase block font-bold">Estado da Equipe</span>
+                    <span className="text-rose-300 font-bold tabular-nums">Engenheiros Exaustos (-8% Moral)</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -7823,9 +8998,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
               {!preSeasonRan ? (
                 <div className="py-8 text-center space-y-3">
                   <Activity className="w-10 h-10 text-[#E10600] mx-auto" />
-                  <p className="text-xs font-f1-mono text-zinc-300 max-w-md mx-auto">
+                  <p className="text-xs font-f1-mono text-zinc-300 max-w-lg mx-auto leading-relaxed">
                     {currentWeeksRemaining < 0 || abandonedToZero
-                      ? `Atraso crítico no cronograma (${Math.abs(currentWeeksRemaining)} semanas). A equipe não conseguiu levar o carro a tempo ao Bahrein e perdeu a pré-temporada inteira!`
+                      ? `Atraso de ${Math.abs(currentWeeksRemaining)} semana(s) estourou o prazo do shakedown. O carro seguirá de frete aéreo direto para o paddock do GP1 sem nenhuma volta de teste prévia.`
                       : 'O chassi foi montado e o motor homologado está instalado. Inicie os testes livres para aferir a telemetria real na pista do Bahrein!'}
                   </p>
                   <button
@@ -7834,7 +9009,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     className="px-6 py-2.5 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-xs uppercase tracking-wider f1-tab-chamfer transition-colors cursor-pointer shadow-lg"
                   >
                     {currentWeeksRemaining < 0 || abandonedToZero
-                      ? 'Pular Pré-Temporada e Ir Direto para o GP1'
+                      ? 'Confirmar Atraso e Seguir Sem Shakedown para o GP1'
                       : 'Liberar Carro para a Pista do Bahrein'}
                   </button>
                 </div>
@@ -7849,28 +9024,30 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                     </div>
                     <div className="bg-[#15151E] p-3 border border-white/5">
                       <span className="text-[10px] text-zinc-400 block uppercase">POSIÇÃO NA TABELA</span>
-                      <span className="text-emerald-400 font-bold text-sm">
+                      <span className={currentWeeksRemaining < 0 || abandonedToZero ? 'text-red-400 font-bold text-sm' : 'text-emerald-400 font-bold text-sm'}>
                         {currentWeeksRemaining < 0 || abandonedToZero ? 'Não Participou' : `P${testResult?.rank} no Grid`}
                       </span>
                     </div>
                     <div className="bg-[#15151E] p-3 border border-white/5">
-                      <span className="text-[10px] text-zinc-400 block uppercase">DIAGNÓSTICO AERO</span>
-                      <span className={`font-bold text-sm ${testResult?.porpoising ? 'text-amber-400' : 'text-emerald-400'}`}>
-                        {currentWeeksRemaining < 0 || abandonedToZero ? 'Telemetria Ausente' : (testResult?.porpoising ? 'Porpoising Detectado' : 'Fluxo Estável')}
+                      <span className="text-[10px] text-zinc-400 block uppercase">TELEMETRIA INICIAL</span>
+                      <span className={`font-bold text-sm ${currentWeeksRemaining < 0 || abandonedToZero ? 'text-red-400' : testResult?.porpoising ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {currentWeeksRemaining < 0 || abandonedToZero ? 'Setup 0% (TL1 do Zero)' : (testResult?.porpoising ? 'Porpoising Detectado' : 'Fluxo Estável')}
                       </span>
                     </div>
                     <div className="bg-[#15151E] p-3 border border-white/5">
                       <span className="text-[10px] text-zinc-400 block uppercase">CONFIABILIDADE</span>
-                      <span className="text-white font-bold text-sm">{testResult?.reliability}%</span>
+                      <span className={`font-bold text-sm tabular-nums ${currentWeeksRemaining < 0 || abandonedToZero ? 'text-amber-300' : 'text-white'}`}>
+                        {currentWeeksRemaining < 0 || abandonedToZero ? 'Sem Teste de Pista' : `${testResult?.reliability}%`}
+                      </span>
                     </div>
                   </div>
 
-                  <p className="text-xs text-zinc-300 bg-[#15151E] p-3 border border-white/5 font-f1-mono">
+                  <p className="text-xs text-zinc-300 bg-[#15151E] p-3 border border-white/5 font-f1-mono leading-relaxed">
                     {currentWeeksRemaining < 0 || abandonedToZero
-                      ? '⚠️ PRÉ-TEMPORADA NÃO REALIZADA: Por atraso no cronograma de manufatura, a equipe não participou dos 3 dias de testes oficiais e estreará diretamente na corrida de abertura do campeonato!'
+                      ? `⚠️ Devido ao atraso na homologação, o ${chassisName} não possui dados de telemetria de pré-temporada. O acerto do carro no GP1 começará do zero (0% de confiança no TL1), gerando desgaste de equipe (-8% moral) e custo emergencial de frete aéreo (-$1.5M).`
                       : (testResult?.delayWeeks === 0
-                        ? '✓ O carro foi montado a tempo e completou 142 voltas sem falhas catastróficas. Dados suficientes coletados para atrair patrocinadores!'
-                        : '⚠️ Pequeno atraso na montagem da PU consumiu parte do primeiro dia de testes. Ajustes feitos a tempo para o início do campeonato.')}
+                        ? `✓ SHAKEDOWN NO BAHREIN: O novo ${chassisName} da ${careerPath === 'custom_team' ? customTeamName : (allTeams.find(t => t.id === selectedRealTeamId)?.name || 'equipe')} chamou atenção no paddock e completou 142 voltas em Sakhir sem falhas catastróficas. Dados suficientes coletados para atrair patrocinadores!`
+                        : `⚠️ SHAKEDOWN NO BAHREIN: O novo ${chassisName} entrou na pista com pequeno atraso de montagem na PU, mas completou a coleta de telemetria a tempo para a abertura do campeonato.`)}
                   </p>
                 </div>
               )}
@@ -7931,14 +9108,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button
             onClick={prevStep}
-            disabled={currentStep === 4 && puPhaseStage === 'dossier'}
+            disabled={currentStep === 5 && puPhaseStage === 'dossier'}
             className={`px-4 py-2 text-xs font-f1-wide uppercase flex items-center gap-1.5 transition-colors ${
-              currentStep === 4 && puPhaseStage === 'dossier'
+              currentStep === 5 && puPhaseStage === 'dossier'
                 ? 'text-amber-500/90 cursor-not-allowed border border-amber-500/20 bg-amber-950/20'
                 : 'text-zinc-400 hover:text-white cursor-pointer'
             }`}
           >
-            {currentStep === 4 && puPhaseStage === 'dossier' ? (
+            {currentStep === 5 && puPhaseStage === 'dossier' ? (
               <span className="flex items-center gap-1.5 font-f1-mono text-[11px] normal-case">
                 <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Contrato de PU homologado pela FIA. Alterações de fornecedor só na próxima temporada.</span>
@@ -7949,7 +9126,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 <span>
                   {currentStep === 1
                     ? 'Cancelar'
-                    : currentStep === 4 && puPhaseStage === 'phoenix_assembly'
+                    : currentStep === 5 && puPhaseStage === 'phoenix_assembly'
                     ? 'Voltar à Seleção de Motor'
                     : 'Fase Anterior'}
                 </span>
@@ -7972,7 +9149,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 <span>
                   {currentStep === 3
                     ? 'Trava de Avanço (Contrate os 3 Pilares Técnicos)'
-                    : 'Trava de Avanço (Complete Pilotos e Engenheiros de Rádio)'}
+                    : 'Trava de Avanço (Complete Pilotos, Rádio e Chefe Mecânico)'}
                 </span>
               </>
             ) : (
@@ -7981,15 +9158,15 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   {currentStep === 2
                     ? 'ACEITAR TERMOS E DEFINIR ORGANIZAÇÃO & STAFF'
                     : currentStep === 3
-                    ? 'Confirmar Diretoria Técnica & Ir para Escolha do Motor'
-                    : currentStep === 4 && puPhaseStage === 'select'
+                    ? 'Confirmar Diretoria Técnica & Definir Conceito do Carro'
+                    : currentStep === 4
+                    ? 'Confirmar Conceito do Carro & Escolher Motor (PU)'
+                    : currentStep === 5 && puPhaseStage === 'select'
                     ? 'Gerar Gabarito / Dossiê do Motor'
-                    : currentStep === 4 && puPhaseStage === 'phoenix_assembly'
+                    : currentStep === 5 && puPhaseStage === 'phoenix_assembly'
                     ? 'Confirmar Montagem & Gerar Dossiê Técnico'
-                    : currentStep === 4 && puPhaseStage === 'dossier'
-                    ? 'Avançar para Filosofia do Carro (M02)'
-                    : currentStep === 5
-                    ? 'Confirmar Filosofia & Ir para Pilotos/Rádio'
+                    : currentStep === 5 && puPhaseStage === 'dossier'
+                    ? 'Avançar para Equipe de Pista (Pilotos, Rádio & Mecânico)'
                     : currentStep === 6
                     ? 'Confirmar Garagem & Ir para Concepção M03–M10'
                     : currentStep === 8
@@ -8424,13 +9601,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
               </div>
             </div>
 
-            <div className="bg-[#1C1C26] p-3.5 border border-white/5 space-y-2 text-xs font-f1-mono">
+            <div className="bg-[#1C1C26] p-3.5 border border-white/5 space-y-2.5 text-xs font-f1-mono">
               <p className="text-zinc-300 leading-relaxed">
-                Assinatura FIA: Ao homologar, o hardware do motor será congelado até o fim da temporada. Você não poderá voltar atrás. Confirmar?
+                Assinatura FIA: Ao homologar <strong className="text-white">{customEngineName.trim() || `${(customTeamShort || 'APX').toUpperCase()}-01 Evo`}</strong>, o hardware do motor será congelado até o fim da temporada. Você não poderá voltar atrás. Confirmar?
               </p>
               <div className="pt-2 border-t border-white/10 flex items-center justify-between text-emerald-400 font-bold">
                 <span>CUSTO DE PRODUÇÃO (8 MOTORES):</span>
-                <span>-${(custoProducaoTotal / 1000000).toFixed(1)}M</span>
+                <span className="tabular-nums">-${(custoProducaoTotal / 1000000).toFixed(1)}M</span>
               </div>
               <span className="text-[10px] text-zinc-500 block leading-tight">
                 Produção da frota oficial de 8 unidades (4 PUs por piloto). Valor debitado do Caixa e lançado no Teto de Gastos FIA.
@@ -8460,16 +9637,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   setProductionCostSpent(totalFrota);
 
                   // 2. Exibir notificação
-                  const msg = `Homologação FIA assinada. 8 unidades produzidas para a temporada. -$${(totalFrota / 1000000).toFixed(1)}M.`;
+                  const finalName = customEngineName.trim() || `${(customTeamShort || 'APX').toUpperCase()}-01 Evo`;
+                  const msg = `Homologação FIA assinada (${finalName}). 8 unidades produzidas para a temporada. -$${(totalFrota / 1000000).toFixed(1)}M.`;
                   addNotification('HOMOLOGAÇÃO FIA RATIFICADA', msg, 'info');
                   setProductionNotification(msg);
 
-                  // 3. Selar o motor
+                  // 3. Selar o motor e exibir Card Oficial Homologado
                   homologarMotorFIA();
                   setMotorHomologadoFIA(true);
                   setMotorHomologado(true);
                   setSemanasRestantesPreTemporada(0);
                   setShowFiaHomologationConfirmModal(false);
+                  setShowDynamoReportModal(true);
                 }}
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-f1-wide font-black uppercase tracking-wider transition-all cursor-pointer text-center shadow-lg"
               >
@@ -8581,6 +9760,50 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                   setSelectedRaceEngineer2(staffObj.id);
                 }
               }
+            }}
+          />
+        );
+      })()}
+      {/* CERIMÔNIA DE LANÇAMENTO OFICIAL DO MONOPOSTO 2026 & NOMEAÇÃO DE CHASSI FIA */}
+      {(() => {
+        const realTeamObj = allTeams.find(t => t.id === selectedRealTeamId);
+        const activeTeamId = careerPath === 'custom_team' ? 'apex' : selectedRealTeamId;
+        const activeTeamName = careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name || 'Scuderia Ferrari HP');
+        const activeTeamShort = careerPath === 'custom_team' ? customTeamShort : (realTeamObj?.shortName || 'FER');
+        const activeTeamColor = careerPath === 'custom_team' ? customColor : (realTeamObj?.color || '#E8002D');
+        const activeTeamSecondary = careerPath === 'custom_team' ? customSecondaryColor : (realTeamObj?.secondaryColor || '#FFFFFF');
+        const activePuFullName = customEngineName.trim() || (
+          isEmergencyActive
+            ? `${CUSTOMER_ENGINES[effectiveEmergencySupplier].fullName} (Acordo Emergencial)`
+            : engineChoice === 'customer'
+            ? CUSTOMER_ENGINES[customerSupplier].fullName
+            : engineChoice === 'bought_factory'
+            ? `${AVAILABLE_FACTORIES[selectedFactoryId].name} Spec-I`
+            : `${customTeamName} Apex Works Spec-I`
+        );
+        const livePkg = buildPackagingArchitecture(vehicleParamsDraft, FIA_2026_DEFAULT_EDITION);
+        const defaultSuggested = getDefaultChassisSuggestions(activeTeamShort, activeTeamName)[0] || 'APX-01';
+
+        return (
+          <CarLaunchModal
+            isOpen={showCarLaunchModal}
+            initialChassisName={chassisLaunchConfirmed ? chassisName : (careerPath === 'real_team' && realTeamObj?.carModelName ? realTeamObj.carModelName : defaultSuggested)}
+            teamId={activeTeamId}
+            teamName={activeTeamName}
+            teamShort={activeTeamShort}
+            teamColor={activeTeamColor}
+            teamSecondaryColor={activeTeamSecondary}
+            powerUnitName={activePuFullName}
+            packaging={livePkg}
+            vehicleParams={vehicleParamsDraft}
+            drivers={drivers}
+            soundEnabled={soundEnabled}
+            onCancel={() => setShowCarLaunchModal(false)}
+            onConfirmAndAdvance={(confirmedName) => {
+              setChassisName(confirmedName);
+              setChassisLaunchConfirmed(true);
+              setShowCarLaunchModal(false);
+              setCurrentStep(8);
             }}
           />
         );

@@ -10,14 +10,25 @@ interface RealCircuitMapProps {
   liveCars?: LiveCarState[];
   compact?: boolean;
   showInspector?: boolean;
+  simplifiedFit?: {
+    sectorTones: ['strong' | 'neutral' | 'weak', 'strong' | 'neutral' | 'weak', 'strong' | 'neutral' | 'weak'];
+    summaryText: string;
+  };
 }
+
+const SECTOR_TONE_COLORS: Record<'strong' | 'neutral' | 'weak', string> = {
+  strong: '#22c55e',
+  neutral: '#a855f7',
+  weak: '#ef4444',
+};
 
 export const RealCircuitMap: React.FC<RealCircuitMapProps> = ({
   circuitPackage,
   trackPhysics,
   liveCars,
   compact = false,
-  showInspector = false
+  showInspector = false,
+  simplifiedFit
 }) => {
   const [selectedCornerNum, setSelectedCornerNum] = useState<number | null>(null);
 
@@ -77,44 +88,55 @@ export const RealCircuitMap: React.FC<RealCircuitMapProps> = ({
   const isReferenceOnly = metadata.provenance.confidence === 'referencia_inicial';
 
   if (compact) {
+    const sectorColors = simplifiedFit
+      ? simplifiedFit.sectorTones.map((tone) => SECTOR_TONE_COLORS[tone])
+      : ['#22d3ee', '#f59e0b', '#E10600'];
+
     return (
-      <div className="w-full h-full bg-[#15151E] border border-white/10 p-2.5 flex flex-col justify-between relative">
-        <div className="flex items-center justify-between gap-2 text-[9px] font-f1-mono">
-          <span className="text-zinc-400 uppercase truncate">
-            {metadata.geojsonId} · {points.length} pts
+      <div className="w-full h-full bg-[#15151E] border border-white/10 p-3 flex flex-col justify-between gap-2 relative">
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <span className="text-white font-semibold truncate">
+            {metadata.name}
           </span>
-          <span
-            className={`px-1.5 py-0.5 font-bold uppercase border ${
-              isReferenceOnly
-                ? 'bg-amber-950/50 border-amber-500/40 text-amber-300'
-                : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
-            }`}
-          >
-            {isReferenceOnly ? 'Ref. Inicial' : 'Validado'}
-          </span>
+          {!simplifiedFit ? (
+            <span
+              className={`px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase border ${
+                isReferenceOnly
+                  ? 'bg-amber-950/50 border-amber-500/40 text-amber-300'
+                  : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
+              }`}
+            >
+              {isReferenceOnly ? 'Ref. Inicial' : 'Validado'}
+            </span>
+          ) : (
+            <span className="text-[11px] text-zinc-400 tabular-nums shrink-0">
+              {(metadata.officialLengthM / 1000).toFixed(2)} km · {metadata.officialCorners} curvas
+            </span>
+          )}
         </div>
 
-        <svg viewBox={svgViewBox} className="w-full h-32 my-1">
+        <svg viewBox={svgViewBox} className="w-full h-36 my-0.5">
           {/* Pit lane */}
-          <path d={pitLane.svgPath} fill="none" stroke="#3f3f46" strokeWidth={3} strokeDasharray="4 3" />
+          <path d={pitLane.svgPath} fill="none" stroke="#3f3f46" strokeWidth={2.5} strokeDasharray="4 3" />
           {/* Asphalt base */}
-          <path d={svgCenterlinePath} fill="none" stroke="#272734" strokeWidth={11} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={svgCenterlinePath} fill="none" stroke="#272734" strokeWidth={12} strokeLinecap="round" strokeLinejoin="round" />
           {/* Sector overlays */}
-          <path d={sectors[0].svgPath} fill="none" stroke="#22d3ee" strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
-          <path d={sectors[1].svgPath} fill="none" stroke="#f59e0b" strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
-          <path d={sectors[2].svgPath} fill="none" stroke="#E10600" strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
-          {/* Mode X Zones */}
-          {modeXSvgPaths.map((p, idx) => (
-            <path
-              key={idx}
-              d={p}
-              fill="none"
-              stroke="#34d399"
-              strokeWidth={2.5}
-              strokeDasharray="6 4"
-              strokeLinecap="round"
-            />
-          ))}
+          <path d={sectors[0].svgPath} fill="none" stroke={sectorColors[0]} strokeWidth={simplifiedFit ? 6 : 4.5} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={sectors[1].svgPath} fill="none" stroke={sectorColors[1]} strokeWidth={simplifiedFit ? 6 : 4.5} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={sectors[2].svgPath} fill="none" stroke={sectorColors[2]} strokeWidth={simplifiedFit ? 6 : 4.5} strokeLinecap="round" strokeLinejoin="round" />
+          {/* Mode X Zones (only in technical mode) */}
+          {!simplifiedFit &&
+            modeXSvgPaths.map((p, idx) => (
+              <path
+                key={idx}
+                d={p}
+                fill="none"
+                stroke="#34d399"
+                strokeWidth={2.5}
+                strokeDasharray="6 4"
+                strokeLinecap="round"
+              />
+            ))}
           {/* Start/Finish */}
           <line
             x1={svgStartFinishLine.x1}
@@ -126,10 +148,32 @@ export const RealCircuitMap: React.FC<RealCircuitMapProps> = ({
           />
         </svg>
 
-        <div className="flex items-center justify-between text-[9px] font-f1-mono text-zinc-400 tabular-nums">
-          <span>{metadata.officialLengthM} m · {metadata.officialCorners} curvas</span>
-          <span>Δ={validation.lengthDeltaPct}%</span>
-        </div>
+        {simplifiedFit ? (
+          <div className="space-y-1.5 border-t border-white/10 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-300">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-1.5 bg-emerald-500 inline-block" />
+                <span>Carro forte</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-1.5 bg-purple-500 inline-block" />
+                <span>Neutro</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-1.5 bg-red-500 inline-block" />
+                <span>Vai sofrer</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-300 leading-snug">
+              {simplifiedFit.summaryText}
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between text-[9px] font-f1-mono text-zinc-400 tabular-nums">
+            <span>{metadata.officialLengthM} m · {metadata.officialCorners} curvas</span>
+            <span>Δ={validation.lengthDeltaPct}%</span>
+          </div>
+        )}
       </div>
     );
   }

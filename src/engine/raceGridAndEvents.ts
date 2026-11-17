@@ -216,6 +216,78 @@ export function syncTeamsAndDriversAfterOnboarding(
   };
 }
 
+/**
+ * Substitui um piloto titular em uma equipe (ex.: demissão de Esteban Ocon e promoção antecipada de Rafael Câmara na Haas),
+ * garantindo unicidade de 24 titulares no grid via resolveRaceGridDrivers.
+ */
+export function applyTeamDriverReplacement(
+  allTeams: Team[],
+  drivers: Driver[],
+  teamId: string,
+  outDriverId: string,
+  inDriverId: string,
+  opts?: { newSalary?: number; newContractYears?: number; newMentality?: number }
+): { teams: Team[]; drivers: Driver[]; gridDrivers: Driver[]; replaced: boolean } {
+  const targetTeam = allTeams.find(t => t.id === teamId);
+  const incoming = drivers.find(d => d.id === inDriverId);
+  if (!targetTeam || !incoming) {
+    return { teams: allTeams, drivers, gridDrivers: drivers.filter(d => !d.isAffiliate && !d.isFreeAgent), replaced: false };
+  }
+
+  const slotIdx = targetTeam.drivers.indexOf(outDriverId);
+  const nextSlots: [string, string] =
+    slotIdx === 0
+      ? [inDriverId, targetTeam.drivers[1]]
+      : slotIdx === 1
+      ? [targetTeam.drivers[0], inDriverId]
+      : [inDriverId, targetTeam.drivers[1]];
+
+  const updatedTeams = allTeams.map(t => {
+    if (t.id === teamId) {
+      return { ...t, drivers: nextSlots };
+    }
+    if (t.drivers.includes(inDriverId)) {
+      return {
+        ...t,
+        drivers: t.drivers.map(id => (id === inDriverId ? '' : id)) as [string, string]
+      };
+    }
+    return t;
+  });
+
+  const updatedDrivers = drivers.map(d => {
+    if (d.id === inDriverId) {
+      return {
+        ...d,
+        teamId,
+        series: 'F1' as const,
+        isAffiliate: false,
+        isFreeAgent: false,
+        salary: opts?.newSalary ?? Math.max(d.salary, 950000),
+        contractYearsRemaining: opts?.newContractYears ?? 2,
+        mentality: opts?.newMentality ?? 92
+      };
+    }
+    if (d.id === outDriverId) {
+      return {
+        ...d,
+        teamId: 'free_agent',
+        isAffiliate: false,
+        isFreeAgent: true
+      };
+    }
+    return d;
+  });
+
+  const resolved = resolveRaceGridDrivers(updatedTeams, updatedDrivers);
+  return {
+    teams: resolved.normalizedTeams,
+    drivers: resolved.normalizedDrivers,
+    gridDrivers: resolved.gridDrivers,
+    replaced: true
+  };
+}
+
 export interface DriverRacePhysicsModifiers {
   paceMultiplier: number;
   qualifyingBonusSec: number;
@@ -308,9 +380,17 @@ export function computeDriverRaceProfile(
   const startLaunchGainLapUnits = ((reacoes - 82) / 100) * 0.014;
 
   // Controle + Precisão + Adaptabilidade protegem contra acidentes/erros
+  // Confiança zero (ou <= 20) eleva o risco de direção imprudente / acidente na pista
+  const driverTrust = Math.max(0, Math.min(100, driver.trust ?? 75));
+  const trustRiskMultiplier =
+    driverTrust <= 0 ? 2.4 : driverTrust <= 20 ? 1.6 : driverTrust >= 85 ? 0.9 : 1.0;
+
   const controlComposite = controle * 0.45 + precisao * 0.35 + (isWet ? adaptabilidade : consistencia) * 0.20;
   const wearStress = opts.tireWearPercent > 75 ? 1.45 : 1.0;
-  const incidentRiskMultiplier = Math.max(0.45, Math.min(2.1, (1.0 - (controlComposite - 80) * 0.022) * wearStress));
+  const incidentRiskMultiplier = Math.max(
+    0.45,
+    Math.min(4.5, (1.0 - (controlComposite - 80) * 0.022) * wearStress * trustRiskMultiplier)
+  );
   const penaltyRiskMultiplier = Math.max(0.4, Math.min(1.9, 1.0 - ((precisao * 0.6 + consistencia * 0.4) - 80) * 0.025));
 
   const qualifyingBonusSec =
@@ -412,7 +492,177 @@ export interface RaceTickInput {
   playerTireWearRateMultiplier: number;
   playerAvgReliability: number;
   flagState: RaceFlagState;
+  circuitId?: string;
+  trackTempC?: number;
   rng?: () => number;
+}
+
+export function isWetWeather(weather: RaceTickInput['trackWeather']): boolean {
+  return weather === 'light_rain' || weather === 'heavy_rain';
+}
+
+export function getCircuitDangerPct(circuitId?: string): number {
+  switch (circuitId) {
+    case 'monaco':
+    case 'baku':
+    case 'jeddah':
+    case 'singapore':
+    case 'las_vegas':
+      return 5.0;
+    case 'suzuka':
+    case 'interlagos':
+    case 'albert_park':
+    case 'spa':
+    case 'zandvoort':
+    case 'miami':
+      return 3.5;
+    case 'monza':
+    case 'bahrain':
+    case 'red_bull_ring':
+    case 'yas_marina':
+      return 1.0;
+    default:
+      return 2.5;
+  }
+}
+
+export interface LapErrorRiskEvaluation {
+  rawFormulaErrorPct: number;
+  errorRiskPct: number; // 0-100 gauge para UI
+  errorStateLabel: 'calmo' | 'pressao' | 'erratico';
+}
+
+/**
+ * Fórmula oficial de risco de erro de pilotagem:
+ * Chance de Erro = Perigo da Pista (Monaco 5% .. Monza 1%)
+ *                + Clima (Chuva +10%)
+ *                + Desgaste (+5% se vida do pneu < 30%)
+ *                - ((Consistência + Frenagem) / 40)
+ */
+export function computeLapErrorRiskPct(params: {
+  driver?: Driver;
+  circuitId?: string;
+  weather: RaceTickInput['trackWeather'];
+  tireWearPercent: number;
+  paceMode: LiveCarState['paceMode'];
+  porpoisingRiskPct?: number;
+  isPlayer?: boolean;
+}): LapErrorRiskEvaluation {
+  const trackDangerPct = getCircuitDangerPct(params.circuitId);
+  const weatherPenaltyPct =
+    params.weather === 'heavy_rain' ? 10.0 : params.weather === 'light_rain' ? 6.5 : 0;
+  const tireLifePct = Math.max(0, 100 - params.tireWearPercent);
+  const wearPenaltyPct = tireLifePct < 30 ? 5.0 : tireLifePct < 45 ? 1.8 : 0;
+
+  const consistency = params.driver?.attributes.consistency ?? 78;
+  const braking = params.driver?.attributes.braking ?? 78;
+  const wetSkill = params.driver?.attributes.wetWeather ?? 76;
+  const composure = params.driver?.attributes.composure ?? 78;
+
+  const driverMitigationPct = (consistency + braking) / 40;
+  const wetSkillMod = isWetWeather(params.weather) ? (80 - wetSkill) * 0.08 : 0;
+  const composureMod = (80 - composure) * 0.03;
+  const modeFactor =
+    params.paceMode === 'attack' ? 1.35 : params.paceMode === 'push' ? 1.15 : params.paceMode === 'conserve' ? 0.72 : 1.0;
+  const porpoisingExtra = params.isPlayer && (params.porpoisingRiskPct ?? 0) > 58 ? 1.8 : 0;
+
+  const baseFormula =
+    trackDangerPct + weatherPenaltyPct + wearPenaltyPct - driverMitigationPct + wetSkillMod + composureMod + porpoisingExtra;
+  const rawFormulaErrorPct = Math.max(0.15, Number((baseFormula * modeFactor).toFixed(2)));
+
+  // Mapeia escala física (0.15% .. ~22%) para barra tática de 0–100%
+  const errorRiskPct = Math.max(5, Math.min(99, Math.round(rawFormulaErrorPct * 5.2)));
+  const errorStateLabel: 'calmo' | 'pressao' | 'erratico' =
+    errorRiskPct <= 30 ? 'calmo' : errorRiskPct <= 60 ? 'pressao' : 'erratico';
+
+  return {
+    rawFormulaErrorPct,
+    errorRiskPct,
+    errorStateLabel,
+  };
+}
+
+export interface RaceRadioMessage {
+  id: string;
+  senderName: string;
+  senderRole: 'PILOTO' | 'ENGENHEIRO-CHEFE' | 'BOX / ESTRATÉGIA';
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+}
+
+export function evaluateRacePitWallRadio(params: {
+  playerCars: LiveCarState[];
+  weather: RaceTickInput['trackWeather'];
+  trackTempC: number;
+  chiefEngineerName?: string;
+}): RaceRadioMessage[] {
+  const messages: RaceRadioMessage[] = [];
+  const chiefName = params.chiefEngineerName || 'Marcus Vance';
+  const wet = isWetWeather(params.weather);
+
+  for (const car of params.playerCars) {
+    if (car.status === 'retired' || car.isDisqualified) continue;
+    const tireLife = Math.max(0, 100 - car.tireWearPercent);
+    const iceTemp = car.iceTempC ?? 102;
+    const riskPct = car.errorRiskPct ?? 20;
+
+    if (iceTemp >= 115 || car.hasDerating) {
+      messages.push({
+        id: `rad_heat_${car.driverId}`,
+        senderName: car.driverName,
+        senderRole: 'PILOTO',
+        severity: 'critical',
+        message: 'Perdi potência, o motor está fritando! Está cortando entrega na saída das curvas.',
+      });
+      messages.push({
+        id: `rad_chief_heat_${car.driverId}`,
+        senderName: chiefName,
+        senderRole: 'ENGENHEIRO-CHEFE',
+        severity: 'critical',
+        message: `Temperatura crítica de ${iceTemp.toFixed(1)}°C no carro #${car.driverNumber}! Ative Modo Economia ou Mistura Pobre agora para evitar quebra.`,
+      });
+    }
+
+    if (tireLife < 40) {
+      messages.push({
+        id: `rad_tire_${car.driverId}`,
+        senderName: car.driverName,
+        senderRole: 'PILOTO',
+        severity: tireLife < 25 ? 'critical' : 'warning',
+        message: `Os pneus traseiros acabaram (${tireLife.toFixed(0)}% de vida restante), estou deslizando muito! Preciso parar nos boxes.`,
+      });
+    }
+
+    if (wet && (car.tireCompound === 'soft' || car.tireCompound === 'medium' || car.tireCompound === 'hard')) {
+      messages.push({
+        id: `rad_wet_${car.driverId}`,
+        senderName: car.driverName,
+        senderRole: 'PILOTO',
+        severity: 'critical',
+        message: 'Pista encharcada com pneus slick! Zero aderência na frenagem — chamem para Intermediário ou Chuva!',
+      });
+    } else if (params.trackTempC > 50 && car.tireCompound === 'soft') {
+      messages.push({
+        id: `rad_blister_${car.driverId}`,
+        senderName: chiefName,
+        senderRole: 'ENGENHEIRO-CHEFE',
+        severity: 'warning',
+        message: `Asfalto a ${params.trackTempC.toFixed(0)}°C está causando bolhas (blistering) no pneu Macio de #${car.shortCode}. Considere antecipar pit para Duro.`,
+      });
+    }
+
+    if (riskPct >= 61) {
+      messages.push({
+        id: `rad_risk_${car.driverId}`,
+        senderName: 'Engenheiro de Corrida',
+        senderRole: 'BOX / ESTRATÉGIA',
+        severity: 'warning',
+        message: `${car.shortCode} está rodando no limite errático (${riskPct}% risco de erro). Reduza para Normal se quiser evitar rodada ou travada.`,
+      });
+    }
+  }
+
+  return messages;
 }
 
 export interface RaceTickOutput {
@@ -570,6 +820,13 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
 
     const driver = driverById.get(car.driverId);
     const team = teamById.get(car.teamId);
+    const wetTrack = isWetWeather(input.trackWeather);
+    // Trava climática: na chuva, modos extremos (Ataque/Economia) são bloqueados para Normal
+    const effectivePaceMode: LiveCarState['paceMode'] =
+      wetTrack && (car.paceMode === 'attack' || car.paceMode === 'conserve' || car.paceMode === 'push')
+        ? 'balanced'
+        : car.paceMode;
+
     const drvProfile = computeDriverRaceProfile(driver, {
       weather: input.trackWeather,
       aeroDemand: input.aeroDemand,
@@ -580,9 +837,9 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
 
     let speedMod = 1.0 * drvProfile.paceMultiplier * weatherComp.paceFactor;
 
-    if (car.paceMode === 'attack') speedMod *= 1.036;
-    else if (car.paceMode === 'push') speedMod *= 1.018;
-    else if (car.paceMode === 'conserve') speedMod *= 0.972;
+    if (effectivePaceMode === 'attack') speedMod *= 1.036;
+    else if (effectivePaceMode === 'push') speedMod *= 1.018;
+    else if (effectivePaceMode === 'conserve') speedMod *= 0.972;
 
     if (car.engineMode === 'overtake') speedMod *= 1.055;
     else if (car.engineMode === 'deploy') speedMod *= 1.028;
@@ -617,10 +874,13 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       speedMod *= 1 + (1 - altitudeScale) * 0.012;
     }
 
-    // Consumo de E-Fuel + Mix
+    // Consumo de E-Fuel + Modo de Pilotagem + Mistura + Leveza do Tanque (~0.03s por kg queimado)
     const flagFuelMult = nextFlag === 'sc' ? 0.42 : nextFlag === 'vsc' ? 0.52 : 1.0;
     const mixBurnMultiplier = car.fuelMixMode === 'rich' ? 2.0 : car.fuelMixMode === 'lean' ? 0.7 : 1.0;
-    const fuelBurnedThisTick = baseSpeed * speedMod * car.fuelBurnKgPerLap * mixBurnMultiplier * flagFuelMult;
+    const paceFuelMultiplier =
+      effectivePaceMode === 'attack' ? 1.2 : effectivePaceMode === 'conserve' ? 0.8 : 1.0;
+    const fuelBurnedThisTick =
+      baseSpeed * speedMod * car.fuelBurnKgPerLap * mixBurnMultiplier * paceFuelMultiplier * flagFuelMult;
     const newFuelRemaining = Math.max(0, car.fuelRemainingKg - fuelBurnedThisTick);
 
     if (newFuelRemaining <= 0) {
@@ -640,9 +900,10 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       };
     }
 
-    const weightPenaltySec = (newFuelRemaining / 100) * 0.8;
+    // Cada kg queimado alivia ~0.03s por volta (ex.: 100kg cheio vs 5kg no fim = ~2.85s mais leve)
+    const weightPenaltySec = newFuelRemaining * 0.03;
     const activeFuelSavingPenaltySec = car.fuelMixMode === 'lean' ? 0.0 : car.fuelSavingPenaltySec;
-    speedMod *= 1.0 - (newFuelRemaining / 100) * 0.02;
+    speedMod *= 1.0 - (newFuelRemaining / 100) * 0.022;
     if (activeFuelSavingPenaltySec > 0) speedMod *= 1.0 - activeFuelSavingPenaltySec * 0.035;
     if (car.fuelMixMode === 'rich') speedMod *= 1.035;
     else if (car.fuelMixMode === 'lean') speedMod *= 0.965;
@@ -777,73 +1038,142 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       speedMod *= 0.28;
     }
 
-    // Probabilidade real de acidente / saída de pista (Jogador & IA)
-    // Calibrado por volta (~0.20% por carro/volta no seco -> ~1.5-2.0 DNFs por batida em GP de 24 carros)
+    // Avaliação de Risco de Erro por Atributos, Clima, Pista e Desgaste
+    const errorEval = computeLapErrorRiskPct({
+      driver,
+      circuitId: input.circuitId,
+      weather: input.trackWeather,
+      tireWearPercent: car.tireWearPercent,
+      paceMode: effectivePaceMode,
+      porpoisingRiskPct: input.playerPorpoisingRiskPct,
+      isPlayer: car.isPlayer,
+    });
+    let lastErrorType = car.lastErrorType;
+
+    // Probabilidade real de erros e incidentes (Rodada Simples, Travada de Roda, Batida Leve, Batida Grave/DNF)
     if (!car.inPitLane && nextFlag === 'green') {
-      const porpoisingRiskMult = car.isPlayer && input.playerPorpoisingRiskPct > 58 ? 1.45 : 1.0;
-      const modeAttackRiskMult = car.paceMode === 'attack' ? 1.55 : car.paceMode === 'conserve' ? 0.65 : 1.0;
-      const baseIncidentPerLap = 0.0020;
-      const incidentRollProb =
-        baseIncidentPerLap *
-        lapStep *
-        drvProfile.incidentRiskMultiplier *
-        weatherComp.crashRiskMult *
-        porpoisingRiskMult *
-        modeAttackRiskMult;
+      const driverTrustVal = driver?.trust ?? 75;
+      const trustRiskMult = driverTrustVal <= 0 ? 2.2 : driverTrustVal <= 20 ? 1.5 : 1.0;
+      const wetWrongTireMult = weatherComp.crashRiskMult;
+
+      // Escala por lapStep para manter média realista em GP de 57 voltas (~1.5–2.5 DNFs secos; alto na chuva c/ slick)
+      const baseErrorProbPerLap = Math.min(0.18, errorEval.rawFormulaErrorPct * 0.0042) * wetWrongTireMult * trustRiskMult;
+      const incidentRollProb = baseErrorProbPerLap * lapStep;
 
       if (rng() < incidentRollProb) {
         const severityRoll = rng();
-        if (severityRoll < 0.42 && newDamage < 65) {
-          // Escapada / rodada leve com perda de tempo e Bandeira Amarela
-          const lossLap = 0.055 + rng() * 0.05;
-          const addedDmg = Math.round(6 + rng() * 14);
-          newDamage = Math.min(100, newDamage + addedDmg);
-          lastIncidentText = `Rodada / Escapada na pista (-${(lossLap * input.baseLapTimeSec).toFixed(1)}s)`;
+        // 1) Rodada Simples (0..0.32): perde 2 a 5 posições (~0.08–0.13 volta), gera flatspot e aciona Bandeira Amarela
+        if (severityRoll < 0.32 && newDamage < 70) {
+          const lossLap = 0.075 + rng() * 0.055;
+          const flatspotWear = Math.min(100, car.tireWearPercent + 7);
+          lastErrorType = 'spin';
+          lastIncidentText = `Rodada simples (-${(lossLap * input.baseLapTimeSec).toFixed(1)}s · -2 a -5 pos.)`;
           escalateRaceControl(
             car.lap,
             'yellow',
-            `# ${car.driverNumber} ${car.shortCode} rodou na pista e retornou com danos.`
+            `#${car.driverNumber} ${car.shortCode} rodou na pista, perdeu posições e retornou com desgaste nos pneus.`
           );
           return {
             ...car,
+            paceMode: effectivePaceMode,
             distanceOnLap: Math.max(0, car.distanceOnLap - lossLap),
             totalDistance: Math.max(0, car.totalDistance - lossLap),
+            tireWearPercent: Math.round(flatspotWear * 10) / 10,
             damagePercent: newDamage,
             penaltySec: newPenaltySec,
             penaltiesCount: newPenaltiesCount,
             hasBlueFlag,
+            errorRiskPct: errorEval.errorRiskPct,
+            errorStateLabel: errorEval.errorStateLabel,
+            lastErrorType,
             lastIncidentText
           };
-        } else {
-          // Batida forte / DNF com acionamento de VSC, Safety Car ou Bandeira Vermelha
-          const flagRoll = rng();
-          const chosenFlag: 'vsc' | 'sc' | 'red' =
-            flagRoll < 0.14 || input.trackWeather === 'heavy_rain'
-              ? 'red'
-              : flagRoll < 0.56
-              ? 'sc'
-              : 'vsc';
-          const reason =
-            weatherComp.crashRiskMult >= 2.5
-              ? 'Acidente por Aquaplanagem (Pneu Inadequado)'
-              : 'Colisão contra a barreira de proteção';
-          events.push({
-            lap: car.lap,
-            flag: chosenFlag,
-            title: `ACIDENTE & DNF — #${car.driverNumber} ${car.shortCode}`,
-            message: `${car.driverName} bateu na volta ${car.lap}: ${reason}.`
-          });
-          escalateRaceControl(car.lap, chosenFlag, `Acidente com #${car.driverNumber} (${car.shortCode}) na volta ${car.lap}.`);
+        }
+        // 2) Travada de Roda (0.32..0.68): perda menor de tempo (~2-3s) e desgaste no pneu dianteiro
+        if (severityRoll < 0.68 && newDamage < 80) {
+          const lossLap = 0.025 + rng() * 0.018;
+          const flatspotWear = Math.min(100, car.tireWearPercent + 4.5);
+          lastErrorType = 'lockup';
+          lastIncidentText = `Travada de roda (-${(lossLap * input.baseLapTimeSec).toFixed(1)}s · Flatspot)`;
           return {
             ...car,
-            damagePercent: 100,
+            paceMode: effectivePaceMode,
+            distanceOnLap: Math.max(0, car.distanceOnLap - lossLap),
+            totalDistance: Math.max(0, car.totalDistance - lossLap),
+            tireWearPercent: Math.round(flatspotWear * 10) / 10,
             penaltySec: newPenaltySec,
             penaltiesCount: newPenaltiesCount,
-            status: 'retired' as const,
-            retireReason: reason,
-            lastIncidentText: `DNF · ${reason}`
+            hasBlueFlag,
+            errorRiskPct: errorEval.errorRiskPct,
+            errorStateLabel: errorEval.errorStateLabel,
+            lastErrorType,
+            lastIncidentText
           };
         }
+        // 3) Batida Leve (0.68..0.85, menor se slick em chuva pesada): dano na asa dianteira / aero, pede reparo no pit
+        if (severityRoll < 0.85 && wetWrongTireMult < 3.0 && newDamage < 72) {
+          const addedDmg = Math.round(12 + rng() * 12);
+          newDamage = Math.min(89, newDamage + addedDmg);
+          lastErrorType = 'contact';
+          lastIncidentText = `Batida leve · Asa dianteira avariada (+${addedDmg}% dano · Pit recomendado)`;
+          events.push({
+            lap: car.lap,
+            flag: 'yellow',
+            title: `BATIDA LEVE — #${car.driverNumber} ${car.shortCode}`,
+            message: `${car.driverName} tocou no muro/zebra na volta ${car.lap} e sofreu avaria aerodinâmica (+${addedDmg}% dano).`
+          });
+          escalateRaceControl(car.lap, 'yellow', `Detritos leves de #${car.driverNumber} (${car.shortCode}) na pista.`);
+          return {
+            ...car,
+            paceMode: effectivePaceMode,
+            distanceOnLap: Math.max(0, car.distanceOnLap - 0.03),
+            totalDistance: Math.max(0, car.totalDistance - 0.03),
+            damagePercent: newDamage,
+            penaltySec: newPenaltySec,
+            penaltiesCount: newPenaltiesCount,
+            hasBlueFlag,
+            errorRiskPct: errorEval.errorRiskPct,
+            errorStateLabel: errorEval.errorStateLabel,
+            lastErrorType,
+            lastIncidentText
+          };
+        }
+
+        // 4) Batida Grave / DNF com acionamento de VSC, Safety Car ou Bandeira Vermelha
+        const flagRoll = rng();
+        const chosenFlag: 'vsc' | 'sc' | 'red' =
+          flagRoll < 0.14 || input.trackWeather === 'heavy_rain'
+            ? 'red'
+            : flagRoll < 0.56
+            ? 'sc'
+            : 'vsc';
+        const reason =
+          weatherComp.crashRiskMult >= 2.5
+            ? 'Acidente por Aquaplanagem (Pneu Inadequado)'
+            : driverTrustVal <= 15
+            ? 'Erro de pilotagem sob tensão (Crise de Confiança com o box)'
+            : 'Batida Grave contra a barreira (Colisão)';
+        lastErrorType = 'dnf';
+        events.push({
+          lap: car.lap,
+          flag: chosenFlag,
+          title: `BATIDA GRAVE & DNF — #${car.driverNumber} ${car.shortCode}`,
+          message: `${car.driverName} abandonou após forte impacto na volta ${car.lap}: ${reason}.`
+        });
+        escalateRaceControl(car.lap, chosenFlag, `Acidente grave com #${car.driverNumber} (${car.shortCode}) na volta ${car.lap}.`);
+        return {
+          ...car,
+          paceMode: effectivePaceMode,
+          damagePercent: 100,
+          penaltySec: newPenaltySec,
+          penaltiesCount: newPenaltiesCount,
+          status: 'retired' as const,
+          retireReason: reason,
+          errorRiskPct: errorEval.errorRiskPct,
+          errorStateLabel: errorEval.errorStateLabel,
+          lastErrorType,
+          lastIncidentText: `DNF · ${reason}`
+        };
       }
     }
 
@@ -889,25 +1219,40 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
           input.playerThermalMarginC < 0 ? Math.min(0.018, Math.abs(input.playerThermalMarginC) * 0.0015) : 0;
         const fatigueRisk = input.playerFatigueLifeRaces < 3 ? 0.006 : 0;
         const baseRelRisk = Math.max(0, (92 - input.playerAvgReliability) * 0.00025);
-        const totalMechRisk = thermalOverloadRisk + fatigueRisk + baseRelRisk;
+        const lowRelPuRisk =
+          input.playerAvgReliability < 75 ? (75 - input.playerAvgReliability) * 0.00045 : 0;
+        const totalMechRisk = thermalOverloadRisk + fatigueRisk + baseRelRisk + lowRelPuRisk;
         if (totalMechRisk > 0 && rng() < totalMechRisk) {
-          const reason =
-            thermalOverloadRisk >= fatigueRisk
-              ? `Superaquecimento PU/ERS (${input.playerBatteryCellTempC}°C · Margem ${input.playerThermalMarginC}°C)`
-              : 'Falha hidráulica / fadiga na caixa de câmbio';
+          const isPuFailure =
+            thermalOverloadRisk + lowRelPuRisk >= fatigueRisk || input.playerAvgReliability < 74;
+          const reason = isPuFailure
+            ? thermalOverloadRisk > 0
+              ? `Superaquecimento PU/ERS (${input.playerBatteryCellTempC}°C · Fumaça no escapamento)`
+              : `Falha na Unidade de Potência (Fumaça saindo do escapamento · ${Math.round(input.playerAvgReliability)}% Conf.)`
+            : 'Falha hidráulica / fadiga na caixa de câmbio';
           events.push({
             lap: newLap,
             flag: 'yellow',
-            title: `ABANDONO MECÂNICO — #${car.driverNumber} ${car.shortCode}`,
-            message: `${car.driverName} sofreu falha na volta ${newLap}: ${reason}.`
+            title: isPuFailure
+              ? `FUMAÇA NO ESCAPAMENTO — #${car.driverNumber} ${car.shortCode}`
+              : `ABANDONO MECÂNICO — #${car.driverNumber} ${car.shortCode}`,
+            message: isPuFailure
+              ? `Fumaça espessa saindo do escapamento de ${car.driverName} na volta ${newLap}! ${reason}.`
+              : `${car.driverName} sofreu falha na volta ${newLap}: ${reason}.`
           });
-          escalateRaceControl(newLap, 'yellow', `Carro #${car.driverNumber} lento/parado com falha mecânica.`);
+          escalateRaceControl(
+            newLap,
+            'yellow',
+            isPuFailure
+              ? `Carro #${car.driverNumber} (${car.shortCode}) com fumaça saindo do escapamento na volta ${newLap}!`
+              : `Carro #${car.driverNumber} lento/parado com falha mecânica.`
+          );
           return {
             ...car,
             lap: newLap,
             status: 'retired' as const,
             retireReason: reason,
-            lastIncidentText: `DNF · ${reason}`
+            lastIncidentText: isPuFailure ? 'DNF · Fumaça no Escapamento (PU)' : `DNF · ${reason}`
           };
         }
       } else {
@@ -951,7 +1296,7 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
         ) / 1000;
     }
 
-    // Bateria ERS (SoC e Derating)
+    // Bateria ERS + Temperatura da pista (>50°C gera bolhas em Softs e estresse térmico de PU > 115°C = Derating Térmico)
     const trackErsHarvestBias = Math.max(-0.35, Math.min(0.35, input.netErsBalanceKjPerLap / 4000));
     let newSoc = car.socPercent;
     if (car.engineMode === 'overtake') newSoc = Math.max(0, newSoc - 1.8 * input.raceSpeed);
@@ -959,35 +1304,91 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
     else if (car.engineMode === 'harvest') newSoc = Math.min(100, newSoc + (1.4 + trackErsHarvestBias * 0.4) * input.raceSpeed);
     else newSoc = Math.max(10, Math.min(95, newSoc + trackErsHarvestBias * 0.25 + (rng() * 0.4 - 0.2)));
 
-    const thermalDerating = car.isPlayer && input.playerThermalMarginC < -4 && car.batteryTempC > 64;
-    const hasDerating = newSoc <= 5 || thermalDerating;
-    if (hasDerating && car.isPlayer && input.playerThermalMarginC < -4) {
-      speedMod *= 0.96;
-    }
-
-    // Desgaste de pneus (Suavidade + Pressão de pista + Porpoising + Bandeiras SC/VSC)
-    const flagWearMult = nextFlag === 'sc' ? 0.3 : nextFlag === 'vsc' ? 0.45 : 1.0;
-    const playerTireMult = car.isPlayer
-      ? input.playerTireWearRateMultiplier * (0.85 + input.tireStressIndex01 * 0.35)
-      : 1.0;
-    const porpoisingTireMult = car.isPlayer && input.playerPorpoisingRiskPct > 55 ? 1.08 : 1.0;
-    const tireWearDelta =
-      (car.tireCompound === 'soft' ? 0.35 : car.tireCompound === 'medium' ? 0.22 : 0.14) *
-      (car.paceMode === 'attack' ? 1.5 : car.paceMode === 'push' ? 1.2 : 0.8) *
-      playerTireMult *
-      porpoisingTireMult *
-      drvProfile.tireWearMultiplier *
-      weatherComp.wearMult *
-      flagWearMult *
-      input.raceSpeed;
-    const newWear = Math.min(100, car.tireWearPercent + tireWearDelta);
+    const effectiveTrackTempC =
+      input.trackTempC ??
+      (input.trackWeather === 'heavy_rain'
+        ? 23
+        : input.trackWeather === 'light_rain'
+        ? 26
+        : input.trackWeather === 'overcast'
+        ? 34
+        : 44 + input.coolingDemandIndex01 * 10);
 
     const targetBatteryTemp = car.isPlayer
       ? Math.min(98, input.playerBatteryCellTempC + (100 - newSoc) * 0.12 + input.coolingDemandIndex01 * 4.5)
       : Math.min(95, 45 + (100 - newSoc) * 0.4);
 
+    // Temperatura ICE/PU (°C): Ataque + Mistura Rica + Calor > 50°C pode romper 115°C
+    const modeHeatOffset =
+      effectivePaceMode === 'attack' ? 8.5 : effectivePaceMode === 'conserve' ? -5.0 : 0;
+    const mixHeatOffset = car.fuelMixMode === 'rich' ? 6.0 : car.fuelMixMode === 'lean' ? -4.5 : 0;
+    const coolingPenaltyC = car.isPlayer ? Math.max(-4, -input.playerThermalMarginC * 0.85) : 0;
+    const rawIceTempC =
+      94 +
+      Math.max(0, effectiveTrackTempC - 35) * 0.52 +
+      input.coolingDemandIndex01 * 7.5 +
+      modeHeatOffset +
+      mixHeatOffset +
+      coolingPenaltyC;
+    const prevIceTemp = car.iceTempC ?? 99;
+    const nextIceTempC = Math.round((prevIceTemp * 0.7 + rawIceTempC * 0.3) * 10) / 10;
+
+    const thermalDerating =
+      nextIceTempC >= 115 ||
+      (car.isPlayer && input.playerThermalMarginC < -4 && car.batteryTempC > 64);
+    const hasDerating = newSoc <= 5 || thermalDerating;
+    if (thermalDerating) {
+      speedMod *= 0.94; // Derating térmico reduz potência entregue
+    }
+
+    // Fórmula de Desgaste de Pneus:
+    // Base × Modo (Ataque 3x, Normal 1x, Economia 0.6x) × Temp. da Pista × Fator Carro/Suspensão ÷ Gestão de Pneus do Piloto
+    const flagWearMult = nextFlag === 'sc' ? 0.3 : nextFlag === 'vsc' ? 0.45 : 1.0;
+    const baseCompoundWearPerLap =
+      car.tireCompound === 'soft'
+        ? 4.4
+        : car.tireCompound === 'medium'
+        ? 2.7
+        : car.tireCompound === 'hard'
+        ? 1.85
+        : 2.5;
+    const paceWearMultiplier =
+      effectivePaceMode === 'attack'
+        ? 3.0
+        : effectivePaceMode === 'push'
+        ? 1.85
+        : effectivePaceMode === 'conserve'
+        ? 0.6
+        : 1.0;
+    const trackTempFactor =
+      effectiveTrackTempC > 50
+        ? car.tireCompound === 'soft'
+          ? 1.48 // Calor extremo derrete/gera bolhas nos Macios
+          : 1.24
+        : effectiveTrackTempC < 26
+        ? 0.88
+        : 1.0 + Math.max(0, effectiveTrackTempC - 35) * 0.012;
+    const playerTireMult = car.isPlayer
+      ? input.playerTireWearRateMultiplier * (0.85 + input.tireStressIndex01 * 0.35)
+      : 0.92 + input.tireStressIndex01 * 0.22;
+    const porpoisingTireMult = car.isPlayer && input.playerPorpoisingRiskPct > 55 ? 1.08 : 1.0;
+    const tireMgmtSkill = driver?.attributes.tireManagement ?? 78;
+    const driverTireDivisor = Math.max(0.78, Math.min(1.25, 0.72 + (tireMgmtSkill / 100) * 0.45));
+
+    const tireWearDelta =
+      ((baseCompoundWearPerLap * paceWearMultiplier * trackTempFactor * playerTireMult * porpoisingTireMult) /
+        driverTireDivisor) *
+      weatherComp.wearMult *
+      flagWearMult *
+      lapStep;
+    const newWear = Math.min(100, car.tireWearPercent + tireWearDelta);
+    const nextTireTempC = Math.round(
+      ((effectiveTrackTempC + 52) * (effectivePaceMode === 'attack' ? 1.09 : effectivePaceMode === 'conserve' ? 0.93 : 1.0)) * 10
+    ) / 10;
+
     return {
       ...car,
+      paceMode: effectivePaceMode,
       lap: newLap,
       distanceOnLap: newDist,
       totalDistance: newLap - 1 + newDist,
@@ -998,6 +1399,7 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       socPercent: Math.round(newSoc),
       hasDerating,
       tireWearPercent: Math.round(newWear * 10) / 10,
+      tireTempC: nextTireTempC,
       inPitLane: inPit,
       pitDurationSec: pitDurationLeft,
       damagePercent: newDamage,
@@ -1005,7 +1407,11 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       penaltiesCount: newPenaltiesCount,
       hasBlueFlag,
       lastIncidentText,
-      batteryTempC: Math.round(targetBatteryTemp * 10) / 10
+      batteryTempC: Math.round(targetBatteryTemp * 10) / 10,
+      iceTempC: nextIceTempC,
+      errorRiskPct: errorEval.errorRiskPct,
+      errorStateLabel: errorEval.errorStateLabel,
+      lastErrorType
     };
   });
 

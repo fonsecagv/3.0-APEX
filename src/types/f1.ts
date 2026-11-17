@@ -124,6 +124,9 @@ export interface ComponentSpec {
   designWeeks: number;
   inDevelopment?: boolean;
   developmentWeeksLeft?: number;
+  atrHoursCost?: number;
+  chiefAdviceFollowed?: boolean;
+  chiefId?: string;
 }
 
 export interface CarSetup {
@@ -164,6 +167,11 @@ export interface Driver {
   age: number;
   avatarColor: string;
   fatigue?: number; // 0 - 100 fadiga acumulada por eventos de marketing/testes
+  trust?: number; // 0 - 100 confiança no Team Principal / escuta ativa
+  xp?: number; // 0 - 100 progresso dentro do nível atual
+  rpgLevel?: number; // 1 - 10 nível de evolução RPG
+  lastXpDelta?: number;
+  attributeTrends?: Partial<Record<keyof Driver['attributes'], 'up' | 'stable' | 'down'>>;
   // 14 Core Attributes
   attributes: {
     pace: number;
@@ -206,6 +214,10 @@ export interface StaffMember {
   age?: number;
   mentality: number;
   morale?: number;
+  trust?: number; // 0 - 100 confiança/respeito no comando técnico
+  xp?: number; // 0 - 100 progresso rumo à próxima estrela
+  rpgLevel?: number; // 1 - 5 estrelas (limitado pelo nível da Central da Equipe)
+  lastXpDelta?: number;
   salary: number;
   buyoutClause?: number;
   currentTeam?: string;
@@ -295,6 +307,12 @@ export interface Team {
   baseDeFasHistory?: BaseDeFasPoint[];
   filosofiaAtual?: CarPhilosophy;
   conceptCrisis?: boolean;
+  engineCustomName?: string;
+  mechanicalDnfCount?: number;
+  puDevelopmentCeilingPct?: number;
+  puCoolingAeroPenaltyPct?: number;
+  thirdPartyErsSupplier?: CustomerEngineSupplier | null;
+  homologatedPeakPowerHp?: number;
 }
 
 export interface BaseDeFasPoint {
@@ -364,6 +382,10 @@ export interface LiveCarState {
   isDisqualified?: boolean;
   lastIncidentText?: string;
   effectiveRaceTimeSec?: number;
+  iceTempC?: number; // Temperatura térmica do bloco ICE/PU (°C, >115°C aciona Derating Térmico)
+  errorRiskPct?: number; // 0 - 100% barra de risco de erro de pilotagem
+  errorStateLabel?: 'calmo' | 'pressao' | 'erratico';
+  lastErrorType?: 'spin' | 'lockup' | 'contact' | 'dnf';
 }
 
 export interface RaceTelemetrySnapshot {
@@ -428,6 +450,15 @@ export interface OnboardingResult {
   boardPressureLevel?: 'high' | 'medium' | 'low';
   initialProjectBudgetUsd?: number;
   staffPhilosophyPenaltyPct?: number;
+  boardSynergyPct?: number;
+  rdTimePenaltyMultiplier?: number;
+  silentSabotageAeroPct?: number;
+  boardroomConflictMoralePenalty?: number;
+  cascadingNarrativeEvent?: {
+    title: string;
+    message: string;
+    mediaHeadline?: string | null;
+  } | null;
   hqLogisticsCostFactor?: number;
   hqEuropeanStaffAppeal?: number;
   semanasParaTeste?: number;
@@ -449,6 +480,8 @@ export interface OnboardingResult {
   emergencyPenaltyDescription?: string;
   emergencyMercedesCost?: number;
   abandonedToZero?: boolean;
+  preseasonMissed?: boolean;
+  preseasonOverrunWeeks?: number;
   customCorrelationErrorMod?: number;
   prototypeCostPaid?: number;
   productionCostPaid?: number;
@@ -466,6 +499,12 @@ export interface OnboardingResult {
     suspensionRear: 'pushrod' | 'pullrod';
   };
   vehicleParams?: VehicleEngineeringParameters;
+  chassisName?: string;
+  customEngineName?: string;
+  puDevelopmentCeilingPct?: number;
+  puCoolingAeroPenaltyPct?: number;
+  puMaturityScore?: number;
+  homologatedPeakPowerHp?: number;
   testResult: {
     lapTime: number;
     rank: number;
@@ -473,6 +512,37 @@ export interface OnboardingResult {
     reliability: number;
     delayWeeks: number;
   } | null;
+}
+
+export interface SeasonEventCardOption {
+  label: string;
+  effectSummary: string;
+  cashDeltaUsd?: number;
+  costCapDeltaUsd?: number;
+  moraleDelta?: number;
+  reputationDelta?: number;
+  fanDeltaPct?: number;
+  reliabilityDelta?: number;
+  downforceDelta?: number;
+  atrHoursDelta?: number;
+}
+
+export interface SeasonEventCard {
+  id: string;
+  category: 'engenharia' | 'patrocinador' | 'crise_garagem' | 'piloto';
+  title: string;
+  sender: string;
+  description: string;
+  weekCreated: number;
+  options: SeasonEventCardOption[];
+}
+
+export interface MidSeasonDilemma {
+  round: number;
+  currentChassisName: string;
+  nextChassisName: string;
+  title: string;
+  description: string;
 }
 
 export interface PuClientContract {

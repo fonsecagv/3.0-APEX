@@ -370,7 +370,14 @@ function createNoseTexture(
   // Driver 3-letter code underneath
   ctx.font = '800 32px monospace';
   ctx.fillStyle = isLight ? '#E10600' : spec.accentHex;
-  ctx.fillText(driver.shortCode, w * 0.5, h * 0.72);
+  ctx.fillText(driver.shortCode, w * 0.5, h * 0.70);
+
+  // Official FIA Chassis Name stamped on nose cone
+  if (spec.carModelName) {
+    ctx.font = '900 26px "Arial Black", sans-serif';
+    ctx.fillStyle = isLight ? '#14161D' : '#FFFFFF';
+    ctx.fillText(spec.carModelName.toUpperCase(), w * 0.5, h * 0.84);
+  }
   ctx.restore();
 
   return finalizeTexture(canvas, true, maxAnisotropy, 1, 1);

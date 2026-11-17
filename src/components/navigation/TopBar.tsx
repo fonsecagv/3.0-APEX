@@ -24,7 +24,6 @@ export const TopBar: React.FC = () => {
     currentWeek,
     seasonYear,
     currentCircuit,
-    financials,
     semanasParaTeste,
     playerTeam,
     puClients,
@@ -115,17 +114,14 @@ export const TopBar: React.FC = () => {
     }
   };
 
-  const costCapRemaining = financials.costCapLimit - financials.costCapSpent;
-  const isCostCapWarning = costCapRemaining < 10000000;
-
   return (
     <header className="sticky top-0 z-50 bg-[#15151E] border-b border-[#2C2C3A] text-white select-none">
       {/* Red F1 Signature Baseline Line */}
       <div className="h-[2px] w-full bg-gradient-to-r from-[#E10600] via-[#E10600] to-transparent" />
 
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center justify-between gap-8">
+      <div className="max-w-[1440px] mx-auto px-3 lg:px-5 h-16 flex items-center justify-between gap-3">
         {/* Zone 1: Brand Wordmark & Main Menu Return */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={() => {
               setShowStartScreen(true);
@@ -137,16 +133,16 @@ export const TopBar: React.FC = () => {
             <Home className="w-4 h-4" />
           </button>
 
-          <F1Logo className="h-6" variant="red" />
-          
-          <div className="hidden sm:flex flex-col border-l border-white/10 pl-3">
+          <F1Logo className="h-5 lg:h-6" variant="red" />
+
+          <div className="hidden 2xl:flex flex-col border-l border-white/10 pl-2.5">
             <span className="font-f1-wide font-black text-xs tracking-wider text-white">APEX 2026</span>
             <span className="font-f1-mono text-[10px] text-zinc-400">HYBRID REGULATIONS</span>
           </div>
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+        <nav className="hidden md:flex items-center gap-0.5 lg:gap-1 min-w-0">
           {navItems.map(item => {
             const isActive = activeTab === item.id;
             return (
@@ -156,7 +152,7 @@ export const TopBar: React.FC = () => {
                   setActiveTab(item.id);
                   playRadioSound();
                 }}
-                className={`px-3 py-1.5 text-xs font-f1-wide uppercase tracking-wider transition-colors relative whitespace-nowrap shrink-0 ${
+                className={`px-2 xl:px-2.5 py-1.5 text-[11px] xl:text-xs font-f1-wide uppercase tracking-wider transition-colors relative whitespace-nowrap shrink-0 cursor-pointer ${
                   isActive
                     ? 'text-white font-bold'
                     : 'text-zinc-400 hover:text-white'
@@ -164,7 +160,7 @@ export const TopBar: React.FC = () => {
               >
                 <span>{item.label}</span>
                 {item.badge && (
-                  <span className="ml-1.5 text-[9px] font-f1-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded font-bold">
+                  <span className="ml-1 text-[9px] font-f1-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.5 font-bold">
                     {item.badge}
                   </span>
                 )}
@@ -176,30 +172,8 @@ export const TopBar: React.FC = () => {
           })}
         </nav>
 
-        {/* Zone 3: Financials, Quick Save, Language & Primary Action */}
-        <div className="flex items-center gap-3 shrink-0">
-          {/* Cost Cap Quick Stat */}
-          <div className="hidden lg:flex items-center gap-3 text-right">
-            <div>
-              <div className="flex items-center justify-end gap-1 text-[11px] font-f1-mono text-zinc-400">
-                <span>{t.cash}:</span>
-                <span className="text-white font-bold font-f1-mono tabular-nums">
-                  ${(financials.bankBalance / 1000000).toFixed(1)}M
-                </span>
-              </div>
-              <div className="flex items-center justify-end gap-1 text-[10px] font-f1-mono">
-                <span className="text-zinc-400">{t.costCap.toUpperCase()}:</span>
-                <span
-                  className={`font-bold tabular-nums ${
-                    isCostCapWarning ? 'text-red-400' : 'text-zinc-300'
-                  }`}
-                >
-                  ${(financials.costCapSpent / 1000000).toFixed(1)} / $135M
-                </span>
-              </div>
-            </div>
-          </div>
-
+        {/* Zone 3: Quick Save, Language, Sound & Primary Action */}
+        <div className="flex items-center gap-2 shrink-0">
           {/* Quick Save Button (Local) */}
           <button
             onClick={handleManualSave}
@@ -211,7 +185,7 @@ export const TopBar: React.FC = () => {
             ) : (
               <Save className="w-3.5 h-3.5 text-[#E10600]" />
             )}
-            <span className="hidden xl:inline text-[11px] uppercase">
+            <span className="hidden 2xl:inline text-[11px] uppercase">
               {saveSuccess ? (language === 'pt' ? 'Salvo!' : 'Saved!') : (language === 'pt' ? 'Salvar' : 'Save')}
             </span>
           </button>
@@ -232,7 +206,7 @@ export const TopBar: React.FC = () => {
                   : 'text-cyan-400'
               }`}
             />
-            <span className="hidden xl:inline text-[11px] uppercase">
+            <span className="hidden 2xl:inline text-[11px] uppercase">
               {cloudSaving
                 ? '...'
                 : cloudSaveStatus === 'saved'
@@ -267,7 +241,7 @@ export const TopBar: React.FC = () => {
               setLanguage(language === 'pt' ? 'en' : 'pt');
               playRadioSound();
             }}
-            className="px-2.5 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1"
+            className="px-2 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer"
           >
             <Globe className="w-3.5 h-3.5 text-[#E10600]" />
             <span className="font-bold">{language === 'pt' ? 'PT' : 'EN'}</span>
@@ -279,24 +253,22 @@ export const TopBar: React.FC = () => {
               setSoundEnabled(!soundEnabled);
               if (!soundEnabled) playRadioSound();
             }}
-            className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-zinc-400 hover:text-white transition-colors"
+            className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             title={language === 'pt' ? 'Efeitos Sonoros' : 'Sound Effects'}
           >
             {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-zinc-600" />}
           </button>
 
-          {/* Contador Regressivo dos Testes do Bahrein */}
-          <div className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 border text-xs font-f1-mono ${
+          {/* Contador Regressivo dos Testes do Bahrein (visível em telas amplas) */}
+          <div className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1 border text-xs font-f1-mono ${
             semanasParaTeste >= 0
               ? 'bg-[#1C1C26] border-white/10 text-zinc-300'
               : 'bg-red-950/60 border-[#E10600] text-red-300'
           }`}>
             <Clock className={`w-3.5 h-3.5 ${semanasParaTeste >= 0 ? 'text-cyan-400' : 'text-[#E10600]'}`} />
-            <span className="font-bold">
-              TESTES DO BAHREIN:
-            </span>
+            <span className="font-bold">BAHREIN:</span>
             <span className={`font-bold tabular-nums ${semanasParaTeste >= 0 ? 'text-emerald-400' : 'text-red-400 font-f1-wide'}`}>
-              {semanasParaTeste >= 0 ? `${semanasParaTeste} Semanas Restantes` : `ATRASADO (${semanasParaTeste} Semanas)`}
+              {semanasParaTeste >= 0 ? `${semanasParaTeste} sem.` : `ATRASADO`}
             </span>
           </div>
 
@@ -308,12 +280,12 @@ export const TopBar: React.FC = () => {
               playRadioSound();
             }}
             title={language === 'pt' ? 'Abrir modo Grandes Prêmios & Todos os Circuitos' : 'Open Grands Prix & Circuits Explorer'}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 hover:border-[#E10600]/60 text-xs font-f1-mono text-zinc-300 transition-colors cursor-pointer"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 hover:border-[#E10600]/60 text-xs font-f1-mono text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Calendar className="w-3.5 h-3.5 text-[#E10600]" />
-            <span>{t.week} {currentWeek}</span>
+            <span>S{currentWeek}</span>
             <span className="text-zinc-500">·</span>
-            <span className="text-white font-bold">{currentCircuit.city} GP</span>
+            <span className="text-white font-bold max-w-[110px] truncate">{currentCircuit.city}</span>
           </button>
 
           {/* Primary Action Button */}
@@ -322,7 +294,7 @@ export const TopBar: React.FC = () => {
               advanceWeek();
               playRadioSound();
             }}
-            className="px-4 py-2 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-xs uppercase tracking-wider transition-colors f1-tab-chamfer flex items-center gap-2 shadow-sm whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-xs uppercase tracking-wider transition-colors f1-tab-chamfer flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>{t.advanceWeek}</span>

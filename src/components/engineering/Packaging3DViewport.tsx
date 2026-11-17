@@ -7,7 +7,7 @@ import type { AeroMode, Driver, Team, TireCompound } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { LIVERY_2026_CATALOG, resolveTeamLivery2026, type Livery2026Spec } from '../../data/f12026Liveries';
 import { buildF1Car2026, type BuiltF1Car, type CarVisualMode } from '../three/f1CarBuilder';
-import { ChevronDown, ChevronUp, Eye, Layers, RotateCw, Sparkles, Wind } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, Layers, RotateCw, Sparkles, Wind, X } from 'lucide-react';
 
 interface Packaging3DViewportProps {
   packaging: PackagingAnalysisOutputs;
@@ -20,6 +20,7 @@ interface Packaging3DViewportProps {
   selectedTeamIdOverride?: string;
   onSelectTeamId?: (teamId: string) => void;
   heightClass?: string;
+  defaultAutoSpin?: boolean;
 }
 
 const SUBSYSTEM_COLORS: Record<ComponentPackage3D['subsystem'], number> = {
@@ -58,6 +59,19 @@ const TIRE_OPTIONS: Array<{ id: TireCompound; label: string; dot: string }> = [
   { id: 'wet', label: 'Wet', dot: '#3B82F6' },
 ];
 
+const SUBSYSTEM_TRADE_OFFS: Record<ComponentPackage3D['subsystem'], { tag: string; impact: string }> = {
+  cockpit: { tag: 'ESTRUTURA & PILOTO', impact: 'Define proteção lateral FIA, centro de gravidade dianteiro e rigidez torcional do chassi.' },
+  pu_ice: { tag: 'UNIDADE DE POTÊNCIA', impact: 'Maior massa concentrada no centro-traseiro; desloca o CG para trás e exige fluxo térmico contínuo.' },
+  energy_store: { tag: 'BATERIA ERS 350kW', impact: 'Posição baixa sob a célula reduz altura do CG e melhora estabilidade em curvas de alta.' },
+  gearbox_diff: { tag: 'TRANSMISSÃO M09', impact: 'Carcaça compacta libera a garganta do difusor traseiro, aumentando downforce sem arrasto extra.' },
+  cooling_radiators: { tag: 'ARREFECIMENTO', impact: 'Radiadores volumosos protegem a PU do derating, porém alargam os sidepods (+arrasto).' },
+  front_susp_brakes: { tag: 'EIXO DIANTEIRO', impact: 'Controla anti-dive na freada e estabilidade de altura da asa dianteira.' },
+  rear_susp_brakes: { tag: 'EIXO TRASEIRO', impact: 'Governa tração na saída de curva, anti-squat e limpeza de esteira no difusor.' },
+  floor_diffuser: { tag: 'EFEITO SOLO 2026', impact: 'Principal gerador de downforce eficiente; sensível à altura traseira e risco de porpoising.' },
+  wings: { tag: 'AERO ATIVA X/Z', impact: 'Ajusta balanço dianteiro/traseiro em curva (Modo Z) e reduz arrasto na reta (Modo X).' },
+  driver_ballast: { tag: 'LASTRO & COCKPIT', impact: 'Lastro estratégico permite atingir o peso mínimo FIA ajustando o balanço F/R ideal.' },
+};
+
 export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   packaging,
   vehicleParams,
@@ -69,6 +83,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   selectedTeamIdOverride,
   onSelectTeamId,
   heightClass = 'h-[470px]',
+  defaultAutoSpin = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -76,6 +91,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null);
   const carRef = useRef<BuiltF1Car | null>(null);
   const cadGroupRef = useRef<THREE.Group | null>(null);
+  const pickGroupRef = useRef<THREE.Group | null>(null);
   const pickableMeshesRef = useRef<THREE.Mesh[]>([]);
   const requestRenderRef = useRef<() => void>(() => {});
   const isSoftwareGlRef = useRef<boolean>(false);
@@ -85,9 +101,9 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     active: false,
   });
   const explodeTargetRef = useRef<number>(0);
-  const autoSpinRef = useRef<boolean>(false);
+  const autoSpinRef = useRef<boolean>(defaultAutoSpin);
 
-  const [selectedPkgId, setSelectedPkgId] = useState<string>('pkg_pu_ice');
+  const [selectedPkgId, setSelectedPkgId] = useState<string | null>(null);
   const [webglUnavailable, setWebglUnavailable] = useState<boolean>(false);
   const [viewPreset, setViewPreset] = useState<CameraViewPreset>('iso');
   const [visualMode, setVisualMode] = useState<CarVisualMode>(defaultVisualMode);
@@ -98,7 +114,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     defaultSelectedTeamId || playerTeam?.id || 'player_car'
   );
   const [driverIndex, setDriverIndex] = useState<0 | 1>(0);
-  const [autoSpin, setAutoSpin] = useState<boolean>(false);
+  const [autoSpin, setAutoSpin] = useState<boolean>(defaultAutoSpin);
   const [dockExpanded, setDockExpanded] = useState<boolean>(false);
 
   const selectedTeamId = selectedTeamIdOverride ?? internalTeamId;
@@ -119,7 +135,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   }, [packaging.interferences]);
 
   const selectedPackage = useMemo(
-    () => packaging.packages.find((p) => p.id === selectedPkgId) || packaging.packages[0],
+    () => (selectedPkgId ? packaging.packages.find((p) => p.id === selectedPkgId) || null : null),
     [packaging.packages, selectedPkgId]
   );
 
@@ -315,22 +331,50 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     scene.add(cadGroup);
     cadGroupRef.current = cadGroup;
 
-    // Raycaster for X-Ray CAD box selection
+    // Dedicated always-visible invisible pick proxy group so clicking works in BOTH Showroom 2026 & Raio-X M03
+    const pickGroup = new THREE.Group();
+    scene.add(pickGroup);
+    pickGroupRef.current = pickGroup;
+
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const handlePointerDown = (ev: PointerEvent) => {
-      if (!cadGroup.visible) return;
+    let downX = 0;
+    let downY = 0;
+    let lastMoveCheck = 0;
+
+    const castAtPointer = (clientX: number, clientY: number) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      if (rect.width <= 0 || rect.height <= 0) return [];
+      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(pickableMeshesRef.current, false);
+      return raycaster.intersectObjects(pickableMeshesRef.current, false);
+    };
+
+    const handlePointerDown = (ev: PointerEvent) => {
+      downX = ev.clientX;
+      downY = ev.clientY;
+    };
+    const handlePointerUp = (ev: PointerEvent) => {
+      const dist = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+      if (dist > 6) return; // Ignore orbit camera drags
+      const hits = castAtPointer(ev.clientX, ev.clientY);
       if (hits.length > 0) {
         const hitId = hits[0].object.userData?.pkgId;
         if (typeof hitId === 'string') setSelectedPkgId(hitId);
       }
     };
+    const handlePointerMove = (ev: PointerEvent) => {
+      const now = performance.now();
+      if (now - lastMoveCheck < 50) return;
+      lastMoveCheck = now;
+      const hits = castAtPointer(ev.clientX, ev.clientY);
+      renderer.domElement.style.cursor = hits.length > 0 ? 'pointer' : 'grab';
+    };
+
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);
+    renderer.domElement.addEventListener('pointerup', handlePointerUp);
+    renderer.domElement.addEventListener('pointermove', handlePointerMove);
 
     let rafId = 0;
     let currentExplode = explodeTargetRef.current;
@@ -435,6 +479,8 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       controls.removeEventListener('start', handleControlStart);
       controls.removeEventListener('change', handleControlChange);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
+      renderer.domElement.removeEventListener('pointerup', handlePointerUp);
+      renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
       controls.dispose();
@@ -444,6 +490,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       rendererRef.current = null;
       controlsRef.current = null;
       cadGroupRef.current = null;
+      pickGroupRef.current = null;
       for (const d of envDisposables) d.dispose();
       renderer.dispose();
     };
@@ -472,13 +519,16 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     };
   }, [activeLivery, effectiveCarParams, driverIndex]);
 
-  // Fast rebuild of M03 X-Ray CAD Overlay when packaging or selected package changes
+  // Fast rebuild of M03 X-Ray CAD Overlay + Invisible Raycast Proxies when packaging or selected package changes
   useEffect(() => {
     const cadGroup = cadGroupRef.current;
-    if (!cadGroup) return;
+    const pickGroup = pickGroupRef.current;
+    if (!cadGroup || !pickGroup) return;
 
     const cadDisposables: Array<{ dispose: () => void }> = [];
     const pickableMeshes: THREE.Mesh[] = [];
+    const sharedPickMat = new THREE.MeshBasicMaterial({ visible: false });
+    cadDisposables.push(sharedPickMat);
 
     const L = packaging.wheelbaseM;
     const xCenterOffset = L / 2;
@@ -514,11 +564,17 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
         transparent: true,
         opacity: pkg.subsystem === 'floor_diffuser' ? 0.24 : isSelected ? 0.85 : 0.58,
       });
+      const boxPos = toThree(pkg.xCgM, pkg.yCgM, pkg.zCgM);
       const boxMesh = new THREE.Mesh(boxGeo, boxMat);
-      boxMesh.position.copy(toThree(pkg.xCgM, pkg.yCgM, pkg.zCgM));
-      boxMesh.userData = { pkgId: pkg.id };
+      boxMesh.position.copy(boxPos);
       cadGroup.add(boxMesh);
-      pickableMeshes.push(boxMesh);
+
+      // Always-active invisible proxy collider for raycasting across both Showroom & X-Ray modes
+      const pickMesh = new THREE.Mesh(boxGeo, sharedPickMat);
+      pickMesh.position.copy(boxPos);
+      pickMesh.userData = { pkgId: pkg.id };
+      pickGroup.add(pickMesh);
+      pickableMeshes.push(pickMesh);
 
       const edgesGeo = new THREE.EdgesGeometry(boxGeo);
       const edgesMat = new THREE.LineBasicMaterial({
@@ -574,6 +630,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
 
     return () => {
       cadGroup.clear();
+      pickGroup.clear();
       pickableMeshesRef.current = [];
       for (const d of cadDisposables) d.dispose();
     };
@@ -701,17 +758,51 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
 
       {/* Bottom Collapsible Inspector & Formula Dream 2026 Showroom Dock */}
       <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-col gap-2 pointer-events-none">
-        {visualMode === 'xray_cad' && selectedPackage && (
-          <div className="pointer-events-auto self-start max-w-md bg-[#101017]/94 border border-white/15 px-3 py-2 text-[11px] font-f1-mono">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-f1-wide font-bold text-white uppercase">{selectedPackage.name}</span>
-              <span className="text-amber-300 font-bold tabular-nums">{selectedPackage.massKg} kg</span>
+        {selectedPackage && (() => {
+          const massPct = (selectedPackage.massKg / Math.max(1, packaging.totalMassKg)) * 100;
+          const deltaXMm = Math.round((selectedPackage.xCgM - packaging.cgM.x) * 1000);
+          const deltaZMm = Math.round((selectedPackage.zCgM - packaging.cgM.z) * 1000);
+          const info = SUBSYSTEM_TRADE_OFFS[selectedPackage.subsystem];
+          return (
+            <div className="pointer-events-auto self-start w-full max-w-md bg-[#101017]/95 border border-[#E10600]/60 px-3.5 py-2.5 text-[11px] font-f1-mono shadow-xl space-y-2">
+              <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-1.5">
+                <div>
+                  <span className="text-[9px] text-[#E10600] font-bold uppercase tracking-wider block">
+                    {info.tag}
+                  </span>
+                  <span className="font-f1-wide font-black text-xs text-white uppercase">
+                    {selectedPackage.name}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPkgId(null)}
+                  title="Fechar inspeção"
+                  className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 tabular-nums bg-[#171822] p-2 border border-white/5">
+                <div>
+                  <span className="text-[9px] text-zinc-400 block uppercase">Massa</span>
+                  <span className="text-amber-300 font-bold">{selectedPackage.massKg.toFixed(1)} kg</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-zinc-400 block uppercase">% Total</span>
+                  <span className="text-cyan-300 font-bold">{massPct.toFixed(1)}%</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-zinc-400 block uppercase">Impacto CG</span>
+                  <span className="text-white font-bold">
+                    {deltaXMm <= 0 ? `${Math.abs(deltaXMm)}mm Diant.` : `${deltaXMm}mm Tras.`} · {deltaZMm >= 0 ? `+${deltaZMm}` : deltaZMm}mm Z
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] text-zinc-300 leading-snug">{info.impact}</p>
             </div>
-            <div className="text-zinc-300 mt-0.5 tabular-nums text-[10px]">
-              CG: ({selectedPackage.xCgM.toFixed(3)}, {selectedPackage.yCgM.toFixed(3)}, {selectedPackage.zCgM.toFixed(3)}) m · Remoção #{selectedPackage.removalSequenceOrder} ({selectedPackage.maintenanceMinutes} min)
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="pointer-events-auto bg-[#101017]/94 border border-white/15 px-3 py-2">
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-f1-mono">

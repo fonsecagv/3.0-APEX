@@ -3,6 +3,8 @@ import { useGame } from '../../context/GameContext';
 import { F1TabBucket } from '../brand/F1Logo';
 import { TireCompound, EngineMode, AeroMode, PaceMode, FuelMixMode } from '../../types/f1';
 import { RealCircuitMap } from '../circuits/RealCircuitMap';
+import { PersonAvatar } from '../common/PersonAvatar';
+import { evaluatePracticeSetup, type SetupParameterStatus } from '../../engine/setupFeedbackEngine';
 import {
   Flag,
   Play,
@@ -20,7 +22,9 @@ import {
   ArrowRight,
   Clock,
   Radio,
-  Sliders
+  Sliders,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 
 export const WeekendTab: React.FC = () => {
@@ -63,6 +67,7 @@ export const WeekendTab: React.FC = () => {
     allTeams,
     playerTeam,
     vehiclePhysics,
+    respondToDriverFeedback,
     t,
     language
   } = useGame();
@@ -75,6 +80,42 @@ export const WeekendTab: React.FC = () => {
   const activeCar = playerCars.find(c => c.driverId === selectedDriverTactics) || playerCars[0];
   const allPlayerCarsRetired =
     playerCars.length > 0 && playerCars.every(c => c.status === 'retired' || c.isDisqualified);
+
+  const activeDrivers = drivers.filter(d => playerTeam.drivers?.includes(d.id));
+  const driverFeedbackAvg =
+    activeDrivers.length > 0
+      ? activeDrivers.reduce((acc, d) => acc + (d.attributes?.feedback ?? 75), 0) / activeDrivers.length
+      : 75;
+
+  const leadPracticeDriver = activeDrivers[0];
+  const setupEvaluation = evaluatePracticeSetup({
+    carSetup,
+    setupWindow,
+    circuit: currentCircuit,
+    vehiclePhysics,
+    driverFeedbackAvg,
+    fpRunsDone,
+    modificadorSetupRapido,
+    stabilityIndex01: currentTrackPhysics.stabilityIndex01,
+    coolingDemandIndex01: currentTrackPhysics.coolingDemandIndex01,
+    airDensityKgM3: currentTrackPhysics.airDensityKgM3,
+    modeXFractionPct: currentTrackPhysics.modeXFractionPct,
+    leadDriverName: leadPracticeDriver?.name || 'Piloto #1',
+  });
+
+  const renderParamBadge = (status: SetupParameterStatus, label: string) => {
+    const cls =
+      status === 'optimal'
+        ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+        : status === 'close'
+        ? 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+        : 'bg-red-950/60 border-red-500/40 text-red-300';
+    return (
+      <span className={`px-2 py-0.5 border text-[10px] font-f1-mono font-bold uppercase whitespace-nowrap ${cls}`}>
+        {fpRunsDone === 0 ? 'SEM LEITURA DE TL' : label}
+      </span>
+    );
+  };
 
   const handlePracticeStint = () => {
     const res = runPracticeLap();
@@ -164,17 +205,82 @@ export const WeekendTab: React.FC = () => {
               title="TELEMETRY SETUP WINDOW OPTIMIZATION"
               badge={`STINT ${fpRunsDone} / 3 COMPLETED`}
             >
-              <div className="space-y-5">
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Dial in the aerodynamic wing angles, mechanical spring rates, and camber. 
-                  High confidence narrows the lap time delta during Qualifying and stabilizes tire thermal graining.
-                </p>
+              <div className="relative overflow-hidden">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none select-none absolute inset-0 flex flex-col items-center justify-center opacity-[0.045] z-0"
+                >
+                  <span className="font-f1-wide font-black text-5xl sm:text-7xl tracking-[0.22em] text-white uppercase -rotate-6">
+                    {playerTeam.carModelName || 'APX-01'}
+                  </span>
+                  <span className="font-f1-mono text-xs tracking-[0.4em] text-zinc-300 uppercase mt-2 -rotate-6">
+                    {playerTeam.shortName} · GARAGEM OFICIAL 2026
+                  </span>
+                </div>
+
+                <div className="space-y-4 relative z-10">
+                {setupWindow.confidence === 0 && fpRunsDone === 0 && (
+                  <div className="bg-red-950/40 border border-[#E10600] p-3 text-xs font-f1-mono text-red-200 leading-relaxed">
+                    <strong className="text-white uppercase">Sem Telemetria de Pré-Temporada:</strong> Devido ao atraso na homologação, a equipe não realizou o shakedown. O acerto do carro começará do zero (0%) no TL1 — use as voltas de treino para descobrir a janela ideal.
+                  </div>
+                )}
+
+                {/* Veredito Geral do Setup + Impacto na Volta */}
+                <div className="bg-[#15151E] border border-white/10 p-3.5 flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">
+                      VEREDITO ATUAL DO ACERTO ({fpRunsDone === 0 ? 'PRÉ-TL1' : `APÓS TL${fpRunsDone}`})
+                    </span>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`font-f1-wide font-black text-base uppercase ${
+                          fpRunsDone === 0
+                            ? 'text-zinc-300'
+                            : setupEvaluation.overallLabel === 'ÓTIMO'
+                            ? 'text-emerald-400'
+                            : setupEvaluation.overallLabel === 'BOM'
+                            ? 'text-cyan-400'
+                            : setupEvaluation.overallLabel === 'PRECISA AJUSTE'
+                            ? 'text-amber-400'
+                            : 'text-red-400'
+                        }`}
+                      >
+                        {fpRunsDone === 0 ? 'AGUARDANDO PRIMEIRO STINT' : setupEvaluation.overallLabel}
+                      </span>
+                      {fpRunsDone > 0 && (
+                        <span className="text-xs font-f1-mono text-zinc-300 tabular-nums">
+                          · Nota {setupEvaluation.overallScore0to100}/100
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right font-f1-mono tabular-nums">
+                    <span className="text-[10px] text-zinc-400 uppercase block">IMPACTO ESTIMADO NO QUALI</span>
+                    <span
+                      className={`text-sm font-bold ${
+                        fpRunsDone === 0
+                          ? 'text-zinc-400'
+                          : setupEvaluation.predictedQualiDeltaSec <= 0
+                          ? 'text-emerald-400'
+                          : 'text-amber-300'
+                      }`}
+                    >
+                      {fpRunsDone === 0
+                        ? 'Envie o carro no TL1'
+                        : `${setupEvaluation.predictedQualiDeltaSec <= 0 ? '' : '+'}${setupEvaluation.predictedQualiDeltaSec.toFixed(2)}s vs base`}
+                    </span>
+                  </div>
+                </div>
 
                 {/* Front Wing Slider */}
                 <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-f1-wide font-bold text-white uppercase">FRONT WING FLAP ANGLE</span>
-                    <span className="font-f1-mono text-[#E10600] font-bold tabular-nums">{carSetup.frontWingAngle}°</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-f1-wide font-bold text-white uppercase">ASA DIANTEIRA (FLAP)</span>
+                    <div className="flex items-center gap-2">
+                      {renderParamBadge(setupEvaluation.parameters.frontWing.status, setupEvaluation.parameters.frontWing.statusLabel)}
+                      <span className="font-f1-mono text-[#E10600] font-bold tabular-nums">{carSetup.frontWingAngle}°</span>
+                    </div>
                   </div>
                   <input
                     type="range"
@@ -184,17 +290,20 @@ export const WeekendTab: React.FC = () => {
                     onChange={e => updateCarSetup({ frontWingAngle: Number(e.target.value) })}
                     className="w-full accent-[#E10600] h-1.5 bg-zinc-700"
                   />
-                  <div className="flex justify-between text-[10px] font-f1-mono text-zinc-400">
-                    <span>10° (Low Drag Straights)</span>
-                    <span>45° (High Apex Bite)</span>
+                  <div className="flex flex-wrap justify-between gap-2 text-[10px] font-f1-mono">
+                    <span className="text-zinc-500">10° (Reta) — 45° (Curva)</span>
+                    <span className="text-zinc-300">{setupEvaluation.parameters.frontWing.directionHint}</span>
                   </div>
                 </div>
 
                 {/* Rear Wing Slider */}
                 <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-f1-wide font-bold text-white uppercase">REAR WING DOWNFORCE ANGLE</span>
-                    <span className="font-f1-mono text-[#E10600] font-bold tabular-nums">{carSetup.rearWingAngle}°</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-f1-wide font-bold text-white uppercase">ASA TRASEIRA (DOWNFORCE)</span>
+                    <div className="flex items-center gap-2">
+                      {renderParamBadge(setupEvaluation.parameters.rearWing.status, setupEvaluation.parameters.rearWing.statusLabel)}
+                      <span className="font-f1-mono text-[#E10600] font-bold tabular-nums">{carSetup.rearWingAngle}°</span>
+                    </div>
                   </div>
                   <input
                     type="range"
@@ -204,13 +313,20 @@ export const WeekendTab: React.FC = () => {
                     onChange={e => updateCarSetup({ rearWingAngle: Number(e.target.value) })}
                     className="w-full accent-[#E10600] h-1.5 bg-zinc-700"
                   />
+                  <div className="flex flex-wrap justify-between gap-2 text-[10px] font-f1-mono">
+                    <span className="text-zinc-500">15° (Baixo Arrasto) — 50° (Carga Máx.)</span>
+                    <span className="text-zinc-300">{setupEvaluation.parameters.rearWing.directionHint}</span>
+                  </div>
                 </div>
 
                 {/* Suspension Stiffness */}
                 <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-f1-wide font-bold text-white uppercase">SUSPENSION SPRING STIFFNESS</span>
-                    <span className="font-f1-mono text-white font-bold tabular-nums">{carSetup.suspensionStiffness} / 10</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-f1-wide font-bold text-white uppercase">RIGIDEZ DA SUSPENSÃO</span>
+                    <div className="flex items-center gap-2">
+                      {renderParamBadge(setupEvaluation.parameters.suspension.status, setupEvaluation.parameters.suspension.statusLabel)}
+                      <span className="font-f1-mono text-white font-bold tabular-nums">{carSetup.suspensionStiffness} / 10</span>
+                    </div>
                   </div>
                   <input
                     type="range"
@@ -220,17 +336,20 @@ export const WeekendTab: React.FC = () => {
                     onChange={e => updateCarSetup({ suspensionStiffness: Number(e.target.value) })}
                     className="w-full accent-[#E10600] h-1.5 bg-zinc-700"
                   />
-                  <div className="flex justify-between text-[10px] font-f1-mono text-zinc-400">
-                    <span>Soft (Curbs & Traction)</span>
-                    <span>Rigid (Aero Ground Effect Stability)</span>
+                  <div className="flex flex-wrap justify-between gap-2 text-[10px] font-f1-mono">
+                    <span className="text-zinc-500">1 (Macia / Zebras) — 10 (Rígida / Efeito Solo)</span>
+                    <span className="text-zinc-300">{setupEvaluation.parameters.suspension.directionHint}</span>
                   </div>
                 </div>
 
                 {/* Tire Pressure */}
                 <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-f1-wide font-bold text-white uppercase">TIRE PRESSURE</span>
-                    <span className="font-f1-mono text-white font-bold tabular-nums">{carSetup.tirePressurePsi.toFixed(1)} PSI</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-f1-wide font-bold text-white uppercase">PRESSÃO DOS PNEUS</span>
+                    <div className="flex items-center gap-2">
+                      {renderParamBadge(setupEvaluation.parameters.tirePressure.status, setupEvaluation.parameters.tirePressure.statusLabel)}
+                      <span className="font-f1-mono text-white font-bold tabular-nums">{carSetup.tirePressurePsi.toFixed(1)} PSI</span>
+                    </div>
                   </div>
                   <input
                     type="range"
@@ -241,16 +360,20 @@ export const WeekendTab: React.FC = () => {
                     onChange={e => updateCarSetup({ tirePressurePsi: Number(e.target.value) })}
                     className="w-full accent-[#E10600] h-1.5 bg-zinc-700"
                   />
+                  <div className="flex flex-wrap justify-between gap-2 text-[10px] font-f1-mono">
+                    <span className="text-zinc-500">20.0 PSI (Aderência) — 25.0 PSI (Estabilidade)</span>
+                    <span className="text-zinc-300">{setupEvaluation.parameters.tirePressure.directionHint}</span>
+                  </div>
                 </div>
 
                 {/* Action button */}
-                <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
                   <button
                     onClick={handlePracticeStint}
                     disabled={fpRunsDone >= 3}
-                    className="px-5 py-2.5 bg-[#E10600] hover:bg-[#c20500] disabled:opacity-40 text-white font-f1-wide font-bold text-xs uppercase tracking-wider f1-tab-chamfer transition-colors"
+                    className="px-5 py-2.5 bg-[#E10600] hover:bg-[#c20500] disabled:opacity-40 text-white font-f1-wide font-bold text-xs uppercase tracking-wider f1-tab-chamfer transition-colors cursor-pointer"
                   >
-                    Send Out for Practice Stint
+                    {fpRunsDone >= 3 ? 'Treino Livre Concluído (3/3)' : `Enviar para Stint TL${fpRunsDone + 1}`}
                   </button>
 
                   <button
@@ -258,11 +381,12 @@ export const WeekendTab: React.FC = () => {
                       runQualifyingShootout();
                       setWeekendSession('qualifying');
                     }}
-                    className="px-4 py-2 bg-[#232330] hover:bg-[#2C2C3A] text-white font-f1-wide text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5"
+                    className="px-4 py-2 bg-[#232330] hover:bg-[#2C2C3A] text-white font-f1-wide text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span>Proceed to Qualifying</span>
+                    <span>Ir para Classificação</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
+                </div>
                 </div>
               </div>
             </F1TabBucket>
@@ -270,15 +394,15 @@ export const WeekendTab: React.FC = () => {
 
           {/* Setup Window Confidence & Driver Feedback (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
-            <F1TabBucket title="DRIVER RADIO & SETUP WINDOW" badge={`${setupWindow.confidence}% CONFIDENCE`}>
+            <F1TabBucket title="RÁDIO & JANELA DE SETUP" badge={`${setupWindow.confidence}% CONFIANÇA`}>
               <div className="space-y-4">
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-xs font-f1-mono">
-                    <span className="text-zinc-400">SETUP CONVERGENCE</span>
+                    <span className="text-zinc-400">CONVERGÊNCIA DO ACERTO</span>
                     <div className="flex items-center gap-2">
                       {modificadorSetupRapido && (
                         <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/50 border border-emerald-500/50 px-1.5 py-0.5">
-                          SETUP 50% MAIS RÁPIDO
+                          ESTRATEGISTA +75%
                         </span>
                       )}
                       <span className="text-emerald-400 font-bold tabular-nums">{setupWindow.confidence}%</span>
@@ -292,21 +416,137 @@ export const WeekendTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Driver Radio Box */}
-                <div className="bg-[#15151E] p-4 border border-white/5 space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-f1-wide font-bold text-[#E10600]">
-                    <Radio className="w-4 h-4" />
-                    <span>DRIVER PIT RADIO TRANSCRIPT</span>
+                {/* Influência Direta do Feedback do Piloto */}
+                <div className="bg-[#15151E] p-3.5 border border-cyan-500/30 space-y-2.5 text-xs font-f1-mono">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <span className="text-[10px] text-cyan-300 uppercase font-bold tracking-wider">
+                      INFLUÊNCIA DO FEEDBACK DO PILOTO
+                    </span>
+                    <span className="text-[10px] text-white font-bold tabular-nums">
+                      Média {setupEvaluation.driverFeedbackAvg}/99 · {setupEvaluation.driverFeedbackTierLabel}
+                    </span>
                   </div>
-                  <p className="text-xs text-zinc-300 italic leading-relaxed">
-                    "{practiceFeedback || 'Awaiting initial outlap data. Send the car out to gather aero telemetry and brake balance feedback.'}"
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] tabular-nums">
+                    {activeDrivers.slice(0, 2).map((drv) => (
+                      <div key={drv.id} className="bg-[#1C1C26] p-2 border border-white/5 flex items-center justify-between">
+                        <span className="text-zinc-300 truncate pr-2">{drv.name}</span>
+                        <span className="text-cyan-300 font-bold shrink-0">{drv.attributes?.feedback ?? 75}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] tabular-nums">
+                    <div className="bg-[#1C1C26] p-2 border border-white/5">
+                      <span className="text-[9px] text-zinc-400 block uppercase">PRECISÃO DA JANELA</span>
+                      <span className="text-white font-bold">±{setupEvaluation.driverCorridorPrecisionDeg.toFixed(1)}° nas asas</span>
+                    </div>
+                    <div className="bg-[#1C1C26] p-2 border border-white/5">
+                      <span className="text-[9px] text-zinc-400 block uppercase">VELOCIDADE DE ACERTO</span>
+                      <span className={setupEvaluation.convergenceMultiplier >= 1.15 ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                        {setupEvaluation.convergenceMultiplier.toFixed(2)}x por stint
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                    Pilotos com <strong className="text-zinc-200">Feedback Técnico alto (85+)</strong> estreitam a margem de erro na engenharia e aceleram o ganho de confiança a cada stint no Treino Livre.
                   </p>
                 </div>
 
-                <div className="bg-[#15151E] p-3 border border-white/5 text-xs font-f1-mono space-y-1">
-                  <span className="text-[10px] text-zinc-500 uppercase block">ENGINEER TARGET CORRIDOR</span>
-                  <div className="text-zinc-400">Ideal Front Wing: <span className="text-white font-bold">{setupWindow.idealFrontWing}° (±1.5°)</span></div>
-                  <div className="text-zinc-400">Ideal Stiffness: <span className="text-white font-bold">{setupWindow.idealStiffness} / 10</span></div>
+                {/* Driver Radio Box & Active Listening */}
+                <div className="bg-[#15151E] p-4 border border-white/10 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <PersonAvatar
+                      role="driver"
+                      name={leadPracticeDriver?.name || 'Piloto #1'}
+                      sizeClass="w-11 h-11"
+                      accentColor="#E10600"
+                    />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs font-f1-wide font-bold text-[#E10600]">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Radio className="w-4 h-4 shrink-0" />
+                          <span className="truncate">RÁDIO: {leadPracticeDriver?.name || 'PILOTO #1'}</span>
+                        </span>
+                        <span className="font-f1-mono text-[10px] text-cyan-300 tabular-nums shrink-0">
+                          Confiança {leadPracticeDriver?.trust ?? 75}/100
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-black/50 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            (leadPracticeDriver?.trust ?? 75) >= 70
+                              ? 'bg-emerald-500'
+                              : (leadPracticeDriver?.trust ?? 75) >= 40
+                              ? 'bg-amber-400'
+                              : 'bg-[#E10600]'
+                          }`}
+                          style={{ width: `${leadPracticeDriver?.trust ?? 75}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-zinc-200 italic leading-relaxed">
+                    "{fpRunsDone >= 1 ? setupEvaluation.driverRadioQuote : (practiceFeedback || 'Aguardando o 1º stint de pista para coletar leitura aerodinâmica, equilíbrio de suspensão e temperatura dos pneus.')}"
+                  </p>
+
+                  {fpRunsDone >= 1 && setupEvaluation.recommendedSetupPatch && leadPracticeDriver && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          respondToDriverFeedback(
+                            'listen',
+                            leadPracticeDriver.id,
+                            `fp_${currentCircuit.id}_stint${fpRunsDone}`,
+                            { setupPatch: setupEvaluation.recommendedSetupPatch || undefined }
+                          )
+                        }
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-f1-mono font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        Aplicar Sugestão no Setup (+8 Confiança)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          respondToDriverFeedback(
+                            'ignore',
+                            leadPracticeDriver.id,
+                            `fp_${currentCircuit.id}_stint${fpRunsDone}`
+                          )
+                        }
+                        className="px-3 py-1.5 bg-[#1C1C26] hover:bg-red-950/60 border border-white/15 text-zinc-300 hover:text-red-200 font-f1-mono font-bold text-[10px] uppercase whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        Ignorar Piloto (-12 Confiança)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-[#15151E] p-3 border border-white/5 text-xs font-f1-mono space-y-1.5 tabular-nums">
+                  <span className="text-[10px] text-zinc-400 uppercase block font-bold">CORREDOR ALVO DO ENGENHEIRO</span>
+                  {fpRunsDone === 0 ? (
+                    <div className="text-zinc-400">
+                      Envie o carro para o TL1 para desbloquear as estimativas alvo (precisão atual do piloto: ±{setupEvaluation.driverCorridorPrecisionDeg.toFixed(1)}°).
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      <div className="text-zinc-400">
+                        Asa Diant.: <span className="text-white font-bold">{setupWindow.idealFrontWing}° (±{setupEvaluation.driverCorridorPrecisionDeg.toFixed(1)}°)</span>
+                      </div>
+                      <div className="text-zinc-400">
+                        Asa Tras.: <span className="text-white font-bold">{setupEvaluation.idealRearWing}° (±{setupEvaluation.driverCorridorPrecisionDeg.toFixed(1)}°)</span>
+                      </div>
+                      <div className="text-zinc-400">
+                        Suspensão: <span className="text-white font-bold">{setupWindow.idealStiffness} / 10</span>
+                      </div>
+                      <div className="text-zinc-400">
+                        Pressão: <span className="text-white font-bold">{setupEvaluation.idealTirePsi.toFixed(1)} PSI</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Compact SI Physical Telemetry Readout */}

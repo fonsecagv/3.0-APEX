@@ -1281,6 +1281,15 @@ export const REAL_TEAMS_DOSSIERS: Record<string, RealTeamDossier> = {
         focus: 'Piloto de testes experiente com ritmo veloz de volta lançada',
         role: 'Piloto Reserva',
         nationality: 'Austrália'
+      },
+      {
+        name: 'Rafael Câmara',
+        number: 5,
+        rating: 77,
+        contractUntil: 2027,
+        focus: 'Campeão F3 / Destaque F2 pré-contratado para 2027 (estreia antecipável em São Paulo)',
+        role: 'Piloto Reserva',
+        nationality: 'Brasil'
       }
     ],
     technicalStaff: [
