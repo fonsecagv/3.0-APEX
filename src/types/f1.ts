@@ -383,6 +383,7 @@ export interface LiveCarState {
   lastIncidentText?: string;
   effectiveRaceTimeSec?: number;
   iceTempC?: number; // Temperatura térmica do bloco ICE/PU (°C, >115°C aciona Derating Térmico)
+  porpoisingRiskPct?: number; // Risco de estol aerodinâmico / porpoising (IF-M04-M05)
   errorRiskPct?: number; // 0 - 100% barra de risco de erro de pilotagem
   errorStateLabel?: 'calmo' | 'pressao' | 'erratico';
   lastErrorType?: 'spin' | 'lockup' | 'contact' | 'dnf';

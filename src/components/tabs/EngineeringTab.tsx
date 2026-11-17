@@ -267,9 +267,79 @@ export const EngineeringTab: React.FC = () => {
         regulatory: regulatoryLive,
         staff,
         teamName: playerTeam?.name,
+        playerChiefName: playerTeam?.headOfPowerUnit,
       }),
-    [selectedType, vehicleParams, vehiclePhysics, playerTeam?.filosofiaAtual, playerTeam?.name, regulatoryLive, staff]
+    [selectedType, vehicleParams, vehiclePhysics, playerTeam?.filosofiaAtual, playerTeam?.name, playerTeam?.headOfPowerUnit, regulatoryLive, staff]
   );
+
+  const hasIndaiatubaBonus = Boolean(
+    playerTeam?.location?.includes('Indaiatuba') ||
+    playerTeam?.location?.includes('Brasil') ||
+    playerTeam?.location?.includes('Brazil')
+  );
+
+  const effectiveFeedback = useMemo(() => {
+    const base = leadDriver?.attributes?.feedback ?? 78;
+    return Math.min(99, Math.round(base * (hasIndaiatubaBonus ? 1.10 : 1.0)));
+  }, [leadDriver?.attributes?.feedback, hasIndaiatubaBonus]);
+
+  const isAeroStallRisk = useMemo(() => {
+    return (
+      vehiclePhysics.porpoisingRiskPct > 45 ||
+      (vehicleParams.frontRideHeightMm <= 22 && vehicleParams.springRateNmm < 235)
+    );
+  }, [vehiclePhysics.porpoisingRiskPct, vehicleParams.frontRideHeightMm, vehicleParams.springRateNmm]);
+
+  const driverTracksideQuote = useMemo(() => {
+    const dName = leadDriver?.name || 'Piloto Titular';
+    const sharp = effectiveFeedback >= 80;
+
+    if (selectedType === 'pu') {
+      if (vehicleParams.iceCompressionRatio >= 15.5) {
+        return sharp
+          ? `Rádio (${dName}): "Chefe, o motor está empurrando forte nas retas, mas sinto corte de potência elétrica no final do setor 3. O software deve estar reduzindo o ERS por calor na bateria."`
+          : `Rádio (${dName}): "O motor tem força, mas às vezes parece que a bateria acaba antes da reta principal."`;
+      }
+      return sharp
+        ? `Rádio (${dName}): "Entrega de potência progressiva e linear. O turbo responde rápido nas saídas de 2ª e 3ª marcha."`
+        : `Rádio (${dName}): "O motor parece bom, sem falhas perceptíveis."`;
+    }
+
+    if (selectedType === 'wings') {
+      if (vehicleParams.frontWingFlapCornerDeg > 33) {
+        return sharp
+          ? `Rádio (${dName}): "A asa dianteira a ${vehicleParams.frontWingFlapCornerDeg}° dá muita mordida de frente, mas sinto arrasto excessivo nas retas (+0.3s). Se baixarmos 1.5°, equilibramos o tempo de volta."`
+          : `Rádio (${dName}): "O carro faz curva bem, mas sinto que fica preso nas retas."`;
+      }
+      if (vehicleParams.frontWingFlapCornerDeg < 27) {
+        return `Rádio (${dName}): "A frente está escorregando (subesterço) na entrada das curvas rápidas. Precisamos de mais carga aerodinâmica dianteira."`;
+      }
+      return `Rádio (${dName}): "Balanço aerodinâmico muito neutro. Consigo confiar na frente sem perder velocidade final."`;
+    }
+
+    if (selectedType === 'suspension') {
+      if (vehicleParams.springRateNmm > 250) {
+        return sharp
+          ? `Rádio (${dName}): "A suspensão está dura demais sobre as zebras de saída (${vehicleParams.springRateNmm} N/mm)! As rodas perdem contato, destraciono e a traseira chicoteia."`
+          : `Rádio (${dName}): "O carro pula muito nas zebras, não consigo acelerar cedo."`;
+      }
+      if (vehicleParams.springRateNmm < 220) {
+        return `Rádio (${dName}): "A suspensão está mole demais. O chassi rola muito nas mudanças rápidas de direção e demora para responder."`;
+      }
+      return `Rádio (${dName}): "Suspensão na medida certa: absorve bem as irregularidades do asfalto e mantém a plataforma estável."`;
+    }
+
+    if (selectedType === 'floor') {
+      if (isAeroStallRisk) {
+        return sharp
+          ? `Rádio (${dName}): "O assoalho está raspando com violência no asfalto! O carro quica, a traseira solta de repente e perco todo o efeito solo nas curvas de alta."`
+          : `Rádio (${dName}): "O carro tá batendo no chão e dando medo de acelerar nas retas."`;
+      }
+      return `Rádio (${dName}): "O efeito solo está funcionando com estabilidade. Sinto a sucção puxando o carro para o chão nas curvas rápidas."`;
+    }
+
+    return `Rádio (${dName}): "A rigidez torsional do monocoque transmite com clareza o que os quatro pneus estão fazendo no asfalto."`;
+  }, [leadDriver?.name, effectiveFeedback, selectedType, vehicleParams, isAeroStallRisk]);
 
   const effectiveCost =
     phoenixDiscountH1 && selectedType === 'pu' ? Math.round(prototypeSpec.cost * 0.5) : prototypeSpec.cost;
@@ -694,10 +764,167 @@ export const EngineeringTab: React.FC = () => {
         {/* Left Column: CAD Parameters & Physical Foundation Cards (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
           <F1TabBucket
-            title={`MESA DE PROJETOS: ${chiefFeedback.chiefName.toUpperCase()} (${chiefFeedback.sectorLabel})`}
+            title={
+              selectedType === 'pu'
+                ? `CAD DESIGN SUITE: ${chiefFeedback.chiefName.toUpperCase()} (PU)`
+                : `CAD DESIGN SUITE: ${chiefFeedback.chiefName.toUpperCase()} (${chiefFeedback.sectorLabel})`
+            }
             badge={isSimulationStale ? 'PARÂMETROS EDITADOS' : 'SIMULADO EM BANCADA'}
           >
             <div className="space-y-4">
+              {/* ⚠️ ALERTA DE ESTOL AERODINÂMICO & BOTTOMING OUT (IF-M04-M05) */}
+              {isAeroStallRisk && (
+                <div className="bg-red-950/80 border-2 border-red-500 p-4 space-y-2 f1-container-roof animate-pulse shadow-[0_0_25px_rgba(239,68,68,0.25)]">
+                  <div className="flex items-center justify-between gap-2 border-b border-red-500/30 pb-2">
+                    <div className="flex items-center gap-2 text-red-400 font-f1-wide font-black text-xs uppercase tracking-wider">
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span>⚠️ ALERTA CRÍTICO: ESTOL AERODINÂMICO & BOTTOMING OUT (IF-M04-M05)</span>
+                    </div>
+                    <span className="text-[10px] font-f1-mono text-red-300 bg-red-900/60 px-2 py-0.5 border border-red-500/40 font-bold uppercase">
+                      PORPOISING {vehiclePhysics.porpoisingRiskPct.toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs font-f1-mono text-red-200 leading-relaxed">
+                    Cuidado, Chefe! O carro está arrastando no asfalto e perdendo downforce nas curvas de alta! A suspensão macia ({vehicleParams.springRateNmm} N/mm) não sustenta a altura de rodagem dianteira ({vehicleParams.frontRideHeightMm}mm) sob a carga aerodinâmica de {Math.round(vehiclePhysics.cornerMode.downforceTotalN)}N. O efeito solo do assoalho estola (-40% downforce nas zebras) e o piloto perderá estabilidade.
+                  </p>
+                  <div className="bg-black/60 p-2.5 border border-red-500/30 text-[11px] font-f1-mono text-zinc-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span>
+                      💡 <span className="text-amber-300 font-bold">Solução de Engenharia:</span> Enrijeça as molas para pelo menos 245 N/mm ou eleve a altura de rodagem dianteira para +26mm.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateVehicleParams({
+                          springRateNmm: Math.max(vehicleParams.springRateNmm, 245),
+                          frontRideHeightMm: Math.max(vehicleParams.frontRideHeightMm, 26)
+                        });
+                      }}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white font-f1-mono text-[10px] font-bold uppercase shrink-0 transition-all cursor-pointer"
+                    >
+                      Corrigir Automaticamente
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Speech Balloon Interativo do Chefe de PU (Gabriel Santos) */}
+              {selectedType === 'pu' && (
+                <div className="bg-[#15151E] border-2 border-emerald-500/40 p-4 f1-container-roof flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl relative overflow-hidden">
+                  <div className="flex items-start gap-3.5">
+                    <PersonAvatar
+                      name={chiefFeedback.chiefName}
+                      role="head_pu"
+                      sizeClass="w-12 h-12"
+                      accentColor="#10B981"
+                    />
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-f1-wide font-black text-xs text-white uppercase tracking-wider">
+                          {chiefFeedback.chiefName} · CHEFE DE MOTORES & TRANSMISSÃO
+                        </span>
+                        <span className="text-[9px] font-f1-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 border border-emerald-500/40 font-bold uppercase">
+                          FEEDBACK TÉCNICO DE PU
+                        </span>
+                      </div>
+                      <p className="text-xs font-f1-mono text-zinc-200 leading-relaxed italic">
+                        "{chiefFeedback.quote || 'Chefe, se aumentarmos a compressão para 15.5:1, ganhamos potência, mas o motor vai esquentar e vamos precisar abrir os sidepods.'}"
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Painel de Potencial de Evolução do Motor */}
+              {selectedType === 'pu' && (
+                <div className="bg-[#171722] border border-white/10 p-3.5 space-y-2.5 f1-container-roof">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <span className="text-xs font-f1-wide font-bold text-white uppercase flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                      PAINEL DE POTENCIAL DE EVOLUÇÃO DO MOTOR (PU)
+                    </span>
+                    <span className="text-[10px] font-f1-mono text-cyan-400 font-bold">
+                      HOMOLOGAÇÃO FIA 2026
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-f1-mono">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-zinc-400">Potencial Atual:</span>
+                        <span className="text-emerald-400 font-bold tabular-nums">82 / 100</span>
+                      </div>
+                      <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
+                        <div className="bg-emerald-400 h-full" style={{ width: '82%' }} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-zinc-400">Teto FIA / Arquitetura:</span>
+                        <span className="text-amber-400 font-bold tabular-nums">92 / 100 (Limite Cosworth)</span>
+                      </div>
+                      <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
+                        <div className="bg-amber-400 h-full" style={{ width: '92%' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] font-f1-mono text-zinc-400 italic">
+                    "Chefe, nosso bloco Cosworth está no limite mecânico (teto 92%). Conseguimos extrair +2 CV na câmara de combustão, mas o ERS exige cuidado para não comprometer a refrigeração." — {chiefFeedback.chiefName}
+                  </p>
+                </div>
+              )}
+
+              {/* 🏎️ FEEDBACK DE PISTA & TELEMETRIA DO PILOTO */}
+              {leadDriver && (
+                <div className="bg-[#15151E] border border-cyan-500/40 p-3.5 space-y-2 f1-container-roof">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                    <div className="flex items-center gap-2.5">
+                      <PersonAvatar
+                        name={leadDriver.name}
+                        role="driver"
+                        sizeClass="w-8 h-8"
+                        accentColor="#06B6D4"
+                      />
+                      <div>
+                        <span className="font-f1-wide font-black text-xs text-white uppercase block">
+                          {leadDriver.name} · FEEDBACK DE PISTA
+                        </span>
+                        <span className="text-[10px] font-f1-mono text-zinc-400">
+                          Sensor Humano da Equipe
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="bg-black/60 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-f1-mono">
+                        <span className="text-zinc-400">Precisão Técnica: </span>
+                        <span className="text-cyan-400 font-bold tabular-nums">
+                          {effectiveFeedback}/99
+                        </span>
+                        {hasIndaiatubaBonus && (
+                          <span className="text-emerald-400 font-bold ml-1" title="Bônus da Sede Indaiatuba (+10%)">
+                            (+10% 🇧🇷)
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-[9px] font-f1-mono px-2 py-0.5 font-bold uppercase ${
+                        effectiveFeedback >= 85
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : effectiveFeedback >= 75
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      }`}>
+                        {effectiveFeedback >= 85 ? 'PRECISÃO CIRÚRGICA' : effectiveFeedback >= 75 ? 'PRECISO' : 'INTERMEDIÁRIO'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs font-f1-mono text-cyan-200 leading-relaxed italic bg-cyan-950/20 p-2.5 border-l-2 border-cyan-400">
+                    "{driverTracksideQuote}"
+                  </p>
+                </div>
+              )}
               {/* ============================================================= */}
               {/* MODULE 1: POWER UNIT (ICE + 350kW ERS + I²R JOULE)            */}
               {/* ============================================================= */}

@@ -61,7 +61,8 @@ export function getCadSectorAtrHoursCost(type: ComponentSpec['type']): number {
 export function resolveActiveChiefForCadType(
   selectedType: ComponentSpec['type'],
   staff: StaffMember[],
-  teamName?: string
+  teamName?: string,
+  playerChiefName?: string
 ): {
   member: StaffMember | undefined;
   fallbackName: string;
@@ -76,32 +77,45 @@ export function resolveActiveChiefForCadType(
 
   if (selectedType === 'pu' || selectedType === 'gearbox') {
     targetRole = 'head_pu';
-    fallbackName = 'Dr. Klaus Weber';
+    fallbackName = playerChiefName && playerChiefName !== 'Pendente' ? playerChiefName : 'Gabriel Santos';
     sectorLabel = 'PU & TRANSMISSÃO';
     avatarRole = 'head_pu';
   } else if (selectedType === 'suspension') {
     targetRole = 'chief_mechanic';
-    fallbackName = 'Lee Stevenson';
+    fallbackName = playerChiefName && playerChiefName !== 'Pendente' ? playerChiefName : 'Lee Stevenson';
     sectorLabel = 'DINÂMICA & CHASSI';
     avatarRole = 'chief_mechanic';
   } else if (selectedType === 'chassis') {
     targetRole = 'head_aero';
-    fallbackName = 'Marcus Vance';
+    fallbackName = playerChiefName && playerChiefName !== 'Pendente' ? playerChiefName : 'Marcus Vance';
     sectorLabel = 'CHASSI & AERO';
     avatarRole = 'head_aero';
   } else {
     targetRole = 'head_aero';
-    fallbackName = 'Marcus Vance';
+    fallbackName = playerChiefName && playerChiefName !== 'Pendente' ? playerChiefName : 'Marcus Vance';
     sectorLabel = 'AERO';
     avatarRole = 'head_aero';
   }
 
+  // 1. Explicit check if playerChiefName matches any staff member
+  const explicitMatch = playerChiefName && playerChiefName !== 'Pendente'
+    ? staff.find((s) => s.role === targetRole && s.name.toLowerCase() === playerChiefName.toLowerCase())
+    : undefined;
+
+  // 2. Check teamMatch
   const teamMatch = teamName
     ? staff.find(
         (s) =>
           s.role === targetRole &&
-          (s.currentTeam === teamName || s.currentTeam === 'APEX Grand Prix Team')
+          (s.currentTeam === teamName ||
+            s.currentTeam === 'APEX Grand Prix Team' ||
+            s.currentTeam === 'Apex Grand Prix Team')
       )
+    : undefined;
+
+  // 3. Check Gabriel Santos for PU
+  const gabrielMatch = targetRole === 'head_pu'
+    ? staff.find((s) => s.role === 'head_pu' && (s.id === 'staff_pu_fic_4' || s.name === 'Gabriel Santos'))
     : undefined;
 
   const starterMatch = staff.find(
@@ -112,7 +126,7 @@ export function resolveActiveChiefForCadType(
         s.id === 'staff_chief_mechanic')
   );
 
-  const member = teamMatch || starterMatch || staff.find((s) => s.role === targetRole);
+  const member = explicitMatch || teamMatch || gabrielMatch || starterMatch || staff.find((s) => s.role === targetRole);
 
   return {
     member,
@@ -131,6 +145,7 @@ export function evaluateChiefCadFeedback(params: {
   regulatory: RegulatoryCheckResult;
   staff: StaffMember[];
   teamName?: string;
+  playerChiefName?: string;
 }): ChiefCadFeedback {
   const {
     selectedType,
@@ -140,9 +155,10 @@ export function evaluateChiefCadFeedback(params: {
     regulatory,
     staff,
     teamName,
+    playerChiefName,
   } = params;
 
-  const resolved = resolveActiveChiefForCadType(selectedType, staff, teamName);
+  const resolved = resolveActiveChiefForCadType(selectedType, staff, teamName, playerChiefName);
   const member = resolved.member;
   const chiefId = member?.id ?? `fallback_${resolved.fallbackRole}`;
   const chiefName = member?.name ?? resolved.fallbackName;
@@ -260,6 +276,11 @@ export function evaluateChiefCadFeedback(params: {
         iceCompressionRatio: Math.min(15.4, vehicleParams.iceCompressionRatio),
         ersDeployBiasPct: clamp(vehicleParams.ersDeployBiasPct - 10, 10, 90),
       };
+    } else if (vehicleParams.iceCompressionRatio >= 15.5) {
+      status = 'warning';
+      adviceKey = 'pu_compression_thermal_tradeoff';
+      quote = `Chefe, se aumentarmos a compressão para ${vehicleParams.iceCompressionRatio.toFixed(1)}:1, ganhamos potência, mas o motor vai esquentar e vamos precisar abrir os sidepods.`;
+      recommendationSummary = 'Monitore a temperatura das células e a área dos sidepods para evitar derating na reta.';
     } else {
       quote = `Dinamômetro limpo: ${vehiclePhysics.totalWheelPowerHp} CV na roda, perdas Joule contidas em ${vehiclePhysics.batteryJouleLossesKw} kW e temperatura estável.`;
     }

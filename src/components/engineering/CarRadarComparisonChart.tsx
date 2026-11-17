@@ -265,6 +265,64 @@ export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = (
           </span>
         </div>
       )}
+
+      {/* 24-GP Homologation Timeline & Active Components Breakdown */}
+      <div className="bg-[#15151E] p-3 border border-white/10 space-y-2.5 f1-container-roof">
+        <div className="flex items-center justify-between border-b border-white/10 pb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2.5 h-2.5 bg-emerald-400 inline-block shrink-0" />
+            <span className="font-f1-wide font-black text-xs text-white uppercase tracking-wider truncate">
+              {playerTeam.carModelName || 'DUM-01-EVO'} · TIMELINE DE HOMOLOGAÇÃO (24 GPs)
+            </span>
+          </div>
+          <span className="text-[10px] font-f1-mono text-zinc-400 shrink-0">
+            {components.length} Componentes Ativos
+          </span>
+        </div>
+
+        {/* 24-GP Horizontal Timeline Bar */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[9px] font-f1-mono text-zinc-400">
+            <span>GP 01 (BHR)</span>
+            <span>GP 12 (GBR)</span>
+            <span>GP 24 (ABU)</span>
+          </div>
+          <div className="w-full bg-black/60 h-2.5 border border-white/10 relative flex items-center overflow-hidden">
+            {Array.from({ length: 24 }).map((_, gpIdx) => {
+              const hasUpgrade = gpIdx === 0 || gpIdx === 4 || gpIdx === 9 || gpIdx === 15 || gpIdx === 20;
+              return (
+                <div
+                  key={gpIdx}
+                  className={`flex-1 h-full border-r border-white/5 ${
+                    hasUpgrade ? 'bg-emerald-500' : 'bg-transparent'
+                  }`}
+                  title={`GP ${gpIdx + 1} ${hasUpgrade ? '· Pacote de Upgrades Homologado' : ''}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Components Grid with clean truncation to prevent overflow */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] font-f1-mono">
+          {components.slice(0, 6).map((c) => (
+            <div
+              key={c.id}
+              className="bg-[#1C1C26] p-2 border border-white/5 flex items-center justify-between gap-2 overflow-hidden min-w-0"
+            >
+              <div className="min-w-0 flex-1 truncate">
+                <span className="text-white font-bold block truncate">{c.name}</span>
+                <span className="text-zinc-400 text-[9px] block truncate">
+                  {c.type.toUpperCase()} · Confiabilidade: {c.reliability}%
+                </span>
+              </div>
+              <span className="text-emerald-400 font-bold shrink-0 text-[10px] whitespace-nowrap">
+                Nv. {c.level}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

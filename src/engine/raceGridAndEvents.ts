@@ -651,6 +651,17 @@ export function evaluateRacePitWallRadio(params: {
       });
     }
 
+    // Alerta de Estol Aerodinâmico e Porpoising (Interface IF-M04-M05)
+    if (car.isPlayer && (car.porpoisingRiskPct ?? 0) > 48) {
+      messages.push({
+        id: `rad_porp_${car.driverId}`,
+        senderName: car.driverName,
+        senderRole: 'PILOTO',
+        severity: (car.porpoisingRiskPct ?? 0) > 65 ? 'critical' : 'warning',
+        message: 'Cuidado, Chefe! O carro está arrastando no asfalto e perdendo downforce! O assoalho bate forte nas zebras e no fim da reta.',
+      });
+    }
+
     if (riskPct >= 61) {
       messages.push({
         id: `rad_risk_${car.driverId}`,
@@ -875,12 +886,22 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
     }
 
     // Consumo de E-Fuel + Modo de Pilotagem + Mistura + Leveza do Tanque (~0.03s por kg queimado)
+    // Calibração de Consumo por Circuito (Fórmula FIA 2026):
+    // Pistas com alta contagem de voltas curtas (ex: Mônaco com 78 voltas) demandam queima nominal menor por volta (~1.15-1.25 kg/volta).
+    // Circuitos longos (ex: Spa, 44 voltas) queimam ~2.15 kg/volta. Essa normalização impede pane seca prematura sob pilotagem padrão.
+    const nominalTrackLapBurn = input.totalLaps > 0
+      ? ((car.fuelInitialKg || 100) / input.totalLaps) * 0.94
+      : (car.fuelBurnKgPerLap || 1.6);
+    const effectiveLapBurnRate = car.fuelBurnKgPerLap > 0
+      ? Math.min(car.fuelBurnKgPerLap, nominalTrackLapBurn * 1.18)
+      : nominalTrackLapBurn;
+
     const flagFuelMult = nextFlag === 'sc' ? 0.42 : nextFlag === 'vsc' ? 0.52 : 1.0;
     const mixBurnMultiplier = car.fuelMixMode === 'rich' ? 2.0 : car.fuelMixMode === 'lean' ? 0.7 : 1.0;
     const paceFuelMultiplier =
       effectivePaceMode === 'attack' ? 1.2 : effectivePaceMode === 'conserve' ? 0.8 : 1.0;
     const fuelBurnedThisTick =
-      baseSpeed * speedMod * car.fuelBurnKgPerLap * mixBurnMultiplier * paceFuelMultiplier * flagFuelMult;
+      baseSpeed * speedMod * effectiveLapBurnRate * mixBurnMultiplier * paceFuelMultiplier * flagFuelMult;
     const newFuelRemaining = Math.max(0, car.fuelRemainingKg - fuelBurnedThisTick);
 
     if (newFuelRemaining <= 0) {
