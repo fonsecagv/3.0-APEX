@@ -407,6 +407,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [resetToastMessage, setResetToastMessage] = useState<string | null>(null);
   const [onboardingSessionKey, setOnboardingSessionKey] = useState<number>(1);
 
+  // Guard flag: suppresses auto-save while a reset or onboarding completion is in progress
+  // to prevent the useEffect from writing partially-updated (stale) state to localStorage.
+  const suppressAutoSaveRef = useRef<boolean>(false);
+
   const [activeTab, setActiveTab] = useState<GameTab>(() => sBoot?.activeTab || 'overview');
   const [dashboardViewMode, setDashboardViewMode] = useState<'command' | 'grands_prix'>('command');
   const openGrandsPrixMode = () => {
@@ -1121,6 +1125,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Reset Total do Jogo para Nova Carreira (Reinicia na Fase 1: Escolha do Legado)
   const resetGameState = () => {
+    // Suppress auto-save while we batch-reset all state to defaults
+    suppressAutoSaveRef.current = true;
     // 1. Apagar o perfil do chefe e background
     setPrincipalProfile({
       name: 'Guilherme',
@@ -1243,10 +1249,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowStartScreen(false);
     setShowOnboarding(true);
     playRadioSound();
+
+    // Re-enable auto-save after all reset state changes are batched
+    // Use setTimeout to ensure React has processed all the setState calls above
+    setTimeout(() => {
+      suppressAutoSaveRef.current = false;
+    }, 0);
   };
 
   // Complete Onboarding (from 7-Stage Official FIA / Legacy Script)
   const completeOnboarding = (data: OnboardingResult) => {
+    // Suppress auto-save to prevent partial state from overwriting the
+    // authoritative save built at the end of this function
+    suppressAutoSaveRef.current = true;
     setPrincipalProfile({
       name: data.principalName,
       background: data.principalBackground
@@ -1897,6 +1912,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setupWindow: nextSetupWindow,
       notifications: ratifiedNotifications,
     });
+
+    // Re-enable auto-save now that the authoritative save is written
+    // Use setTimeout(0) to let React batch all the setState calls above
+    // before the auto-save useEffect can fire again
+    setTimeout(() => {
+      suppressAutoSaveRef.current = false;
+    }, 0);
   };
 
   const [carSetup, setCarSetup] = useState<CarSetup>(() =>
@@ -1987,6 +2009,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Automatic silent persistence in localStorage whenever any active career state changes
   useEffect(() => {
     if (!careerInitialized || showOnboarding) return;
+    // Skip auto-save while a reset or completeOnboarding batch is still being applied
+    if (suppressAutoSaveRef.current) return;
     const payload = buildCareerSavePayload('slot_autosave', buildPersistedCareerState(), language);
     const updated = writeCareerSaveToStorage(payload, readSavedSlotsList());
     setHasRecentSave(true);
