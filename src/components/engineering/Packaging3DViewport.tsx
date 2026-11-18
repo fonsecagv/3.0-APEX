@@ -7,7 +7,8 @@ import type { AeroMode, Driver, Team, TireCompound } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { LIVERY_2026_CATALOG, resolveTeamLivery2026, type Livery2026Spec } from '../../data/f12026Liveries';
 import { buildF1Car2026, type BuiltF1Car, type CarVisualMode } from '../three/f1CarBuilder';
-import { ChevronDown, ChevronUp, Eye, Layers, RotateCw, Sparkles, Wind, X } from 'lucide-react';
+import { loadOrBuildF1Car } from '../three/f1ModelLoader';
+import { ChevronDown, ChevronUp, Eye, Layers, Maximize2, Minimize2, RotateCw, Sparkles, Wind, X } from 'lucide-react';
 
 interface Packaging3DViewportProps {
   packaging: PackagingAnalysisOutputs;
@@ -107,6 +108,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   const [webglUnavailable, setWebglUnavailable] = useState<boolean>(false);
   const [viewPreset, setViewPreset] = useState<CameraViewPreset>('iso');
   const [visualMode, setVisualMode] = useState<CarVisualMode>(defaultVisualMode);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [aeroMode, setAeroMode] = useState<AeroMode>('mode_z');
   const [tireCompound, setTireCompound] = useState<TireCompound>('soft');
   const [explodePct, setExplodePct] = useState<number>(0);
@@ -496,24 +498,36 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     };
   }, []);
 
-  // Fast swap/rebuild of 2026 F1 Car Mesh when Livery, Driver Slot, Tire, or Engineering Params change
+  // Fast swap/rebuild of 2026 F1 Car Mesh via GLTF loader or procedural engine
   useEffect(() => {
     const scene = sceneRef.current;
     const renderer = rendererRef.current;
     if (!scene || !renderer) return;
 
+    let isMounted = true;
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
-    const builtCar = buildF1Car2026(activeLivery, effectiveCarParams, maxAniso, driverIndex);
-    builtCar.setVisualMode(visualMode);
-    builtCar.applyExplodeFactor(explodeTargetRef.current);
-    scene.add(builtCar.root);
-    carRef.current = builtCar;
-    requestRenderRef.current();
+
+    loadOrBuildF1Car(activeLivery, effectiveCarParams, maxAniso, driverIndex).then((builtCar) => {
+      if (!isMounted || !sceneRef.current) {
+        builtCar.dispose();
+        return;
+      }
+      if (carRef.current) {
+        scene.remove(carRef.current.root);
+        carRef.current.dispose();
+      }
+      builtCar.setVisualMode(visualMode);
+      builtCar.applyExplodeFactor(explodeTargetRef.current);
+      scene.add(builtCar.root);
+      carRef.current = builtCar;
+      requestRenderRef.current();
+    });
 
     return () => {
-      scene.remove(builtCar.root);
-      builtCar.dispose();
-      if (carRef.current === builtCar) {
+      isMounted = false;
+      if (carRef.current) {
+        scene.remove(carRef.current.root);
+        carRef.current.dispose();
         carRef.current = null;
       }
     };
@@ -660,7 +674,13 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   }, [autoSpin]);
 
   return (
-    <div className={`relative w-full ${heightClass} bg-[#0c0d13] border border-white/10 overflow-hidden select-none`}>
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-50 w-screen h-screen bg-[#0c0d13] overflow-hidden select-none'
+          : `relative w-full ${heightClass} bg-[#0c0d13] border border-white/10 overflow-hidden select-none`
+      }
+    >
       {webglUnavailable ? (
         <div className="w-full h-full flex flex-col items-center justify-center p-4">
           <div className="text-[11px] font-f1-mono text-amber-300 mb-2">
@@ -739,21 +759,33 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       </div>
 
       {/* Top-Right Chassis, Driver & T-Cam Telemetry Strip */}
-      <div className="hidden lg:flex absolute top-3 right-3 z-10 items-center gap-2 bg-[#101017]/94 border border-white/15 px-3 py-1.5 text-[10px] font-f1-mono">
-        <span
-          className="w-2.5 h-2.5 border border-white/30 shrink-0"
-          style={{ backgroundColor: activeLivery.primaryHex }}
-        />
-        <span className="font-f1-wide font-bold text-white uppercase">{activeLivery.carModelName}</span>
-        <span className="text-zinc-500">·</span>
-        <span className="text-white font-bold tabular-nums">#{activeDriver.number} {activeDriver.shortCode}</span>
-        <span
-          className="w-2.5 h-2.5 border border-white/40 shrink-0"
-          title={`FIA T-Cam: ${driverIndex === 0 ? 'Preta (Carro 1)' : 'Amarela (Carro 2)'}`}
-          style={{ backgroundColor: activeDriver.tCamHex }}
-        />
-        <span className="text-zinc-500">·</span>
-        <span className="text-zinc-300">{activeLivery.engineBadge}</span>
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        <div className="hidden lg:flex items-center gap-2 bg-[#101017]/94 border border-white/15 px-3 py-1.5 text-[10px] font-f1-mono">
+          <span
+            className="w-2.5 h-2.5 border border-white/30 shrink-0"
+            style={{ backgroundColor: activeLivery.primaryHex }}
+          />
+          <span className="font-f1-wide font-bold text-white uppercase">{activeLivery.carModelName}</span>
+          <span className="text-zinc-500">·</span>
+          <span className="text-white font-bold tabular-nums">#{activeDriver.number} {activeDriver.shortCode}</span>
+          <span
+            className="w-2.5 h-2.5 border border-white/40 shrink-0"
+            title={`FIA T-Cam: ${driverIndex === 0 ? 'Preta (Carro 1)' : 'Amarela (Carro 2)'}`}
+            style={{ backgroundColor: activeDriver.tCamHex }}
+          />
+          <span className="text-zinc-500">·</span>
+          <span className="text-zinc-300">{activeLivery.engineBadge}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsFullscreen((prev) => !prev)}
+          title={isFullscreen ? 'Sair do Modo Showroom Tela Cheia' : 'Expandir Showroom Tela Cheia (F1 Showroom 3D)'}
+          className="bg-[#101017]/94 hover:bg-[#202230] border border-white/15 hover:border-cyan-400 p-2 text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-[10px] font-f1-mono uppercase"
+        >
+          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />}
+          <span className="hidden sm:inline font-bold">{isFullscreen ? 'Minimizar' : 'Showroom 3D'}</span>
+        </button>
       </div>
 
       {/* Bottom Collapsible Inspector & Formula Dream 2026 Showroom Dock */}
