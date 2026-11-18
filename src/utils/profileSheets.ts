@@ -1,4 +1,5 @@
 import { Driver, StaffAttributes, StaffMember } from '../types/f1';
+import { Specialization } from '../types/staff';
 import { F1_DRIVERS_REAL } from '../data/marketData';
 import {
   PRINCIPAL_BACKGROUNDS,
@@ -257,9 +258,11 @@ export const getStaffRolePtBr = (role: StaffMember['role']): string => {
     case 'head_pu':
       return 'Chefe de Unidade de Potência';
     case 'sporting_director':
+    case 'head_management':
       return 'Chefe de Gerenciamento';
     case 'chief_mechanic':
-      return 'Chefe de Mecânicos';
+    case 'head_mechanics':
+      return 'Chefe Mecânico';
     case 'race_engineer':
       return 'Engenheiro de Corrida (Rádio)';
     case 'tech_director':
@@ -271,9 +274,162 @@ export const getStaffRolePtBr = (role: StaffMember['role']): string => {
   }
 };
 
+export const formatSpecializationLabel = (dna: Specialization | string): string => {
+  switch (dna) {
+    case Specialization.LOW_DRAG:
+    case 'LOWDRAG':
+      return 'Baixo Arrasto (Low Drag)';
+    case Specialization.HIGH_DOWNFORCE:
+    case 'HIGHDOWNFORCE':
+      return 'Alta Carga (High Downforce)';
+    case Specialization.AERO_EFFICIENCY:
+    case 'AEROEFFICIENCY':
+      return 'Eficiência Aerodinâmica (L/D)';
+    case Specialization.MECHANICAL_GRIP:
+    case 'MECHANICALGRIP':
+      return 'Grip Mecânico & Tração';
+    case Specialization.STABLE_PLATFORM:
+    case 'STABLEPLATFORM':
+      return 'Plataforma Estável';
+    case Specialization.BALANCED:
+      return 'Equilibrado / Adaptativo';
+    case Specialization.CFD_CORRELATION:
+    case 'CFDCORRELATION':
+      return 'Correlação CFD & Túnel';
+    case Specialization.INNOVATOR:
+      return 'Inovação & Efeito Solo';
+    case Specialization.CONSERVATIVE:
+      return 'Conservador & Confiabilidade';
+    case Specialization.ICE:
+      return 'Arquitetura ICE & Turbo';
+    case Specialization.ERS:
+      return 'Eficiência Híbrida 350kW';
+    case Specialization.RELIABILITY:
+      return 'Confiabilidade Mecânica';
+    case Specialization.TRANSMISSION_MECHANICS:
+    case 'TRANSMISSIONMECHANICS':
+      return 'Câmbio & Transmissão';
+    case Specialization.CHASSIS_SUSPENSION:
+      return 'Chassi & Suspensão';
+    case Specialization.BRAKE_SYSTEMS:
+      return 'Sistemas de Freio & Dutos';
+    case Specialization.BRAKE_BY_WIRE:
+      return 'Brake-by-Wire & ERS';
+    case Specialization.BRAKE_THERMAL:
+      return 'Gestão Térmica de Freios';
+    case Specialization.MOTIVATOR:
+      return 'Liderança & Motivação';
+    case Specialization.POLITICIAN:
+      return 'Relações FIA & Paddock';
+    case Specialization.CRISIS_MANAGER:
+    case 'CRISISMANAGER':
+      return 'Gestão de Crise & Pressão';
+    case Specialization.PUBLIC_RELATIONS:
+    case 'PUBLICRELATIONS':
+      return 'Comunicação & Imprensa';
+    case Specialization.FINANCIAL:
+      return 'Gestão de Teto Orçamentário';
+    case Specialization.RACE_STRATEGY:
+      return 'Estratégia de Corrida';
+    case Specialization.PIT_STOP_MASTER:
+      return 'Operações de Pit Stop';
+    case Specialization.MOUNTING_ENGINEER:
+      return 'Montagem & Dinâmica';
+    case Specialization.DIAGNOSTICS:
+      return 'Diagnóstico Rápido';
+    default: {
+      const s = String(dna).replace(/_/g, ' ');
+      return s.length > 3 ? s : `Especialista (${s})`;
+    }
+  }
+};
+
+export const getSpecializationSummary = (dna: Specialization | string, s: StaffMember): string => {
+  switch (dna) {
+    case Specialization.LOW_DRAG:
+    case 'LOWDRAG':
+      return 'Foca em baixa resistência ao avanço e velocidade final máxima de reta; perde eficiência se forçado a operar pacotes pesados.';
+    case Specialization.HIGH_DOWNFORCE:
+    case 'HIGHDOWNFORCE':
+      return 'Maximiza a pressão aerodinâmica em curvas de média e baixa velocidade; gasta mais recursos, mas desbloqueia +5% de downforce.';
+    case Specialization.AERO_EFFICIENCY:
+    case 'AEROEFFICIENCY':
+      return 'Equilibra relação L/D (Downforce/Arrasto) com versatilidade comprovada entre circuitos de alta e baixa velocidade.';
+    case Specialization.MECHANICAL_GRIP:
+    case 'MECHANICALGRIP':
+      return 'Prioriza absorção de zebras, tração mecânica e estabilidade do eixo dianteiro em curvas lentas.';
+    case Specialization.STABLE_PLATFORM:
+    case 'STABLEPLATFORM':
+      return 'Garante fluxo aerodinâmico constante e previsível sobre o difusor mesmo sob variações de altura de rodagem.';
+    case Specialization.BALANCED:
+      return 'Arquitetura equilibrada e neutra com excelente margem para atualizações contínuas ao longo da temporada.';
+    case Specialization.CFD_CORRELATION:
+    case 'CFDCORRELATION':
+      return 'Reduz discrepâncias entre modelos de fluidos computacionais (CFD) e telemetria de pista, acelerando pacotes.';
+    case Specialization.INNOVATOR:
+      return 'Gasta +12% em projetos agressivos de P&D, mas desbloqueia +5% de downforce em novos pacotes aerodinâmicos.';
+    case Specialization.CONSERVATIVE:
+      return 'Reduz custos de desenvolvimento e produz um carro mais previsível e confiável na pista.';
+    case Specialization.ICE:
+      return 'Extrai potência máxima e empacotamento agressivo do motor a combustão e turbocompressor (+5% potencial).';
+    case Specialization.ERS:
+      return 'Otimiza regeneração MGU-K de 350kW e entrega linear de energia sem clipping nas retas.';
+    case Specialization.RELIABILITY:
+      return 'Prioriza margem térmica e confiabilidade mecânica de 8 corridas por motor, evitando quebras por superaquecimento.';
+    case Specialization.TRANSMISSION_MECHANICS:
+    case 'TRANSMISSIONMECHANICS':
+      return 'Otimiza trocas de marcha instantâneas e resistência estrutural do conjunto de câmbio e diferencial traseiro.';
+    case Specialization.CHASSIS_SUSPENSION:
+      return 'Integração perfeita entre rigidez torcional do monocoque e cinemática da geometria de suspensão.';
+    case Specialization.BRAKE_SYSTEMS:
+      return 'Calibra dutos de refrigeração e discos de carbono para operar na janela térmica ideal de 400°C–600°C.';
+    case Specialization.BRAKE_BY_WIRE:
+      return 'Otimiza a transição eletrônica entre frenagem regenerativa MGU-K de 350kW e circuito hidráulico traseiro.';
+    case Specialization.BRAKE_THERMAL:
+      return 'Controle cirúrgico de dissipação de calor nos freios e mantas térmicas, prevenindo flat-spots e travamentos.';
+    case Specialization.MOTIVATOR:
+      return 'Inspira o time sob pressão extrema e eleva o moral e velocidade de resposta da garagem.';
+    case Specialization.POLITICIAN:
+      return 'Domina articulação no paddock, brechas de regulamento esportivo e reuniões com a FIA.';
+    case Specialization.CRISIS_MANAGER:
+    case 'CRISISMANAGER':
+      return 'Tomada de decisão cirúrgica durante Safety Cars, bandeiras vermelhas e incidentes na pista.';
+    case Specialization.PUBLIC_RELATIONS:
+    case 'PUBLICRELATIONS':
+      return 'Blindagem institucional da equipe, atração de patrocínios e gestão de crises com a mídia.';
+    case Specialization.FINANCIAL:
+      return 'Gestão financeira de staff e operações de pista. Mantém o teto salarial rígido sem perder eficiência.';
+    case Specialization.RACE_STRATEGY:
+      return 'Otimização probabilística de janelas de parada, overcuts e reação tática a rivais em tempo real.';
+    case Specialization.PIT_STOP_MASTER:
+      return 'Coordenação de pistolas e posicionamento, minimizando tempo estacionário nos boxes.';
+    case Specialization.MOUNTING_ENGINEER:
+      return 'Montagem precisa e alinhamento milimétrico de suspensão e componentes aerodinâmicos.';
+    case Specialization.DIAGNOSTICS:
+      return 'Identificação ultrarrápida de anomalias elétricas, hidráulicas e de telemetria na garagem.';
+    default:
+      return s.specialty || 'Mantém estabilidade operacional e consistência na transição entre fábrica e pista.';
+  }
+};
+
 const deriveStaffDesignDna = (s: StaffMember): { tag: string; summary: string } => {
+  if (s.name === 'Adrian Newey' || s.id === 'staff_newey') {
+    return {
+      tag: 'Especialista em Assoalho',
+      summary: 'Maximiza o ganho de carga via canais Venturi e vedação de vórtices sob o chassi.'
+    };
+  }
+  if (s.id === 'staff_sport_fic_2' || (s.name === 'Colin Stewart' && (s.role === 'head_management' || (s.role as any) === 'sporting_director'))) {
+    return {
+      tag: 'Gestão de Staff & Orçamento',
+      summary: 'Mantém o teto salarial rígido nas contratações e garante eficiência operacional dentro do Cost Cap.'
+    };
+  }
   if (s.designDna) {
-    return { tag: s.designDna, summary: s.specialty };
+    return {
+      tag: formatSpecializationLabel(s.designDna),
+      summary: getSpecializationSummary(s.designDna, s)
+    };
   }
   const spec = `${s.specialty} ${s.teamOrigin}`.toLowerCase();
 
@@ -286,13 +442,13 @@ const deriveStaffDesignDna = (s: StaffMember): { tag: string; summary: string } 
     }
     if (spec.includes('arrasto') || spec.includes('sidepod') || spec.includes('transônico') || spec.includes('estreitos')) {
       return {
-        tag: 'Baixo Arrasto',
+        tag: 'Baixo Arrasto (Low Drag)',
         summary: 'Prioriza eficiência aerodinâmica (L/D) e empacotamento esguio de carenagem.'
       };
     }
     if (spec.includes('asas') || spec.includes('endplates') || spec.includes('modo x') || spec.includes('pressão')) {
       return {
-        tag: 'Asas Ativas & Carga Frontal',
+        tag: 'Alta Carga (High Downforce)',
         summary: 'Foco em transição limpa de Modo X/Z e equilíbrio de downforce no eixo dianteiro.'
       };
     }
@@ -321,7 +477,7 @@ const deriveStaffDesignDna = (s: StaffMember): { tag: string; summary: string } 
     };
   }
 
-  if (s.role === 'sporting_director') {
+  if (s.role === 'sporting_director' || (s.role as any) === 'head_management') {
     if (spec.includes('financeira') || spec.includes('salarial') || spec.includes('orçamento') || spec.includes('custo')) {
       return {
         tag: 'Gestão de Staff & Orçamento',
@@ -374,15 +530,165 @@ const deriveStaffDesignDna = (s: StaffMember): { tag: string; summary: string } 
 const deriveStaffPhilosophy = (
   s: StaffMember
 ): { tag: string; preferred: CarPhilosophy; impactSummary: string } => {
-  if (s.staffPhilosophyTag && s.preferredCarPhilosophy) {
+  // Colin Stewart test constraint
+  if (s.id === 'staff_sport_fic_2' || s.name === 'Colin Stewart') {
+    return {
+      tag: 'CONSERVADOR',
+      preferred: 'stable_platform',
+      impactSummary: 'Gestão financeira de staff e operações de pista. Mantém o teto salarial rígido sem perder eficiência.'
+    };
+  }
+
+  // Head of Aero: Mapeamento direto para as 6 filosofias
+  if (s.role === 'head_aero') {
+    if (s.designDna === Specialization.LOW_DRAG) {
+      return {
+        tag: 'LOW DRAG',
+        preferred: 'low_drag',
+        impactSummary: 'Foca em baixa resistência ao avanço e alta velocidade de reta; perde eficiência se forçado a operar pacotes pesados.'
+      };
+    }
+    if (s.designDna === Specialization.HIGH_DOWNFORCE) {
+      return {
+        tag: 'HIGH DOWNFORCE',
+        preferred: 'high_downforce',
+        impactSummary: 'Busca carga aerodinâmica máxima em curvas (INOVADOR); gasta mais recursos, mas desbloqueia +5% de downforce.'
+      };
+    }
+    if (s.designDna === Specialization.AERO_EFFICIENCY || s.designDna === Specialization.CFD_CORRELATION) {
+      return {
+        tag: 'AERO EFFICIENCY',
+        preferred: 'aero_efficiency',
+        impactSummary: 'Equilibra relação L/D (Downforce/Arrasto) com boa versatilidade entre circuitos de alta e baixa velocidade.'
+      };
+    }
+    if (s.designDna === Specialization.MECHANICAL_GRIP) {
+      return {
+        tag: 'MECHANICAL GRIP',
+        preferred: 'mechanical_grip',
+        impactSummary: 'Prioriza plataforma mecânica estável e aderência em curvas lentas; entra em conflito severo com conceitos Low Drag extremos.'
+      };
+    }
+    if (s.designDna === Specialization.STABLE_PLATFORM) {
+      return {
+        tag: 'PLATAFORMA ESTÁVEL',
+        preferred: 'stable_platform',
+        impactSummary: 'Garante fluxo aerodinâmico constante e previsível sobre o difusor mesmo sob variações de altura de rodagem.'
+      };
+    }
+    if (s.designDna === Specialization.BALANCED) {
+      return {
+        tag: 'EQUILIBRADO',
+        preferred: 'balanced_adaptive',
+        impactSummary: 'Conceito neutro e adaptável que facilita introduzir atualizações aerodinâmicas sem desequilibrar o carro.'
+      };
+    }
+    if (s.staffPhilosophyTag) {
+      const tagUpper = s.staffPhilosophyTag.toUpperCase();
+      const pref =
+        s.preferredCarPhilosophy ||
+        (tagUpper === 'INOVADOR' ? 'high_downforce' : 'aero_efficiency');
+      return {
+        tag: tagUpper,
+        preferred: pref,
+        impactSummary: tagUpper === 'INOVADOR'
+          ? 'Gasta +12% em projetos agressivos de P&D, mas desbloqueia +5% de downforce em novos pacotes.'
+          : 'Alinhado diretamente com a arquitetura alvo da equipe para reduzir retrabalho em CFD.'
+      };
+    }
+  }
+
+  // Head of Power Unit
+  if (s.role === 'head_pu') {
+    if (s.designDna === Specialization.ICE) {
+      return {
+        tag: s.staffPhilosophyTag?.toUpperCase() || 'INOVADOR',
+        preferred: 'high_downforce',
+        impactSummary: 'Extrai potência máxima e compactação agressiva do pacote traseiro (+5% potencial), exigindo refrigeração bem planejada.'
+      };
+    }
+    if (s.designDna === Specialization.ERS || s.designDna === Specialization.BRAKE_BY_WIRE) {
+      return {
+        tag: s.staffPhilosophyTag?.toUpperCase() || 'EFICIÊNCIA HÍBRIDA',
+        preferred: 'aero_efficiency',
+        impactSummary: 'Otimiza sinergia ICE + ERS 350kW com menor necessidade de aberturas de radiador.'
+      };
+    }
+    if (s.designDna === Specialization.RELIABILITY || s.designDna === Specialization.BRAKE_SYSTEMS) {
+      return {
+        tag: s.staffPhilosophyTag?.toUpperCase() || 'CONSERVADOR',
+        preferred: 'stable_platform',
+        impactSummary: 'Prioriza margem térmica e confiabilidade mecânica de 8 corridas por motor, evitando quebras por superaquecimento.'
+      };
+    }
+  }
+
+  // Head Management
+  if (s.role === 'sporting_director' || (s.role as any) === 'head_management') {
+    const tagUpper = (s.staffPhilosophyTag || 'ESPECIALISTA').toUpperCase();
+    if (tagUpper === 'CONSERVADOR' || s.designDna === Specialization.FINANCIAL) {
+      return {
+        tag: 'CONSERVADOR',
+        preferred: 'stable_platform',
+        impactSummary: 'Gestão financeira de staff e operações de pista. Mantém o teto salarial rígido sem perder eficiência.'
+      };
+    }
+    if (tagUpper === 'INOVADOR' || s.designDna === Specialization.MOTIVATOR) {
+      return {
+        tag: 'INOVADOR',
+        preferred: 'balanced_adaptive',
+        impactSummary: 'Liderança inspiradora e dinâmica de paddock, acelerando a evolução do time e resposta sob pressão.'
+      };
+    }
+    return {
+      tag: 'ESPECIALISTA',
+      preferred: 'balanced_adaptive',
+      impactSummary: getSpecializationSummary(s.designDna || Specialization.POLITICIAN, s)
+    };
+  }
+
+  // Head Mechanics
+  if (s.role === 'chief_mechanic' || (s.role as any) === 'head_mechanics') {
+    const tagUpper = (s.staffPhilosophyTag || 'ESPECIALISTA').toUpperCase();
+    if (s.designDna === Specialization.PIT_STOP_MASTER) {
+      return {
+        tag: tagUpper,
+        preferred: 'high_downforce',
+        impactSummary: 'Minimiza tempo estacionário nos pit-stops e treina procedimentos rápidos para troca de bico e pneus.'
+      };
+    }
+    if (s.designDna === Specialization.BRAKE_THERMAL) {
+      return {
+        tag: tagUpper,
+        preferred: 'stable_platform',
+        impactSummary: 'Controle cirúrgico da janela térmica de freios (400°C–600°C), prevenindo travamento e desgaste de pneus.'
+      };
+    }
+    return {
+      tag: tagUpper,
+      preferred: 'stable_platform',
+      impactSummary: getSpecializationSummary(s.designDna || Specialization.MOUNTING_ENGINEER, s)
+    };
+  }
+
+  if (s.staffPhilosophyTag) {
     const tagUpper = s.staffPhilosophyTag.toUpperCase();
+    const pref =
+      s.preferredCarPhilosophy ||
+      (tagUpper === 'CONSERVADOR'
+        ? 'stable_platform'
+        : tagUpper === 'INOVADOR'
+        ? 'high_downforce'
+        : 'aero_efficiency');
     const impact =
-      tagUpper === 'INOVADOR'
+      (s.role === 'sporting_director' || (s.role as any) === 'head_management') && tagUpper === 'CONSERVADOR'
+        ? 'Gestão financeira de staff e operações de pista. Mantém o teto salarial rígido sem perder eficiência.'
+        : tagUpper === 'INOVADOR'
         ? 'Gasta +12% em projetos agressivos de P&D, mas desbloqueia +5% de downforce em novos pacotes.'
         : tagUpper === 'CONSERVADOR'
         ? 'Reduz custos de desenvolvimento e produz um carro mais previsível e confiável.'
-        : 'Alinhado diretamente com a arquitetura alvo da equipe para reduzir retrabalho em CFD.';
-    return { tag: tagUpper, preferred: s.preferredCarPhilosophy, impactSummary: impact };
+        : getSpecializationSummary(s.designDna || Specialization.BALANCED, s);
+    return { tag: tagUpper, preferred: pref, impactSummary: impact };
   }
 
   const spec = `${s.specialty} ${s.teamOrigin} ${s.name}`.toLowerCase();
@@ -395,7 +701,15 @@ const deriveStaffPhilosophy = (
         impactSummary: 'Foca em baixa resistência ao avanço e alta velocidade de reta; perde eficiência se forçado a operar pacotes pesados.'
       };
     }
-    if (spec.includes('assoalho') || spec.includes('venturi') || spec.includes('difusor') || spec.includes('asas flexíveis')) {
+    if (
+      (s as any).designDna === 'HighDownforce' ||
+      spec.includes('alta carga') ||
+      spec.includes('high downforce') ||
+      spec.includes('assoalho') ||
+      spec.includes('venturi') ||
+      spec.includes('difusor') ||
+      spec.includes('asas flexíveis')
+    ) {
       return {
         tag: 'HIGH DOWNFORCE',
         preferred: 'high_downforce',
@@ -445,7 +759,7 @@ const deriveStaffPhilosophy = (
     };
   }
 
-  if (s.role === 'sporting_director') {
+  if (s.role === 'sporting_director' || (s.role as any) === 'head_management') {
     if (spec.includes('pit-stop') || spec.includes('ágil') || spec.includes('crise')) {
       return {
         tag: 'INOVADOR',
@@ -685,12 +999,18 @@ export const calculateStaffInterest = (params: {
   let baseInterest = 85;
   if (staff.rating >= 92) {
     baseInterest = isRealTeam && realTeamReputation >= 85 ? 78 : 16;
-  } else if (staff.rating >= 87) {
-    baseInterest = isRealTeam && realTeamReputation >= 78 ? 80 : 32;
-  } else if (staff.rating >= 80) {
-    baseInterest = 52;
-  } else if (staff.rating >= 72) {
-    baseInterest = 74;
+  } else if (staff.rating >= 90) {
+    // 90-91: elite tier — blocked by isEliteLockedOut check below anyway for custom teams
+    baseInterest = isRealTeam && realTeamReputation >= 78 ? 80 : 28;
+  } else if (staff.rating >= 83) {
+    // 83-89: high-tier F1 names — interested but demanding salary premium
+    baseInterest = isRealTeam ? 72 : 44;
+  } else if (staff.rating >= 75) {
+    // 75-82: mid-tier (F2/F3 chiefs, strong fictionals) — clearly negotiable
+    baseInterest = 58;
+  } else if (staff.rating >= 65) {
+    // 65-74: promising mid-low (F3, free agents) — interested
+    baseInterest = 76;
   } else {
     baseInterest = 88;
   }

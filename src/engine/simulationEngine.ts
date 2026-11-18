@@ -187,14 +187,23 @@ export function runMultiPhysicsSimulation(ctx: SimulationRunContext): Simulation
     classification: 'Simulado',
   };
 
+  const isRoleMatch = (staffRole: string, targetRole: string) => {
+    if (staffRole === targetRole) return true;
+    if (targetRole === 'chief_mechanic' && staffRole === 'head_mechanics') return true;
+    if (targetRole === 'head_mechanics' && staffRole === 'chief_mechanic') return true;
+    if (targetRole === 'sporting_director' && staffRole === 'head_management') return true;
+    if (targetRole === 'head_management' && staffRole === 'sporting_director') return true;
+    return false;
+  };
+
   const findTeamStaff = (role: StaffMember['role']) => {
     if (ctx.teamName) {
       const teamMatch = staff.find(
-        (s) => s.role === role && (s.currentTeam === ctx.teamName || s.currentTeam === 'APEX Grand Prix Team')
+        (s) => isRoleMatch(s.role, role) && (s.currentTeam === ctx.teamName || s.currentTeam === 'APEX Grand Prix Team')
       );
       if (teamMatch) return teamMatch;
     }
-    return staff.find((s) => s.role === role);
+    return staff.find((s) => isRoleMatch(s.role, role));
   };
   const getStaffRating = (role: StaffMember['role'], fallback: number) =>
     findTeamStaff(role)?.rating ?? fallback;

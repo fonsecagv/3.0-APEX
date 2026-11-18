@@ -3634,8 +3634,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 setSelectedHeadAero(prev => (prev === staffObj.id ? null : staffObj.id));
               } else if (staffObj.role === 'head_pu') {
                 setSelectedHeadPU(prev => (prev === staffObj.id ? null : staffObj.id));
-              } else if (staffObj.role === 'sporting_director') {
+              } else if (staffObj.role === 'sporting_director' || staffObj.role === 'head_management') {
                 setSelectedSportingDirector(prev => (prev === staffObj.id ? null : staffObj.id));
+              } else if (staffObj.role === 'chief_mechanic' || staffObj.role === 'head_mechanics') {
+                setSelectedChiefMechanic(prev => (prev === staffObj.id ? null : staffObj.id));
               }
             }}
             onExpandStaff={setExpandedStaffProfile}
@@ -4937,6 +4939,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
             dnaLabel: `${selectedBackground.name} · ${philosophyDisplayLabel}`,
             engineOrigin: isEmergency ? 'customer' : engineChoice,
             isYear1Project: careerPath === 'custom_team' && !isEmergency && engineChoice !== 'customer',
+            teamName: careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name ?? undefined),
           });
 
           // Sinergia / Balanço Térmico ICE + ERS reage diretamente a Turbo, Compressão, Bateria e Margem M08
@@ -7509,7 +7512,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                               <div className="bg-emerald-950/40 border border-emerald-500/40 p-3.5 space-y-1.5">
                                 <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
                                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                  <span>PRÓS DO SEU PROJETO</span>
+                                  <span>PRÓS DO {(careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name ?? 'Seu Projeto')).trim().split(/\s+/)[0].toUpperCase()}</span>
                                 </div>
                                 <ul className="space-y-1 text-xs font-bold text-emerald-200 leading-relaxed">
                                   {officialCardMetrics.pros.map((item, idx) => (
@@ -9722,8 +9725,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         const isAssigned =
           (s.role === 'head_aero' && selectedHeadAero === s.id) ||
           (s.role === 'head_pu' && selectedHeadPU === s.id) ||
-          (s.role === 'sporting_director' && selectedSportingDirector === s.id) ||
-          (s.role === 'chief_mechanic' && selectedChiefMechanic === s.id) ||
+          ((s.role === 'sporting_director' || s.role === 'head_management') && selectedSportingDirector === s.id) ||
+          ((s.role === 'chief_mechanic' || s.role === 'head_mechanics') && selectedChiefMechanic === s.id) ||
           (s.role === 'race_engineer' && (selectedRaceEngineer1 === s.id || selectedRaceEngineer2 === s.id));
         const staffInterest = calculateStaffInterest({
           staff: s,
@@ -9745,9 +9748,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
                 setSelectedHeadAero(selectedHeadAero === staffObj.id ? null : staffObj.id);
               } else if (staffObj.role === 'head_pu') {
                 setSelectedHeadPU(selectedHeadPU === staffObj.id ? null : staffObj.id);
-              } else if (staffObj.role === 'sporting_director') {
+              } else if (staffObj.role === 'sporting_director' || staffObj.role === 'head_management') {
                 setSelectedSportingDirector(selectedSportingDirector === staffObj.id ? null : staffObj.id);
-              } else if (staffObj.role === 'chief_mechanic') {
+              } else if (staffObj.role === 'chief_mechanic' || staffObj.role === 'head_mechanics') {
                 setSelectedChiefMechanic(selectedChiefMechanic === staffObj.id ? null : staffObj.id);
               } else if (staffObj.role === 'race_engineer') {
                 if (selectedRaceEngineer1 === staffObj.id) {

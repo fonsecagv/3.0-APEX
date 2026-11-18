@@ -1,3 +1,4 @@
+import { Specialization } from '../types/staff';
 import { Driver, StaffMember } from '../types/f1';
 
 // ============================================================================
@@ -2227,976 +2228,654 @@ export const ALL_MARKET_DRIVERS: Driver[] = [
 ];
 
 // ============================================================================
-// 5. MERCADO DE CORPO TÉCNICO (STAFF)
-// ============================================================================
 
-// 5.1 AERODINÂMICA (Head of Aerodynamics / Technical Director)
-export const AERO_STAFF_MEMBERS: StaffMember[] = [
-  // Reais consagrados
+
+// =============================================================================
+// 5. MERCADO DE CORPO TÉCNICO (STAFF COMPLETO F1, F2, F3 & AGENTES LIVRES)
+// =============================================================================
+
+export interface StaffAttributes {
+  tecnica: number;
+  criatividade: number;
+  rigorValidacao: number;
+  lideranca: number;
+  comunicacao: number;
+  gestaoPrazo: number;
+  adaptacao: number;
+  resiliencia?: number;
+  visaoEstrategica?: number;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: 'head_aero' | 'head_pu' | 'head_management' | 'head_mechanics' | 'race_engineer' | 'sporting_director' | 'chief_mechanic';
+  rating: number;
+  specialty: string;
+  designDna: Specialization;
+  staffPhilosophyTag: 'INOVADOR' | 'CONSERVADOR' | 'ESPECIALISTA' | string;
+  salary: number;
+  buyoutClause: number;
+  currentTeam: string;
+  isFictional: boolean;
+  attributes: StaffAttributes;
+  mentality?: number;
+  age?: number;
+  teamOrigin?: string;
+  preferredCarPhilosophy?: any;
+}
+
+export const marketData: StaffMember[] = [
+  // ===========================================================================
+  // 1. FÓRMULA 1 (2026) - GERENCIAMENTO & CHEFES DE EQUIPE (HEAD_MANAGEMENT)
+  // ===========================================================================
   {
-    id: 'staff_newey',
-    name: 'Adrian Newey',
-    role: 'head_aero',
-    rating: 99,
-    mentality: 98,
-    salary: 12000000,
-    buyoutClause: 25000000,
-    currentTeam: 'Aston Martin F1',
-    specialty: 'Efeito Solo & Escultura Aerodinâmica Quântica',
-    teamOrigin: 'Aston Martin / Red Bull Legend',
-    isFictional: false
+    id: 'mgmt_f1_toto', name: 'Toto Wolff', role: 'head_management', rating: 95, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Gestão de Equipe e Política', salary: 12000000, buyoutClause: 25000000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 80, criatividade: 92, rigorValidacao: 85, lideranca: 99, comunicacao: 95, gestaoPrazo: 90, adaptacao: 95, visaoEstrategica: 98 }
   },
   {
-    id: 'staff_wache',
-    name: 'Pierre Waché',
-    role: 'head_aero',
-    rating: 93,
-    mentality: 91,
-    salary: 7500000,
-    buyoutClause: 15000000,
-    currentTeam: 'Oracle Red Bull Racing',
-    specialty: 'Vórtices de Assoalho & Equilíbrio de Alta Pressão',
-    teamOrigin: 'Red Bull Racing',
-    isFictional: false
+    id: 'mgmt_f1_vasseur', name: 'Frédéric Vasseur', role: 'head_management', rating: 90, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.CRISIS_MANAGER, specialty: 'Gestão de Crise e Foco', salary: 8000000, buyoutClause: 15000000, currentTeam: 'Ferrari', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 75, rigorValidacao: 92, lideranca: 90, comunicacao: 85, gestaoPrazo: 95, adaptacao: 80, visaoEstrategica: 88 }
   },
   {
-    id: 'staff_allison',
-    name: 'James Allison',
-    role: 'head_aero',
-    rating: 92,
-    mentality: 90,
-    salary: 7000000,
-    buyoutClause: 14000000,
-    currentTeam: 'Mercedes-AMG F1',
-    specialty: 'Integração de Chassi e Dinâmica de Fluidos CFD',
-    teamOrigin: 'Mercedes-AMG',
-    isFictional: false
+    id: 'mgmt_f1_mekies', name: 'Laurent Mekies', role: 'head_management', rating: 89, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.POLITICIAN, specialty: 'Operações de Paddock e Governança', salary: 6500000, buyoutClause: 12000000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 84, criatividade: 80, rigorValidacao: 89, lideranca: 91, comunicacao: 88, gestaoPrazo: 88, adaptacao: 86, visaoEstrategica: 89 }
   },
   {
-    id: 'staff_balbo',
-    name: 'Enrico Balbo',
-    role: 'head_aero',
-    rating: 90,
-    mentality: 89,
-    salary: 5500000,
-    buyoutClause: 10000000,
-    currentTeam: 'Oracle Red Bull Racing',
-    specialty: 'Estruturas de Difusores e Gestão de Turbulência',
-    teamOrigin: 'Red Bull Racing',
-    isFictional: false
+    id: 'mgmt_f1_stella', name: 'Andrea Stella', role: 'head_management', rating: 91, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.PUBLIC_RELATIONS, specialty: 'Cultura de Equipe e Motivação', salary: 7500000, buyoutClause: 14000000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 85, rigorValidacao: 88, lideranca: 95, comunicacao: 92, gestaoPrazo: 85, adaptacao: 90, visaoEstrategica: 90 }
   },
   {
-    id: 'staff_prodromou',
-    name: 'Peter Prodromou',
-    role: 'head_aero',
-    rating: 91,
-    mentality: 91,
-    salary: 6000000,
-    buyoutClause: 12000000,
-    currentTeam: 'McLaren F1 Team',
-    specialty: 'Asas Flexíveis Homologadas & Downforce Dianteiro',
-    teamOrigin: 'McLaren F1',
-    isFictional: false
+    id: 'mgmt_f1_wheatley', name: 'Jonathan Wheatley', role: 'head_management', rating: 94, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.CRISIS_MANAGER, specialty: 'Operações de Pit & Estratégia', salary: 7000000, buyoutClause: 12000000, currentTeam: 'Audi', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 90, rigorValidacao: 95, lideranca: 96, comunicacao: 95, gestaoPrazo: 94, adaptacao: 92, visaoEstrategica: 90 }
   },
   {
-    id: 'staff_tondi',
-    name: 'Diego Tondi',
-    role: 'head_aero',
-    rating: 89,
-    mentality: 88,
-    salary: 5000000,
-    buyoutClause: 9000000,
-    currentTeam: 'Scuderia Ferrari HP',
-    specialty: 'Canais Venturi Laterais & Túnel de Vento Maranello',
-    teamOrigin: 'Scuderia Ferrari',
-    isFictional: false
+    id: 'mgmt_f1_briatore', name: 'Flavio Briatore', role: 'head_management', rating: 87, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.POLITICIAN, specialty: 'Negociações Comerciais e Liderança Executiva', salary: 6000000, buyoutClause: 10000000, currentTeam: 'Alpine', isFictional: false,
+    attributes: { tecnica: 70, criatividade: 88, rigorValidacao: 78, lideranca: 92, comunicacao: 96, gestaoPrazo: 82, adaptacao: 88, visaoEstrategica: 94 }
   },
   {
-    id: 'staff_fallows',
-    name: 'Dan Fallows',
-    role: 'head_aero',
-    rating: 87,
-    mentality: 86,
-    salary: 4500000,
-    buyoutClause: 8000000,
-    currentTeam: 'Aston Martin F1',
-    specialty: 'Sidepods Esculpidos & Resfriamento Sob Baixo Arrasto',
-    teamOrigin: 'Aston Martin / Red Bull',
-    isFictional: false
+    id: 'mgmt_f1_permane', name: 'Alan Permane', role: 'head_management', rating: 84, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.CRISIS_MANAGER, specialty: 'Operações Esportivas e Regulamento', salary: 4200000, buyoutClause: 6500000, currentTeam: 'Racing Bulls', isFictional: false,
+    attributes: { tecnica: 82, criatividade: 74, rigorValidacao: 91, lideranca: 86, comunicacao: 84, gestaoPrazo: 89, adaptacao: 80, visaoEstrategica: 85 }
   },
   {
-    id: 'staff_resta',
-    name: 'Simone Resta',
-    role: 'head_aero',
-    rating: 86,
-    mentality: 86,
-    salary: 4000000,
-    buyoutClause: 7000000,
-    currentTeam: 'Mercedes-AMG F1',
-    specialty: 'Geometria de Suspensão Antiafundamento & Assoalho',
-    teamOrigin: 'Ferrari / Haas / Mercedes',
-    isFictional: false
+    id: 'mgmt_f1_komatsu', name: 'Ayao Komatsu', role: 'head_management', rating: 84, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.FINANCIAL, specialty: 'Gestão Financeira e Técnica', salary: 4500000, buyoutClause: 7000000, currentTeam: 'Haas F1 Team', isFictional: false,
+    attributes: { tecnica: 75, criatividade: 70, rigorValidacao: 92, lideranca: 85, comunicacao: 80, gestaoPrazo: 90, adaptacao: 75, visaoEstrategica: 92 }
   },
   {
-    id: 'staff_fry',
-    name: 'Pat Fry',
-    role: 'head_aero',
-    rating: 85,
-    mentality: 85,
-    salary: 3800000,
-    buyoutClause: 6000000,
-    currentTeam: 'Williams Racing',
-    specialty: 'Estruturas Compostas e Otimização de Peso Aerodinâmico',
-    teamOrigin: 'Williams / Alpine',
-    isFictional: false
+    id: 'mgmt_f1_vowles', name: 'James Vowles', role: 'head_management', rating: 86, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Cultura de Engenharia & Estratégia de Longo Prazo', salary: 5000000, buyoutClause: 8500000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 86, criatividade: 84, rigorValidacao: 88, lideranca: 90, comunicacao: 93, gestaoPrazo: 86, adaptacao: 85, visaoEstrategica: 92 }
   },
   {
-    id: 'staff_sanchez',
-    name: 'David Sanchez',
-    role: 'head_aero',
-    rating: 85,
-    mentality: 84,
-    salary: 3800000,
-    buyoutClause: 6000000,
-    currentTeam: 'BWT Alpine F1',
-    specialty: 'Conceitos de Asas Ativas Modo X/Z para 2026',
-    teamOrigin: 'Ferrari / McLaren / Alpine',
-    isFictional: false
-  },
-  {
-    id: 'staff_serra',
-    name: 'Loïc Serra',
-    role: 'head_aero',
-    rating: 91,
-    mentality: 92,
-    salary: 6200000,
-    buyoutClause: 12500000,
-    currentTeam: 'Scuderia Ferrari HP',
-    specialty: 'Integração de Suspensão e Geometria de Chassi 2026',
-    teamOrigin: 'Scuderia Ferrari / Mercedes',
-    isFictional: false
-  },
-  {
-    id: 'staff_marshall',
-    name: 'Rob Marshall',
-    role: 'head_aero',
-    rating: 91,
-    mentality: 91,
-    salary: 6000000,
-    buyoutClause: 12000000,
-    currentTeam: 'McLaren F1 Team',
-    specialty: 'Cinemática de Suspensão Dianteira e Empacotamento Reduzido',
-    teamOrigin: 'McLaren F1 / Red Bull',
-    isFictional: false
-  },
-  {
-    id: 'staff_key',
-    name: 'James Key',
-    role: 'head_aero',
-    rating: 86,
-    mentality: 86,
-    salary: 4200000,
-    buyoutClause: 7500000,
-    currentTeam: 'Audi F1 Team / Sauber',
-    specialty: 'Arquitetura de Monocoque e Transição de Regulamento',
-    teamOrigin: 'Audi F1 / Sauber / McLaren',
-    isFictional: false
-  },
-  {
-    id: 'staff_chester',
-    name: 'Nick Chester',
-    role: 'head_aero',
-    rating: 85,
-    mentality: 85,
-    salary: 3900000,
-    buyoutClause: 6500000,
-    currentTeam: 'Cadillac Formula 1 Team',
-    specialty: 'Design Estrutural e Homologação de Crash-Test FIA',
-    teamOrigin: 'Cadillac F1 / Renault / Lotus',
-    isFictional: false
-  },
-  {
-    id: 'staff_dezordo',
-    name: 'Andrea De Zordo',
-    role: 'head_aero',
-    rating: 84,
-    mentality: 84,
-    salary: 3500000,
-    buyoutClause: 5500000,
-    currentTeam: 'MoneyGram Haas F1 Team',
-    specialty: 'Eficiência de Túnel de Vento Ferrari & Chassi Enxuto',
-    teamOrigin: 'Haas F1 Team / Ferrari',
-    isFictional: false
-  },
-  {
-    id: 'staff_egginton',
-    name: 'Jody Egginton',
-    role: 'head_aero',
-    rating: 84,
-    mentality: 84,
-    salary: 3500000,
-    buyoutClause: 5500000,
-    currentTeam: 'Visa Cash App RB',
-    specialty: 'Dinâmica de Chassi Ágil & Plataforma Mecânica Estável',
-    teamOrigin: 'Visa Cash App RB / Toro Rosso',
-    isFictional: false
+    id: 'mgmt_f1_lowdon', name: 'Graeme Lowdon', role: 'head_management', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.FINANCIAL, specialty: 'Coordenação Esportiva e Logística Global', salary: 3200000, buyoutClause: 4500000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 72, criatividade: 74, rigorValidacao: 85, lideranca: 82, comunicacao: 84, gestaoPrazo: 86, adaptacao: 78, visaoEstrategica: 84 }
   },
 
-  // 10 Fictícios de Opção Barata (OVR 60 - 75)
+  // ===========================================================================
+  // 2. FÓRMULA 1 (2026) - DEPARTAMENTO DE AERODINÂMICA (HEAD_AERO)
+  // (SEM CONSERVADORES — APENAS INOVADORES E ESPECIALISTAS)
+  // ===========================================================================
   {
-    id: 'staff_aero_fic_1',
-    name: 'Liam Sterling',
-    role: 'head_aero',
-    rating: 75,
-    mentality: 82,
-    salary: 1100000,
-    buyoutClause: 150000,
-    currentTeam: 'Cranfield Aerodynamics Lab',
-    specialty: 'Modelagem Rápida em Túnel de Vento 60%',
-    teamOrigin: 'Academia Técnica Britânica',
-    isFictional: true
+    id: 'staff_newey', name: 'Adrian Newey', role: 'head_aero', rating: 99, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.INNOVATOR, specialty: 'Gênio da Aerodinâmica & Efeito Solo', salary: 15000000, buyoutClause: 30000000, currentTeam: 'Aston Martin', isFictional: false,
+    attributes: { tecnica: 99, criatividade: 99, rigorValidacao: 95, lideranca: 95, comunicacao: 92, gestaoPrazo: 92, adaptacao: 95 }
   },
   {
-    id: 'staff_aero_fic_2',
-    name: 'Elena Rostova',
-    role: 'head_aero',
-    rating: 74,
-    mentality: 85,
-    salary: 950000,
-    buyoutClause: 200000,
-    currentTeam: 'Tech Formula UK',
-    specialty: 'Simulação CFD de Malha Dinâmica',
-    teamOrigin: 'Oxford Brookes Research',
-    isFictional: true
+    id: 'aero_f1_wache', name: 'Pierre Waché', role: 'head_aero', rating: 90, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Alta Carga Aerodinâmica (High Downforce)', salary: 7500000, buyoutClause: 15000000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 92, criatividade: 88, rigorValidacao: 90, lideranca: 85, comunicacao: 80, gestaoPrazo: 85, adaptacao: 85 }
   },
   {
-    id: 'staff_aero_fic_3',
-    name: 'Carlos Mendes',
-    role: 'head_aero',
-    rating: 73,
-    mentality: 84,
-    salary: 900000,
-    buyoutClause: 120000,
-    currentTeam: 'Embraer Motorsport Aero',
-    specialty: 'Otimização de Arrasto Transônico',
-    teamOrigin: 'Engenharia Aeronáutica São José',
-    isFictional: true
+    id: 'aero_f1_prodromou', name: 'Peter Prodromou', role: 'head_aero', rating: 89, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.AERO_EFFICIENCY, specialty: 'Eficiência Aerodinâmica L/D & Conceito', salary: 6000000, buyoutClause: 10000000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 91, criatividade: 86, rigorValidacao: 92, lideranca: 82, comunicacao: 85, gestaoPrazo: 88, adaptacao: 84 }
   },
   {
-    id: 'staff_aero_fic_4',
-    name: 'Marcus Vance',
-    role: 'head_aero',
-    rating: 72,
-    mentality: 80,
-    salary: 850000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Correlação Assoalho-Pista Básica',
-    teamOrigin: 'IndyCar Aero Specialist',
-    isFictional: true
+    id: 'aero_f1_tondi', name: 'Diego Tondi', role: 'head_aero', rating: 84, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.LOW_DRAG, specialty: 'Baixo Arrasto & Velocidade Final', salary: 3800000, buyoutClause: 5000000, currentTeam: 'Ferrari', isFictional: false,
+    attributes: { tecnica: 86, criatividade: 75, rigorValidacao: 85, lideranca: 80, comunicacao: 75, gestaoPrazo: 82, adaptacao: 78 }
   },
   {
-    id: 'staff_aero_fic_5',
-    name: 'Hiroshi Mori',
-    role: 'head_aero',
-    rating: 70,
-    mentality: 83,
-    salary: 750000,
-    buyoutClause: 100000,
-    currentTeam: 'Dome Racing R&D',
-    specialty: 'Aero Acústica e Redução de Turbulência',
-    teamOrigin: 'Super GT Japão',
-    isFictional: true
+    id: 'aero_f1_balbo', name: 'Enrico Balbo', role: 'head_aero', rating: 86, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Interação Aero-Mecânica & Grip de Curva', salary: 4500000, buyoutClause: 8000000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 89, criatividade: 80, rigorValidacao: 88, lideranca: 78, comunicacao: 82, gestaoPrazo: 80, adaptacao: 84 }
   },
   {
-    id: 'staff_aero_fic_6',
-    name: 'Arthur Davies',
-    role: 'head_aero',
-    rating: 69,
-    mentality: 81,
-    salary: 700000,
-    buyoutClause: 80000,
-    currentTeam: 'Wirth Research Group',
-    specialty: 'Geometria de Endplates Simplificada',
-    teamOrigin: 'LMP2 Prototipagem',
-    isFictional: true
+    id: 'aero_f1_murphy', name: 'Jarrod Murphy', role: 'head_aero', rating: 88, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.AERO_EFFICIENCY, specialty: 'Eficiência Aerodinâmica (L/D) & CFD Avançado', salary: 5200000, buyoutClause: 9000000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 90, criatividade: 84, rigorValidacao: 91, lideranca: 84, comunicacao: 82, gestaoPrazo: 86, adaptacao: 83 }
   },
   {
-    id: 'staff_aero_fic_7',
-    name: 'Lucas Bernard',
-    role: 'head_aero',
-    rating: 68,
-    mentality: 79,
-    salary: 650000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Eficiência de Sidepods Estreitos',
-    teamOrigin: 'Formula E Powertrain & Bodywork',
-    isFictional: true
+    id: 'aero_f1_salter', name: 'Tony Salter', role: 'head_aero', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.LOW_DRAG, specialty: 'Eficiência Transônica & Carenagem Baixo Arrasto', salary: 2800000, buyoutClause: 3500000, currentTeam: 'Audi', isFictional: false,
+    attributes: { tecnica: 82, criatividade: 78, rigorValidacao: 83, lideranca: 76, comunicacao: 75, gestaoPrazo: 80, adaptacao: 76 }
   },
   {
-    id: 'staff_aero_fic_8',
-    name: 'David Miller',
-    role: 'head_aero',
-    rating: 66,
-    mentality: 78,
-    salary: 550000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Análise de Pressão Estática de Asas',
-    teamOrigin: 'British F4 Engineering',
-    isFictional: true
+    id: 'aero_f1_debeer', name: 'Dirk de Beer', role: 'head_aero', rating: 82, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Alta Carga de Assoalho & Canais Venturi', salary: 3200000, buyoutClause: 4200000, currentTeam: 'Alpine', isFictional: false,
+    attributes: { tecnica: 84, criatividade: 86, rigorValidacao: 78, lideranca: 78, comunicacao: 76, gestaoPrazo: 78, adaptacao: 80 }
   },
   {
-    id: 'staff_aero_fic_9',
-    name: 'Tomáš Kovář',
-    role: 'head_aero',
-    rating: 64,
-    mentality: 76,
-    salary: 500000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Modelagem CAD de Dutos de Freio',
-    teamOrigin: 'Dallara Junior Tech',
-    isFictional: true
+    id: 'aero_f1_machin', name: 'Peter Machin', role: 'head_aero', rating: 81, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.STABLE_PLATFORM, specialty: 'Plataforma Estável e Janela de Altura', salary: 3000000, buyoutClause: 3800000, currentTeam: 'Racing Bulls', isFictional: false,
+    attributes: { tecnica: 83, criatividade: 80, rigorValidacao: 84, lideranca: 77, comunicacao: 78, gestaoPrazo: 80, adaptacao: 79 }
   },
   {
-    id: 'staff_aero_fic_10',
-    name: 'Johan Berg',
-    role: 'head_aero',
-    rating: 62,
-    mentality: 75,
-    salary: 450000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Montagem de Gabarito Aerodinâmico',
-    teamOrigin: 'Gothenburg Wind Tunnel Facility',
-    isFictional: true
+    id: 'aero_f1_hennel', name: 'Nicolas Hennel', role: 'head_aero', rating: 77, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.STABLE_PLATFORM, specialty: 'Estabilidade Aerodinâmica de Assoalho', salary: 2200000, buyoutClause: 2800000, currentTeam: 'Haas F1 Team', isFictional: false,
+    attributes: { tecnica: 79, criatividade: 74, rigorValidacao: 81, lideranca: 74, comunicacao: 72, gestaoPrazo: 78, adaptacao: 75 }
+  },
+  {
+    id: 'aero_f1_molina', name: 'Juan Molina', role: 'head_aero', rating: 76, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Grip Mecânico & Plataforma de Suspensão', salary: 2100000, buyoutClause: 2500000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 78, criatividade: 75, rigorValidacao: 79, lideranca: 72, comunicacao: 74, gestaoPrazo: 76, adaptacao: 76 }
+  },
+  {
+    id: 'aero_f1_tomlinson', name: 'Jon Tomlinson', role: 'head_aero', rating: 75, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.BALANCED, specialty: 'Arquitetura Equilibrada & Desenvolvimento Contínuo', salary: 1900000, buyoutClause: 2200000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 77, criatividade: 76, rigorValidacao: 78, lideranca: 71, comunicacao: 72, gestaoPrazo: 75, adaptacao: 74 }
+  },
+  {
+    id: 'aero_f1_blandin', name: 'Eric Blandin', role: 'head_aero', rating: 85, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Alta Carga Aerodinâmica & Vórtices Dianteiros', salary: 4200000, buyoutClause: 6000000, currentTeam: 'Aston Martin', isFictional: false,
+    attributes: { tecnica: 87, criatividade: 89, rigorValidacao: 80, lideranca: 81, comunicacao: 78, gestaoPrazo: 79, adaptacao: 82 }
+  },
+  {
+    id: 'aero_f1_fallows', name: 'Dan Fallows', role: 'head_aero', rating: 83, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.BALANCED, specialty: 'Filosofia Equilibrada & Otimização Geral', salary: 3500000, buyoutClause: 4000000, currentTeam: 'Racing Bulls', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 88, rigorValidacao: 75, lideranca: 76, comunicacao: 78, gestaoPrazo: 74, adaptacao: 80 }
+  },
+
+  // ===========================================================================
+  // 3. FÓRMULA 1 (2026) - PU & COMPONENTES (HEAD_PU / DIRETORES TÉCNICOS)
+  // ===========================================================================
+  {
+    id: 'pu_f1_allison', name: 'James Allison', role: 'head_pu', rating: 94, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Mestre de Chassi e Suspensão', salary: 9500000, buyoutClause: 20000000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 96, criatividade: 92, rigorValidacao: 90, lideranca: 95, comunicacao: 88, gestaoPrazo: 90, adaptacao: 85, resiliencia: 92 }
+  },
+  {
+    id: 'pu_f1_serra', name: 'Loïc Serra', role: 'head_pu', rating: 88, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Dinâmica Veicular & Chassi', salary: 6000000, buyoutClause: 10000000, currentTeam: 'Ferrari', isFictional: false,
+    attributes: { tecnica: 90, criatividade: 80, rigorValidacao: 92, lideranca: 82, comunicacao: 80, gestaoPrazo: 88, adaptacao: 80, resiliencia: 88 }
+  },
+  {
+    id: 'pu_f1_gualtieri', name: 'Enrico Gualtieri', role: 'head_pu', rating: 85, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Confiabilidade e Térmica', salary: 5000000, buyoutClause: 8000000, currentTeam: 'Ferrari', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 70, rigorValidacao: 95, lideranca: 80, comunicacao: 85, gestaoPrazo: 90, adaptacao: 75, resiliencia: 90 }
+  },
+  {
+    id: 'pu_f1_hodgkinson', name: 'Ben Hodgkinson', role: 'head_pu', rating: 86, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.ICE, specialty: 'Arquitetura ICE & Turbo', salary: 5500000, buyoutClause: 9000000, currentTeam: 'Red Bull Ford', isFictional: false,
+    attributes: { tecnica: 89, criatividade: 85, rigorValidacao: 80, lideranca: 82, comunicacao: 75, gestaoPrazo: 85, adaptacao: 78, resiliencia: 85 }
+  },
+  {
+    id: 'pu_f1_thomas', name: 'Hywel Thomas', role: 'head_pu', rating: 92, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.ERS, specialty: 'Sistemas Híbridos Mercedes', salary: 7000000, buyoutClause: 15000000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 94, criatividade: 85, rigorValidacao: 95, lideranca: 88, comunicacao: 80, gestaoPrazo: 92, adaptacao: 82, resiliencia: 94 }
+  },
+  {
+    id: 'pu_f1_waterhouse', name: 'Ben Waterhouse', role: 'head_pu', rating: 87, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.ICE, specialty: 'Engenharia de Performance & Integração PU', salary: 5200000, buyoutClause: 8500000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 89, criatividade: 87, rigorValidacao: 84, lideranca: 83, comunicacao: 80, gestaoPrazo: 84, adaptacao: 82, resiliencia: 86 }
+  },
+  {
+    id: 'pu_f1_houldey', name: 'Neil Houldey', role: 'head_pu', rating: 85, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Arquitetura Mecânica & Transmissão', salary: 4600000, buyoutClause: 7000000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 85, rigorValidacao: 82, lideranca: 81, comunicacao: 79, gestaoPrazo: 83, adaptacao: 81, resiliencia: 84 }
+  },
+  {
+    id: 'pu_f1_temple', name: 'Mark Temple', role: 'head_pu', rating: 84, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Cinemática de Suspensão e Geometria', salary: 4200000, buyoutClause: 6000000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 87, criatividade: 79, rigorValidacao: 87, lideranca: 80, comunicacao: 81, gestaoPrazo: 82, adaptacao: 80, resiliencia: 85 }
+  },
+  {
+    id: 'pu_f1_key', name: 'James Key', role: 'head_pu', rating: 83, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.CHASSIS_SUSPENSION, specialty: 'Conceito Integrado de Chassi e Suspensão', salary: 4000000, buyoutClause: 5500000, currentTeam: 'Audi', isFictional: false,
+    attributes: { tecnica: 86, criatividade: 85, rigorValidacao: 80, lideranca: 79, comunicacao: 78, gestaoPrazo: 80, adaptacao: 80, resiliencia: 82 }
+  },
+  {
+    id: 'pu_f1_sanchez', name: 'David Sanchez', role: 'head_pu', rating: 83, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.CHASSIS_SUSPENSION, specialty: 'Direção Técnica Executiva & Conceito Geral', salary: 3800000, buyoutClause: 5000000, currentTeam: 'Alpine', isFictional: false,
+    attributes: { tecnica: 86, criatividade: 84, rigorValidacao: 81, lideranca: 80, comunicacao: 76, gestaoPrazo: 81, adaptacao: 79, resiliencia: 83 }
+  },
+  {
+    id: 'pu_f1_pilbeam', name: 'Ciaron Pilbeam', role: 'head_pu', rating: 82, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Engenharia de Performance e Balanço Dinâmico', salary: 3600000, buyoutClause: 4800000, currentTeam: 'Alpine', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 79, rigorValidacao: 86, lideranca: 79, comunicacao: 82, gestaoPrazo: 82, adaptacao: 80, resiliencia: 84 }
+  },
+  {
+    id: 'pu_f1_goss', name: 'Tim Goss', role: 'head_pu', rating: 84, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Homologação Regulamentar e Transmissão FIA', salary: 4100000, buyoutClause: 5800000, currentTeam: 'Racing Bulls', isFictional: false,
+    attributes: { tecnica: 87, criatividade: 78, rigorValidacao: 90, lideranca: 82, comunicacao: 80, gestaoPrazo: 85, adaptacao: 78, resiliencia: 87 }
+  },
+  {
+    id: 'pu_f1_dezordo', name: 'Andrea de Zordo', role: 'head_pu', rating: 79, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Integração de Monocoque e Confiabilidade', salary: 2800000, buyoutClause: 3500000, currentTeam: 'Haas F1 Team', isFictional: false,
+    attributes: { tecnica: 82, criatividade: 72, rigorValidacao: 87, lideranca: 77, comunicacao: 76, gestaoPrazo: 84, adaptacao: 74, resiliencia: 84 }
+  },
+  {
+    id: 'pu_f1_harman', name: 'Matt Harman', role: 'head_pu', rating: 80, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.CHASSIS_SUSPENSION, specialty: 'Otimização Estrutural de Transmissão e Chassi', salary: 3000000, buyoutClause: 4000000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 83, criatividade: 81, rigorValidacao: 79, lideranca: 78, comunicacao: 76, gestaoPrazo: 78, adaptacao: 77, resiliencia: 81 }
+  },
+  {
+    id: 'pu_f1_fry', name: 'Pat Fry', role: 'head_pu', rating: 85, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.ICE, specialty: 'Integração Global de Motor e Rigidez Torcional', salary: 4800000, buyoutClause: 7000000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 87, criatividade: 75, rigorValidacao: 91, lideranca: 84, comunicacao: 82, gestaoPrazo: 88, adaptacao: 77, resiliencia: 88 }
+  },
+  {
+    id: 'pu_f1_chester', name: 'Nick Chester', role: 'head_pu', rating: 81, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Empacotamento Traseiro e Refrigeração PU', salary: 3200000, buyoutClause: 4200000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 84, criatividade: 78, rigorValidacao: 83, lideranca: 79, comunicacao: 78, gestaoPrazo: 82, adaptacao: 78, resiliencia: 83 }
+  },
+  {
+    id: 'pu_f1_white', name: 'Rob White', role: 'head_pu', rating: 80, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Supervisão de Confiabilidade e Operações de Motor', salary: 3000000, buyoutClause: 3800000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 83, criatividade: 72, rigorValidacao: 88, lideranca: 80, comunicacao: 80, gestaoPrazo: 85, adaptacao: 75, resiliencia: 86 }
+  },
+  {
+    id: 'pu_f1_cardile', name: 'Enrico Cardile', role: 'head_pu', rating: 87, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.CHASSIS_SUSPENSION, specialty: 'Arquitetura Integrada Chassi-PU', salary: 5500000, buyoutClause: 9000000, currentTeam: 'Aston Martin', isFictional: false,
+    attributes: { tecnica: 89, criatividade: 84, rigorValidacao: 89, lideranca: 84, comunicacao: 81, gestaoPrazo: 86, adaptacao: 82, resiliencia: 88 }
+  },
+
+  // ===========================================================================
+  // 4. FÓRMULA 1 (2026) - MECÂNICA & ENGENHEIROS DE CORRIDA (HEAD_MECHANICS)
+  // ===========================================================================
+  {
+    id: 'mech_f1_deane', name: 'Matt Deane', role: 'head_mechanics', rating: 85, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe de Mecânicos Mercedes', salary: 3000000, buyoutClause: 5000000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 75, rigorValidacao: 95, lideranca: 85, comunicacao: 80, gestaoPrazo: 90, adaptacao: 75, resiliencia: 88 }
+  },
+  {
+    id: 'staff_mech_calum', name: 'Calum Nicholas', role: 'head_mechanics', rating: 90, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Pit Crew Coreografado & Montagem Rápida de Chassis', salary: 2200000, buyoutClause: 1500000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 90, criatividade: 85, rigorValidacao: 92, lideranca: 92, comunicacao: 88, gestaoPrazo: 90, adaptacao: 85, resiliencia: 95 }
+  },
+  {
+    id: 'mech_f1_cherry', name: 'Rob Cherry', role: 'head_mechanics', rating: 79, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe de Mecânicos Alpine', salary: 1400000, buyoutClause: 300000, currentTeam: 'Alpine', isFictional: false,
+    attributes: { tecnica: 82, criatividade: 70, rigorValidacao: 88, lideranca: 80, comunicacao: 76, gestaoPrazo: 84, adaptacao: 75, resiliencia: 84 }
+  },
+  {
+    id: 'mech_f1_smedley', name: 'Rob Smedley', role: 'head_mechanics', rating: 88, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Treinamento de Pit Stop & Gestão de Garagem', salary: 3500000, buyoutClause: 6000000, currentTeam: 'Agente Livre', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 82, rigorValidacao: 92, lideranca: 90, comunicacao: 85, gestaoPrazo: 88, adaptacao: 80, resiliencia: 92 }
+  },
+  {
+    id: 'mech_f1_lambiase', name: 'Gianpiero Lambiase', role: 'head_mechanics', rating: 89, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Engenheiro de Corrida (Rádio) & Ajuste de Balanço', salary: 4000000, buyoutClause: 7000000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 90, rigorValidacao: 88, lideranca: 92, comunicacao: 96, gestaoPrazo: 85, adaptacao: 90, resiliencia: 95 }
+  },
+  {
+    id: 'mech_f1_bono', name: 'Peter Bonnington (Bono)', role: 'head_mechanics', rating: 90, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MOTIVATOR, specialty: 'Engenheiro de Corrida & Gestão de Pneus sob Pressão', salary: 4200000, buyoutClause: 7500000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 88, criatividade: 88, rigorValidacao: 92, lideranca: 93, comunicacao: 97, gestaoPrazo: 90, adaptacao: 88, resiliencia: 94 }
+  },
+  {
+    id: 'mech_f1_dudley', name: 'Marcus Dudley', role: 'head_mechanics', rating: 82, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Telemetria em Tempo Real e Setup Rápido', salary: 1800000, buyoutClause: 500000, currentTeam: 'Mercedes-AMG', isFictional: false,
+    attributes: { tecnica: 84, criatividade: 80, rigorValidacao: 86, lideranca: 81, comunicacao: 88, gestaoPrazo: 84, adaptacao: 82, resiliencia: 85 }
+  },
+  {
+    id: 'mech_f1_bozzi', name: 'Bryan Bozzi', role: 'head_mechanics', rating: 83, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Estratégia de Janela de Box & Comunicação Frieza', salary: 2000000, buyoutClause: 600000, currentTeam: 'Ferrari', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 82, rigorValidacao: 86, lideranca: 82, comunicacao: 90, gestaoPrazo: 85, adaptacao: 84, resiliencia: 86 }
+  },
+  {
+    id: 'mech_f1_joseph', name: 'Will Joseph', role: 'head_mechanics', rating: 85, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Engenharia de Pista e Gestão de Pneus', salary: 2400000, buyoutClause: 800000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 87, criatividade: 80, rigorValidacao: 90, lideranca: 85, comunicacao: 91, gestaoPrazo: 88, adaptacao: 82, resiliencia: 88 }
+  },
+  {
+    id: 'mech_f1_stallard', name: 'Tom Stallard', role: 'head_mechanics', rating: 84, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Ajuste Fino de Pilotagem e Comunicação Assertiva', salary: 2200000, buyoutClause: 700000, currentTeam: 'McLaren', isFictional: false,
+    attributes: { tecnica: 86, criatividade: 84, rigorValidacao: 86, lideranca: 87, comunicacao: 93, gestaoPrazo: 84, adaptacao: 86, resiliencia: 89 }
+  },
+  {
+    id: 'mech_f1_wood', name: 'Richard Wood', role: 'head_mechanics', rating: 81, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Diagnóstico Hidráulico e Elétrico em Pit Wall', salary: 1600000, buyoutClause: 400000, currentTeam: 'Red Bull Racing', isFictional: false,
+    attributes: { tecnica: 83, criatividade: 78, rigorValidacao: 85, lideranca: 79, comunicacao: 84, gestaoPrazo: 83, adaptacao: 80, resiliencia: 84 }
+  },
+  {
+    id: 'mech_f1_muller', name: 'Laura Müller', role: 'head_mechanics', rating: 78, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Comunicação Estratégica e Calma sob Tensão', salary: 1200000, buyoutClause: 250000, currentTeam: 'Haas F1 Team', isFictional: false,
+    attributes: { tecnica: 80, criatividade: 82, rigorValidacao: 80, lideranca: 82, comunicacao: 89, gestaoPrazo: 80, adaptacao: 84, resiliencia: 85 }
+  },
+  {
+    id: 'mech_f1_ohare', name: 'Ronan O’Hare', role: 'head_mechanics', rating: 77, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Controle de Tolerâncias de Suspensão em Box', salary: 1100000, buyoutClause: 200000, currentTeam: 'Haas F1 Team', isFictional: false,
+    attributes: { tecnica: 81, criatividade: 70, rigorValidacao: 86, lideranca: 76, comunicacao: 78, gestaoPrazo: 83, adaptacao: 74, resiliencia: 82 }
+  },
+  {
+    id: 'mech_f1_urwin', name: 'James Urwin', role: 'head_mechanics', rating: 78, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Otimização de Geometria e Ajuste de Balanço', salary: 1250000, buyoutClause: 250000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 82, criatividade: 72, rigorValidacao: 86, lideranca: 78, comunicacao: 82, gestaoPrazo: 82, adaptacao: 75, resiliencia: 83 }
+  },
+  {
+    id: 'mech_f1_jago', name: 'Gaëtan Jago', role: 'head_mechanics', rating: 77, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Telemetria de Freios e Calibração ERS', salary: 1150000, buyoutClause: 200000, currentTeam: 'Williams', isFictional: false,
+    attributes: { tecnica: 81, criatividade: 75, rigorValidacao: 83, lideranca: 76, comunicacao: 81, gestaoPrazo: 80, adaptacao: 78, resiliencia: 81 }
+  },
+  {
+    id: 'mech_f1_pasetti', name: 'Carlo Pasetti', role: 'head_mechanics', rating: 76, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Montagem Rápida e Procedimentos de Garagem', salary: 1050000, buyoutClause: 180000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 80, criatividade: 70, rigorValidacao: 85, lideranca: 75, comunicacao: 76, gestaoPrazo: 82, adaptacao: 74, resiliencia: 81 }
+  },
+  {
+    id: 'mech_f1_howard', name: 'John Howard', role: 'head_mechanics', rating: 75, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Leitura de Falhas Eletrônicas e Chicote Elétrico', salary: 980000, buyoutClause: 150000, currentTeam: 'Cadillac F1', isFictional: false,
+    attributes: { tecnica: 79, criatividade: 74, rigorValidacao: 82, lideranca: 74, comunicacao: 78, gestaoPrazo: 79, adaptacao: 76, resiliencia: 80 }
+  },
+  {
+    id: 'mech_f1_vizard', name: 'Andrew Vizard', role: 'head_mechanics', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Análise de Ritmo de Corrida e Degradação Térmica', salary: 1500000, buyoutClause: 350000, currentTeam: 'Aston Martin', isFictional: false,
+    attributes: { tecnica: 83, criatividade: 78, rigorValidacao: 85, lideranca: 80, comunicacao: 85, gestaoPrazo: 82, adaptacao: 80, resiliencia: 84 }
+  },
+  {
+    id: 'mech_f1_gannon', name: 'Gary Gannon', role: 'head_mechanics', rating: 83, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Experiência de Paddock e Comunicação Estratégica', salary: 1900000, buyoutClause: 550000, currentTeam: 'Aston Martin', isFictional: false,
+    attributes: { tecnica: 85, criatividade: 76, rigorValidacao: 89, lideranca: 84, comunicacao: 90, gestaoPrazo: 86, adaptacao: 80, resiliencia: 87 }
+  },
+
+  // ===========================================================================
+  // 5. FÓRMULA 2 (2026) - ESTRUTURA OFICIAL
+  // ===========================================================================
+  {
+    id: 'mgmt_f2_robinson', name: 'James Robinson', role: 'head_management', rating: 72, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.FINANCIAL, specialty: 'Chefe de Equipe (Invicta F2)', salary: 800000, buyoutClause: 150000, currentTeam: 'Invicta Racing (F2)', isFictional: false,
+    attributes: { tecnica: 65, criatividade: 78, rigorValidacao: 75, lideranca: 72, comunicacao: 80, gestaoPrazo: 70, adaptacao: 75, visaoEstrategica: 82 }
+  },
+  {
+    id: 'mgmt_f2_joyce', name: 'Brad Joyce', role: 'head_management', rating: 71, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Chefe de Equipe (VAR F2)', salary: 750000, buyoutClause: 140000, currentTeam: 'Van Amersfoort (F2)', isFictional: false,
+    attributes: { tecnica: 70, criatividade: 68, rigorValidacao: 78, lideranca: 75, comunicacao: 78, gestaoPrazo: 74, adaptacao: 72, visaoEstrategica: 76 }
+  },
+  {
+    id: 'mgmt_f2_dorsman', name: 'Sander Dorsman', role: 'head_management', rating: 73, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.CRISIS_MANAGER, specialty: 'Diretor e Chefe de Equipe (MP F2)', salary: 850000, buyoutClause: 180000, currentTeam: 'MP Motorsport (F2)', isFictional: false,
+    attributes: { tecnica: 68, criatividade: 74, rigorValidacao: 80, lideranca: 80, comunicacao: 82, gestaoPrazo: 78, adaptacao: 76, visaoEstrategica: 80 }
+  },
+  {
+    id: 'mgmt_f2_philippe', name: 'Sébastien Philippe', role: 'head_management', rating: 72, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MOTIVATOR, specialty: 'Gestão de Pilotos Jovens & Equipe (ART F2)', salary: 800000, buyoutClause: 160000, currentTeam: 'ART Grand Prix (F2)', isFictional: false,
+    attributes: { tecnica: 67, criatividade: 75, rigorValidacao: 77, lideranca: 79, comunicacao: 83, gestaoPrazo: 76, adaptacao: 77, visaoEstrategica: 78 }
+  },
+  {
+    id: 'mgmt_f2_campos', name: 'Adrián Campos Jr.', role: 'head_management', rating: 71, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Chefe de Equipe (Campos Racing F2)', salary: 720000, buyoutClause: 130000, currentTeam: 'Campos Racing (F2)', isFictional: false,
+    attributes: { tecnica: 66, criatividade: 79, rigorValidacao: 74, lideranca: 78, comunicacao: 82, gestaoPrazo: 73, adaptacao: 78, visaoEstrategica: 77 }
+  },
+  {
+    id: 'mgmt_f2_rosin', name: 'René Rosin', role: 'head_management', rating: 74, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Liderança Vencedora em Monopostos (Prema F2)', salary: 920000, buyoutClause: 220000, currentTeam: 'Prema Racing (F2)', isFictional: false,
+    attributes: { tecnica: 72, criatividade: 82, rigorValidacao: 82, lideranca: 85, comunicacao: 86, gestaoPrazo: 80, adaptacao: 82, visaoEstrategica: 84 }
+  },
+  {
+    id: 'aero_f2_bernard', name: 'Lucas Bernard', role: 'head_aero', rating: 68, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.LOW_DRAG, specialty: 'Conceito Baixo Arrasto (DAMS F2)', salary: 450000, buyoutClause: 50000, currentTeam: 'DAMS (F2)', isFictional: false,
+    attributes: { tecnica: 72, criatividade: 85, rigorValidacao: 60, lideranca: 65, comunicacao: 70, gestaoPrazo: 68, adaptacao: 75 }
+  },
+  {
+    id: 'mech_f2_lincoln', name: 'Mark Lincoln', role: 'head_mechanics', rating: 70, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe Mecânico (Invicta F2)', salary: 550000, buyoutClause: 60000, currentTeam: 'Invicta Racing (F2)', isFictional: false,
+    attributes: { tecnica: 75, criatividade: 65, rigorValidacao: 80, lideranca: 73, comunicacao: 72, gestaoPrazo: 75, adaptacao: 70, resiliencia: 80 }
+  },
+  {
+    id: 'mech_f2_rivera', name: 'Pau Rivera', role: 'head_mechanics', rating: 69, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Engenheiro de Corrida F2 (Invicta)', salary: 500000, buyoutClause: 50000, currentTeam: 'Invicta Racing (F2)', isFictional: false,
+    attributes: { tecnica: 73, criatividade: 77, rigorValidacao: 72, lideranca: 72, comunicacao: 82, gestaoPrazo: 71, adaptacao: 76, resiliencia: 79 }
+  },
+  {
+    id: 'mech_f2_sommerville', name: 'Colin Sommerville', role: 'head_mechanics', rating: 68, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.DIAGNOSTICS, specialty: 'Engenheiro de Pista F2 (Invicta)', salary: 470000, buyoutClause: 45000, currentTeam: 'Invicta Racing (F2)', isFictional: false,
+    attributes: { tecnica: 74, criatividade: 64, rigorValidacao: 79, lideranca: 70, comunicacao: 76, gestaoPrazo: 74, adaptacao: 71, resiliencia: 78 }
+  },
+
+  // ===========================================================================
+  // 6. FÓRMULA 3 (2026) - ESTRUTURA OFICIAL
+  // ===========================================================================
+  {
+    id: 'mgmt_f3_hubert', name: 'Yannick Hubert', role: 'head_management', rating: 66, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Chefe de Equipe (DAMS F3)', salary: 380000, buyoutClause: 40000, currentTeam: 'DAMS (F3)', isFictional: false,
+    attributes: { tecnica: 68, criatividade: 60, rigorValidacao: 78, lideranca: 70, comunicacao: 75, gestaoPrazo: 72, adaptacao: 65, resiliencia: 75 }
+  },
+  {
+    id: 'mgmt_f3_reinecke', name: 'Morne Reinecke', role: 'head_management', rating: 64, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Chefe de Equipe (AIX Racing F3)', salary: 350000, buyoutClause: 35000, currentTeam: 'AIX Racing (F3)', isFictional: false,
+    attributes: { tecnica: 62, criatividade: 72, rigorValidacao: 68, lideranca: 71, comunicacao: 77, gestaoPrazo: 68, adaptacao: 72, resiliencia: 74 }
+  },
+  {
+    id: 'aero_f3_angilella', name: 'Paolo Angilella', role: 'head_aero', rating: 68, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Diretor Técnico & Grip Mecânico (MP F3)', salary: 450000, buyoutClause: 50000, currentTeam: 'MP Motorsport (F3)', isFictional: false,
+    attributes: { tecnica: 72, criatividade: 68, rigorValidacao: 75, lideranca: 65, comunicacao: 70, gestaoPrazo: 72, adaptacao: 70 }
+  },
+  {
+    id: 'aero_f3_watanabe', name: 'Yuki Watanabe', role: 'head_aero', rating: 65, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.STABLE_PLATFORM, specialty: 'Plataforma Estável & Simulação CFD (Prema F3)', salary: 380000, buyoutClause: 30000, currentTeam: 'Prema Racing (F3)', isFictional: false,
+    attributes: { tecnica: 70, criatividade: 82, rigorValidacao: 58, lideranca: 60, comunicacao: 65, gestaoPrazo: 62, adaptacao: 70 }
+  },
+  {
+    id: 'mech_f3_penel', name: 'Boris Penel', role: 'head_mechanics', rating: 65, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe Mecânico (DAMS F3)', salary: 360000, buyoutClause: 35000, currentTeam: 'DAMS (F3)', isFictional: false,
+    attributes: { tecnica: 72, criatividade: 58, rigorValidacao: 78, lideranca: 67, comunicacao: 68, gestaoPrazo: 71, adaptacao: 65, resiliencia: 76 }
+  },
+  {
+    id: 'mech_f3_waters', name: 'Matt Waters', role: 'head_mechanics', rating: 64, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe Mecânico (AIX F3)', salary: 340000, buyoutClause: 30000, currentTeam: 'AIX Racing (F3)', isFictional: false,
+    attributes: { tecnica: 70, criatividade: 59, rigorValidacao: 76, lideranca: 66, comunicacao: 69, gestaoPrazo: 70, adaptacao: 66, resiliencia: 75 }
+  },
+  {
+    id: 'mech_f3_heidemaa', name: 'Aivar Heidemaa', role: 'head_mechanics', rating: 65, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Chefe Mecânico (MP F3)', salary: 360000, buyoutClause: 35000, currentTeam: 'MP Motorsport (F3)', isFictional: false,
+    attributes: { tecnica: 71, criatividade: 60, rigorValidacao: 77, lideranca: 68, comunicacao: 70, gestaoPrazo: 71, adaptacao: 67, resiliencia: 77 }
+  },
+  {
+    id: 'mech_f3_sudre', name: 'Clément Sudre', role: 'head_mechanics', rating: 64, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Engenheiro de Corrida F3 (DAMS)', salary: 320000, buyoutClause: 25000, currentTeam: 'DAMS (F3)', isFictional: false,
+    attributes: { tecnica: 68, criatividade: 74, rigorValidacao: 68, lideranca: 67, comunicacao: 77, gestaoPrazo: 68, adaptacao: 73, resiliencia: 74 }
+  },
+  {
+    id: 'mech_f3_jimenez', name: 'Jaume Jimenez', role: 'head_mechanics', rating: 62, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Engenheiro de Pista F3 (AIX)', salary: 290000, buyoutClause: 20000, currentTeam: 'AIX Racing (F3)', isFictional: false,
+    attributes: { tecnica: 69, criatividade: 67, rigorValidacao: 70, lideranca: 64, comunicacao: 71, gestaoPrazo: 69, adaptacao: 70, resiliencia: 72 }
+  },
+  {
+    id: 'mech_f3_tessore', name: 'Thomas Tessore', role: 'head_mechanics', rating: 63, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MOTIVATOR, specialty: 'Engenheiro de Corrida F3 (MP)', salary: 310000, buyoutClause: 22000, currentTeam: 'MP Motorsport (F3)', isFictional: false,
+    attributes: { tecnica: 68, criatividade: 72, rigorValidacao: 69, lideranca: 66, comunicacao: 76, gestaoPrazo: 68, adaptacao: 71, resiliencia: 73 }
+  },
+
+  // ===========================================================================
+  // 7. PROFISSIONAIS FICTÍCIOS & AGENTES LIVRES (BALANCEAMENTO MULTIDISCIPLINAR)
+  // (Deduplicados: nenhum nome ou ID repetido!)
+  // ===========================================================================
+
+  // --- Aero Fictícios / Agentes Livres ---
+  {
+    id: 'aero_fic_vance', name: 'Marcus Vance', role: 'head_aero', rating: 88, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Criação de Conceito de Alta Carga (CFD)', salary: 850000, buyoutClause: 1200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 90, criatividade: 92, rigorValidacao: 75, lideranca: 80, comunicacao: 70, gestaoPrazo: 75, adaptacao: 80 }
+  },
+  {
+    id: 'staff_aero_fic_1', name: 'Liam Sterling', role: 'head_aero', rating: 75, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.AERO_EFFICIENCY, specialty: 'Eficiência L/D & Correlação de Túnel', salary: 1380000, buyoutClause: 100000, currentTeam: 'Cranfield Aerodynamics Lab', isFictional: true,
+    attributes: { tecnica: 79, criatividade: 81, rigorValidacao: 77, lideranca: 77, comunicacao: 74, gestaoPrazo: 71, adaptacao: 74 }
+  },
+  {
+    id: 'aero_duct_01', name: 'Fernando Silva', role: 'head_aero', rating: 78, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.AERO_EFFICIENCY, specialty: 'Dutos Aerodinâmicos e Refrigeração de Freios', salary: 1400000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 82, criatividade: 76, rigorValidacao: 80, lideranca: 74, comunicacao: 76, gestaoPrazo: 78, adaptacao: 80 }
+  },
+  {
+    id: 'aero_fic_mori', name: 'Hiroshi Mori', role: 'head_aero', rating: 70, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.BALANCED, specialty: 'Conceito Equilibrado & Adaptativo', salary: 750000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 75, criatividade: 68, rigorValidacao: 85, lideranca: 70, comunicacao: 72, gestaoPrazo: 75, adaptacao: 70 }
+  },
+  {
+    id: 'aero_fic_mendes', name: 'Carlos Mendes', role: 'head_aero', rating: 73, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.LOW_DRAG, specialty: 'Baixo Arrasto e Velocidade Terminal', salary: 1130000, buyoutClause: 100000, currentTeam: 'Embraer Motorsport Aero', isFictional: true,
+    attributes: { tecnica: 78, criatividade: 74, rigorValidacao: 78, lideranca: 71, comunicacao: 72, gestaoPrazo: 74, adaptacao: 73 }
+  },
+  {
+    id: 'aero_fic_rostova', name: 'Elena Rostova', role: 'head_aero', rating: 74, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.STABLE_PLATFORM, specialty: 'Plataforma Estável & Balanço Aerodinâmico', salary: 1190000, buyoutClause: 200000, currentTeam: 'Tech Formula UK', isFictional: true,
+    attributes: { tecnica: 79, criatividade: 76, rigorValidacao: 78, lideranca: 76, comunicacao: 75, gestaoPrazo: 75, adaptacao: 75 }
+  },
+  {
+    id: 'aero_fic_thorne', name: 'Jack Thorne', role: 'head_aero', rating: 67, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.LOW_DRAG, specialty: 'Otimização de Difusores e Baixo Arrasto', salary: 650000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 71, criatividade: 82, rigorValidacao: 62, lideranca: 64, comunicacao: 68, gestaoPrazo: 66, adaptacao: 73 }
+  },
+
+  // ==================== NOVOS AERODINAMICISTAS — AGENTES LIVRES ====================
+  {
+    id: 'aero_fic_nakamura', name: 'Yuki Nakamura', role: 'head_aero', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Carga Aerodinâmica Máxima & Curvas Lentas', salary: 2100000, buyoutClause: 300000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 86, criatividade: 76, rigorValidacao: 80, lideranca: 72, comunicacao: 70, gestaoPrazo: 78, adaptacao: 74 }
+  },
+  {
+    id: 'aero_fic_obi', name: 'Emeka Obi', role: 'head_aero', rating: 77, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.AERO_EFFICIENCY, specialty: 'Eficiência L/D & Conceitos de Downwash', salary: 1750000, buyoutClause: 250000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 82, criatividade: 88, rigorValidacao: 70, lideranca: 68, comunicacao: 72, gestaoPrazo: 70, adaptacao: 82 }
+  },
+  {
+    id: 'aero_fic_kowalski', name: 'Piotr Kowalski', role: 'head_aero', rating: 75, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.STABLE_PLATFORM, specialty: 'Plataforma Rígida & Fluxo de Fundo Previsível', salary: 1500000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 80, criatividade: 65, rigorValidacao: 86, lideranca: 70, comunicacao: 74, gestaoPrazo: 80, adaptacao: 68 }
+  },
+  {
+    id: 'aero_fic_lima', name: 'Carla Lima', role: 'head_aero', rating: 73, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MECHANICAL_GRIP, specialty: 'Interação Aerodinâmica com Suspensão & Tração', salary: 1300000, buyoutClause: 180000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 84, criatividade: 72, rigorValidacao: 76, lideranca: 66, comunicacao: 76, gestaoPrazo: 76, adaptacao: 72 }
+  },
+  {
+    id: 'aero_fic_hassan', name: 'Tariq Hassan', role: 'head_aero', rating: 71, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.LOW_DRAG, specialty: 'Carroceria Slim & Eficiência de Retas', salary: 1100000, buyoutClause: 140000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 78, criatividade: 84, rigorValidacao: 64, lideranca: 62, comunicacao: 68, gestaoPrazo: 68, adaptacao: 80 }
+  },
+  {
+    id: 'aero_fic_novak', name: 'Jana Novák', role: 'head_aero', rating: 69, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.BALANCED, specialty: 'Conceito Versátil & Equilíbrio Multi-Pista', salary: 980000, buyoutClause: 110000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 76, criatividade: 70, rigorValidacao: 78, lideranca: 65, comunicacao: 72, gestaoPrazo: 76, adaptacao: 78 }
+  },
+  {
+    id: 'aero_fic_greer', name: 'Samuel Greer', role: 'head_aero', rating: 66, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.HIGH_DOWNFORCE, specialty: 'Winglets & Carga Vertical em Complexos de Curvas', salary: 820000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 74, criatividade: 68, rigorValidacao: 76, lideranca: 58, comunicacao: 66, gestaoPrazo: 72, adaptacao: 68 }
+  },
+  {
+    id: 'aero_fic_ferraz', name: 'André Ferraz', role: 'head_aero', rating: 64, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.AERO_EFFICIENCY, specialty: 'CFD Experimental & Prototipagem Rápida de Conceitos', salary: 720000, buyoutClause: 60000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 70, criatividade: 86, rigorValidacao: 58, lideranca: 56, comunicacao: 64, gestaoPrazo: 62, adaptacao: 84 }
+  },
+
+  // --- PU Fictícios / Agentes Livres ---
+  {
+    id: 'pu_brake_01', name: 'Luca Bianchi', role: 'head_pu', rating: 82, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.BRAKE_SYSTEMS, specialty: 'Integração Brake-by-Wire e Refrigeração de Freios', salary: 1800000, buyoutClause: 300000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 78, rigorValidacao: 86, lideranca: 76, comunicacao: 80, gestaoPrazo: 82, adaptacao: 80, resiliencia: 84 }
+  },
+  {
+    id: 'pu_fic_dreyer', name: 'Stefan Dreyer', role: 'head_pu', rating: 87, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.ERS, specialty: 'Eficiência Híbrida & Térmica', salary: 5500000, buyoutClause: 1000000, currentTeam: 'Sauber Motorsport', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 75, rigorValidacao: 92, lideranca: 85, comunicacao: 80, gestaoPrazo: 90, adaptacao: 80, resiliencia: 90 }
+  },
+  {
+    id: 'pu_fic_baker', name: 'Adam Baker', role: 'head_pu', rating: 86, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.ICE, specialty: 'Arquitetura ICE & Turbo', salary: 3800000, buyoutClause: 500000, currentTeam: 'Audi F1 Powertrain', isFictional: true,
+    attributes: { tecnica: 89, criatividade: 88, rigorValidacao: 70, lideranca: 75, comunicacao: 75, gestaoPrazo: 70, adaptacao: 75, resiliencia: 85 }
+  },
+  {
+    id: 'pu_fic_santos', name: 'Gabriel Santos', role: 'head_pu', rating: 78, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.ERS, specialty: 'Gerenciamento Térmico e Recuperação 350kW', salary: 1900000, buyoutClause: 300000, currentTeam: 'Mauá Powertrains Lab', isFictional: true,
+    attributes: { tecnica: 76, criatividade: 78, rigorValidacao: 79, lideranca: 72, comunicacao: 80, gestaoPrazo: 75, adaptacao: 80, resiliencia: 82 }
+  },
+  {
+    id: 'pu_fic_dupont', name: 'Paul Dupont', role: 'head_pu', rating: 69, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Confiabilidade do Motor e Ciclo Térmico', salary: 975000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 72, criatividade: 60, rigorValidacao: 85, lideranca: 68, comunicacao: 70, gestaoPrazo: 80, adaptacao: 65, resiliencia: 85 }
+  },
+  {
+    id: 'pu_fic_alsaadi', name: 'Omar Al-Saadi', role: 'head_pu', rating: 84, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Transmissão Compacta e Arrefecimento ICE', salary: 4000000, buyoutClause: 400000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 80, rigorValidacao: 87, lideranca: 83, comunicacao: 81, gestaoPrazo: 85, adaptacao: 81, resiliencia: 86 }
+  },
+  {
+    id: 'pu_fic_sato', name: 'Shinji Sato', role: 'head_pu', rating: 71, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.ICE, specialty: 'Injeção Direta e Eficiência de Combustão 100% E-Fuel', salary: 950000, buyoutClause: 100000, currentTeam: 'HKS Performance Engineering', isFictional: true,
+    attributes: { tecnica: 76, criatividade: 72, rigorValidacao: 79, lideranca: 68, comunicacao: 71, gestaoPrazo: 74, adaptacao: 72, resiliencia: 80 }
+  },
+
+  // ==================== NOVOS CHEFES DE PU — AGENTES LIVRES ====================
+  {
+    id: 'pu_fic_korhonen', name: 'Mikael Korhonen', role: 'head_pu', rating: 80, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.ERS, specialty: 'Arquitetura MGU-H & Recuperação Cinética Agressiva', salary: 2200000, buyoutClause: 300000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 88, rigorValidacao: 72, lideranca: 72, comunicacao: 74, gestaoPrazo: 70, adaptacao: 82, resiliencia: 80 }
+  },
+  {
+    id: 'pu_fic_renard', name: 'Élodie Renard', role: 'head_pu', rating: 78, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Protocolos de Durabilidade e Gestão de Modos de Motor', salary: 1950000, buyoutClause: 260000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 82, criatividade: 64, rigorValidacao: 92, lideranca: 70, comunicacao: 76, gestaoPrazo: 86, adaptacao: 68, resiliencia: 92 }
+  },
+  {
+    id: 'pu_fic_volkov', name: 'Dmitri Volkov', role: 'head_pu', rating: 76, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.ICE, specialty: 'Combustão de Alta Compressão & Mapas de Motor E-Fuel', salary: 1750000, buyoutClause: 230000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 88, criatividade: 72, rigorValidacao: 80, lideranca: 66, comunicacao: 68, gestaoPrazo: 76, adaptacao: 70, resiliencia: 82 }
+  },
+  {
+    id: 'pu_fic_andrade', name: 'Marco Andrade', role: 'head_pu', rating: 74, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Transmissão Compacta & Integração Powertrain-Chassi', salary: 1550000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 80, criatividade: 80, rigorValidacao: 74, lideranca: 65, comunicacao: 70, gestaoPrazo: 72, adaptacao: 76, resiliencia: 78 }
+  },
+  {
+    id: 'pu_fic_papadopoulos', name: 'Nikos Papadopoulos', role: 'head_pu', rating: 72, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Termomanejo de Radiadores & Zero DNFs por Motor', salary: 1350000, buyoutClause: 170000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 78, criatividade: 60, rigorValidacao: 90, lideranca: 64, comunicacao: 72, gestaoPrazo: 84, adaptacao: 64, resiliencia: 90 }
+  },
+  {
+    id: 'pu_fic_owusu', name: 'Abena Owusu', role: 'head_pu', rating: 70, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.ERS, specialty: 'Deploy ERS Estratégico & Economia de Bateria em Corrida', salary: 1150000, buyoutClause: 140000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 76, criatividade: 76, rigorValidacao: 76, lideranca: 62, comunicacao: 74, gestaoPrazo: 76, adaptacao: 74, resiliencia: 76 }
+  },
+  {
+    id: 'pu_fic_berg', name: 'Kristoffer Berg', role: 'head_pu', rating: 68, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.ICE, specialty: 'Geometria de Câmaras de Combustão & Pre-Chambers', salary: 980000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 80, criatividade: 82, rigorValidacao: 62, lideranca: 58, comunicacao: 66, gestaoPrazo: 64, adaptacao: 80, resiliencia: 72 }
+  },
+  {
+    id: 'pu_fic_coppola', name: 'Giulia Coppola', role: 'head_pu', rating: 65, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.BRAKE_BY_WIRE, specialty: 'Integração Brake-by-Wire & Recuperação de Frenagem', salary: 820000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 76, criatividade: 62, rigorValidacao: 84, lideranca: 56, comunicacao: 68, gestaoPrazo: 78, adaptacao: 64, resiliencia: 82 }
+  },
+
+  // --- Management Fictícios / Agentes Livres ---
+  {
+    id: 'mgmt_fic_hernandez', name: 'Victor Hernandez', role: 'head_management', rating: 85, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Gestão de Equipe & Motivação de Paddock', salary: 2500000, buyoutClause: 400000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 60, criatividade: 85, rigorValidacao: 70, lideranca: 92, comunicacao: 90, gestaoPrazo: 75, adaptacao: 85, visaoEstrategica: 75 }
+  },
+  {
+    id: 'mgmt_fic_finch', name: 'Daniel Finch', role: 'head_management', rating: 82, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.FINANCIAL, specialty: 'Gestão Financeira (Cost Cap)', salary: 2200000, buyoutClause: 300000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 65, criatividade: 70, rigorValidacao: 90, lideranca: 70, comunicacao: 75, gestaoPrazo: 85, adaptacao: 65, visaoEstrategica: 95 }
+  },
+  {
+    id: 'mgmt_fic_bouchard', name: 'Clara Bouchard', role: 'head_management', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.POLITICIAN, specialty: 'Relações Regulamentares e Protocolos FIA', salary: 2250000, buyoutClause: 200000, currentTeam: 'FIA Relations', isFictional: true,
+    attributes: { tecnica: 68, criatividade: 74, rigorValidacao: 88, lideranca: 80, comunicacao: 89, gestaoPrazo: 84, adaptacao: 79, visaoEstrategica: 88 }
+  },
+  {
+    id: 'mgmt_fic_khan', name: 'Sofia Khan', role: 'head_management', rating: 76, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.CRISIS_MANAGER, specialty: 'Gestão de Crise e Resolução de Conflitos', salary: 1750000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 64, criatividade: 78, rigorValidacao: 82, lideranca: 85, comunicacao: 84, gestaoPrazo: 79, adaptacao: 82, visaoEstrategica: 79 }
+  },
+  {
+    id: 'mgmt_fic_lopez', name: 'Omar López', role: 'head_management', rating: 73, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.PUBLIC_RELATIONS, specialty: 'Comunicação Externa e Blindagem de Crise', salary: 1400000, buyoutClause: 100000, currentTeam: 'Global Media Group', isFictional: true,
+    attributes: { tecnica: 60, criatividade: 79, rigorValidacao: 75, lideranca: 77, comunicacao: 92, gestaoPrazo: 76, adaptacao: 81, visaoEstrategica: 76 }
+  },
+  {
+    id: 'staff_sport_fic_2', name: 'Colin Stewart', role: 'head_management', rating: 80, staffPhilosophyTag: 'CONSERVADOR', specialty: 'Controle de Custos e Relações Institucionais', salary: 1800000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 70, criatividade: 65, rigorValidacao: 90, lideranca: 80, comunicacao: 85, gestaoPrazo: 90, adaptacao: 75, visaoEstrategica: 85 }
+  },
+  {
+    id: 'mgmt_fic_nguyen', name: 'Marta Nguyen', role: 'head_management', rating: 68, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Formação de Novos Talentos Operacionais', salary: 900000, buyoutClause: 100000, currentTeam: 'Asia Racing Academy', isFictional: true,
+    attributes: { tecnica: 62, criatividade: 70, rigorValidacao: 76, lideranca: 74, comunicacao: 78, gestaoPrazo: 75, adaptacao: 70, visaoEstrategica: 72 }
+  },
+
+  // --- Mechanics Fictícios / Agentes Livres ---
+  {
+    id: 'mech_fic_mendoza', name: 'Alex Mendoza', role: 'head_mechanics', rating: 86, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Operações de Pit Stop e Treinamento de Pistolas', salary: 1800000, buyoutClause: 250000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 80, criatividade: 85, rigorValidacao: 80, lideranca: 85, comunicacao: 75, gestaoPrazo: 80, adaptacao: 75, resiliencia: 90 }
+  },
+  {
+    id: 'mech_fic_wei', name: 'Lina Wei', role: 'head_mechanics', rating: 83, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Montagem de Precisão e Manutenção Preditiva', salary: 1500000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 60, rigorValidacao: 92, lideranca: 75, comunicacao: 70, gestaoPrazo: 85, adaptacao: 70, resiliencia: 85 }
+  },
+  {
+    id: 'mech_fic_silva', name: 'Jorge Silva', role: 'head_mechanics', rating: 79, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.DIAGNOSTICS, specialty: 'Diagnóstico e Conserto Rápido de Garagem', salary: 1300000, buyoutClause: 150000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 88, criatividade: 75, rigorValidacao: 82, lideranca: 70, comunicacao: 75, gestaoPrazo: 80, adaptacao: 78, resiliencia: 92 }
+  },
+  {
+    id: 'staff_mech_fic_3', name: 'Rookie Mechanic', role: 'head_mechanics', rating: 68, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Ajuste de Garagem e Apoio ao Box', salary: 500000, buyoutClause: 50000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 68, criatividade: 60, rigorValidacao: 72, lideranca: 65, comunicacao: 70, gestaoPrazo: 68, adaptacao: 65, resiliencia: 70 }
+  },
+  {
+    id: 'mech_fic_kovac', name: 'Nina Kovač', role: 'head_mechanics', rating: 77, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Treinador de Pit Stop & Troca de Bico', salary: 1200000, buyoutClause: 100000, currentTeam: 'Balkan Racing', isFictional: true,
+    attributes: { tecnica: 75, criatividade: 80, rigorValidacao: 85, lideranca: 82, comunicacao: 78, gestaoPrazo: 75, adaptacao: 72, resiliencia: 88 }
+  },
+  {
+    id: 'mech_fic_rossi', name: 'Pietro Rossi', role: 'head_mechanics', rating: 74, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Especialista em Câmbio e Diferencial', salary: 1050000, buyoutClause: 100000, currentTeam: 'Moto Guzzi R&D', isFictional: true,
+    attributes: { tecnica: 86, criatividade: 65, rigorValidacao: 88, lideranca: 68, comunicacao: 70, gestaoPrazo: 82, adaptacao: 70, resiliencia: 85 }
+  },
+  {
+    id: 'mech_brake_01', name: 'Sarah Jenkins', role: 'head_mechanics', rating: 80, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.BRAKE_THERMAL, specialty: 'Gestão Térmica de Freios & Mantas Térmicas', salary: 1300000, buyoutClause: 150000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 84, criatividade: 75, rigorValidacao: 86, lideranca: 78, comunicacao: 76, gestaoPrazo: 82, adaptacao: 78, resiliencia: 86 }
+  },
+  {
+    id: 'mech_fic_kim', name: 'Hana Kim', role: 'head_mechanics', rating: 71, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Ajuste Fino de Suspensão e Feedback', salary: 950000, buyoutClause: 100000, currentTeam: 'Seoul Dynamics', isFictional: true,
+    attributes: { tecnica: 82, criatividade: 70, rigorValidacao: 86, lideranca: 65, comunicacao: 85, gestaoPrazo: 75, adaptacao: 78, resiliencia: 80 }
+  },
+
+  // ==================== NOVOS MECÂNICOS — AGENTES LIVRES ====================
+  {
+    id: 'mech_fic_okafor', name: 'Chidi Okafor', role: 'head_mechanics', rating: 78, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.PIT_STOP_MASTER, specialty: 'Especialista em Pit Stops Rápidos & Procedimentos de Troca', salary: 1150000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 80, rigorValidacao: 76, lideranca: 72, comunicacao: 86, gestaoPrazo: 84, adaptacao: 82, resiliencia: 88 }
+  },
+  {
+    id: 'mech_fic_santos', name: 'Rafael Santos', role: 'head_mechanics', rating: 75, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.RELIABILITY, specialty: 'Confiabilidade de Componentes & Protocolos de Manutenção', salary: 1050000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 84, criatividade: 65, rigorValidacao: 90, lideranca: 70, comunicacao: 76, gestaoPrazo: 86, adaptacao: 70, resiliencia: 90 }
+  },
+  {
+    id: 'mech_fic_diallo', name: 'Aminata Diallo', role: 'head_mechanics', rating: 73, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.BRAKE_THERMAL, specialty: 'Gestão Térmica de Freios em Condições Extremas', salary: 980000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 88, criatividade: 68, rigorValidacao: 88, lideranca: 64, comunicacao: 72, gestaoPrazo: 80, adaptacao: 74, resiliencia: 85 }
+  },
+  {
+    id: 'mech_fic_varga', name: 'Tamás Varga', role: 'head_mechanics', rating: 70, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.TRANSMISSION_MECHANICS, specialty: 'Câmbio Semi-Automático & Diferencial Ativo', salary: 900000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 85, criatividade: 60, rigorValidacao: 85, lideranca: 60, comunicacao: 70, gestaoPrazo: 82, adaptacao: 68, resiliencia: 82 }
+  },
+  {
+    id: 'mech_fic_chen', name: 'Wei Chen', role: 'head_mechanics', rating: 69, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOUNTING_ENGINEER, specialty: 'Ajuste de Geometria & Sistemas de Suspensão Ativos', salary: 880000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 80, criatividade: 76, rigorValidacao: 80, lideranca: 60, comunicacao: 74, gestaoPrazo: 78, adaptacao: 80, resiliencia: 78 }
+  },
+  {
+    id: 'mech_fic_muller', name: 'Greta Müller', role: 'head_mechanics', rating: 67, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.RELIABILITY, specialty: 'Protocolos de Inspeção & Zero Falhas na Largada', salary: 820000, buyoutClause: 70000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 78, criatividade: 62, rigorValidacao: 90, lideranca: 58, comunicacao: 70, gestaoPrazo: 80, adaptacao: 66, resiliencia: 86 }
+  },
+
+  // ==================== NOVOS GERENTES — AGENTES LIVRES ====================
+  {
+    id: 'mgmt_fic_osei', name: 'Kwame Osei', role: 'head_management', rating: 79, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Liderança Dinâmica & Cultura de Alta Performance', salary: 1600000, buyoutClause: 200000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 68, criatividade: 85, rigorValidacao: 72, lideranca: 90, comunicacao: 92, gestaoPrazo: 76, adaptacao: 86, visaoEstrategica: 82 }
+  },
+  {
+    id: 'mgmt_fic_leconte', name: 'Isabelle Leconte', role: 'head_management', rating: 77, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.FINANCIAL, specialty: 'Controle de Cost Cap & Conformidade FIA', salary: 1450000, buyoutClause: 180000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 72, criatividade: 65, rigorValidacao: 88, lideranca: 76, comunicacao: 80, gestaoPrazo: 90, adaptacao: 70, visaoEstrategica: 80 }
+  },
+  {
+    id: 'mgmt_fic_patel', name: 'Arjun Patel', role: 'head_management', rating: 75, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.POLITICIAN, specialty: 'Negociação com FIA & Alianças no Paddock', salary: 1300000, buyoutClause: 160000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 65, criatividade: 76, rigorValidacao: 80, lideranca: 82, comunicacao: 90, gestaoPrazo: 76, adaptacao: 80, visaoEstrategica: 86 }
+  },
+  {
+    id: 'mgmt_fic_eriksen', name: 'Lars Eriksen', role: 'head_management', rating: 73, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.CRISIS_MANAGER, specialty: 'Gestão de Incidentes em Corrida & Safety Car', salary: 1200000, buyoutClause: 140000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 70, criatividade: 78, rigorValidacao: 76, lideranca: 80, comunicacao: 82, gestaoPrazo: 84, adaptacao: 90, visaoEstrategica: 76 }
+  },
+  {
+    id: 'mgmt_fic_ferreira', name: 'Beatriz Ferreira', role: 'head_management', rating: 71, staffPhilosophyTag: 'CONSERVADOR', designDna: Specialization.PUBLIC_RELATIONS, specialty: 'Relações com Mídia & Imagem da Equipe', salary: 1100000, buyoutClause: 120000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 60, criatividade: 80, rigorValidacao: 72, lideranca: 74, comunicacao: 96, gestaoPrazo: 72, adaptacao: 82, visaoEstrategica: 72 }
+  },
+  {
+    id: 'mgmt_fic_yanagida', name: 'Kenji Yanagida', role: 'head_management', rating: 69, staffPhilosophyTag: 'ESPECIALISTA', designDna: Specialization.FINANCIAL, specialty: 'Orçamento de P&D & Alocação de Recursos de Fábrica', salary: 1000000, buyoutClause: 100000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 65, criatividade: 68, rigorValidacao: 86, lideranca: 68, comunicacao: 76, gestaoPrazo: 92, adaptacao: 70, visaoEstrategica: 78 }
+  },
+  {
+    id: 'mgmt_fic_adeyemi', name: 'Tunde Adeyemi', role: 'head_management', rating: 66, staffPhilosophyTag: 'INOVADOR', designDna: Specialization.MOTIVATOR, specialty: 'Desenvolvimento de Pilotos Jovens & Coesão de Equipe', salary: 900000, buyoutClause: 80000, currentTeam: 'Agente Livre', isFictional: true,
+    attributes: { tecnica: 58, criatividade: 82, rigorValidacao: 65, lideranca: 86, comunicacao: 88, gestaoPrazo: 68, adaptacao: 84, visaoEstrategica: 70 }
   }
 ];
 
-// 5.2 MOTOR / UNIDADE DE POTÊNCIA (Head of Power Unit)
-export const PU_STAFF_MEMBERS: StaffMember[] = [
-  // Reais consagrados
-  {
-    id: 'staff_thomas',
-    name: 'Hywel Thomas',
-    role: 'head_pu',
-    rating: 94,
-    mentality: 94,
-    salary: 6000000,
-    buyoutClause: 12000000,
-    currentTeam: 'Mercedes AMG HPP Brixworth',
-    specialty: 'Eficiência E-Fuel & MGU-K 350kW Calibrado',
-    teamOrigin: 'Mercedes HPP',
-    isFictional: false
-  },
-  {
-    id: 'staff_gualtieri',
-    name: 'Enrico Gualtieri',
-    role: 'head_pu',
-    rating: 92,
-    mentality: 91,
-    salary: 5500000,
-    buyoutClause: 11000000,
-    currentTeam: 'Scuderia Ferrari Powertrains',
-    specialty: 'Combustão Térmica de Alto Giro & Turbo Compacto',
-    teamOrigin: 'Scuderia Ferrari',
-    isFictional: false
-  },
-  {
-    id: 'staff_hodgkinson',
-    name: 'Ben Hodgkinson',
-    role: 'head_pu',
-    rating: 91,
-    mentality: 92,
-    salary: 5200000,
-    buyoutClause: 10000000,
-    currentTeam: 'Red Bull Powertrains-Ford',
-    specialty: 'Arquitetura V6 Turbo & Benchmark FIA de Bloco',
-    teamOrigin: 'Red Bull Powertrains',
-    isFictional: false
-  },
-  {
-    id: 'staff_watanabe',
-    name: 'Koji Watanabe',
-    role: 'head_pu',
-    rating: 89,
-    mentality: 93,
-    salary: 4800000,
-    buyoutClause: 8000000,
-    currentTeam: 'Honda Racing Corporation (HRC)',
-    specialty: 'Química de Bateria Ultraleve & Recuperação Térmica',
-    teamOrigin: 'Honda HRC Sakura',
-    isFictional: false
-  },
-  {
-    id: 'staff_dreyer',
-    name: 'Stefan Dreyer',
-    role: 'head_pu',
-    rating: 87,
-    mentality: 89,
-    salary: 4500000,
-    buyoutClause: 7000000,
-    currentTeam: 'Audi F1 Powertrain Neuburg',
-    specialty: 'Inversores de Alta Densidade & Durabilidade Alemã',
-    teamOrigin: 'Audi Sport / Sauber',
-    isFictional: false
-  },
-  {
-    id: 'staff_famin',
-    name: 'Bruno Famin',
-    role: 'head_pu',
-    rating: 84,
-    mentality: 84,
-    salary: 3800000,
-    buyoutClause: 5000000,
-    currentTeam: 'Alpine Viry-Châtillon',
-    specialty: 'Homologação e Mapeamento de Transição Elétrica',
-    teamOrigin: 'Alpine Viry',
-    isFictional: false
-  },
-  {
-    id: 'staff_baker',
-    name: 'Adam Baker',
-    role: 'head_pu',
-    rating: 88,
-    mentality: 90,
-    salary: 4800000,
-    buyoutClause: 8000000,
-    currentTeam: 'Audi F1 Powertrain Neuburg',
-    specialty: 'Gerenciamento de Ciclo Térmico & Sistema Híbrido 350kW',
-    teamOrigin: 'Audi F1 Neuburg / FIA',
-    isFictional: false
-  },
-
-  // 10 Fictícios de Opção Barata (OVR 60 - 75)
-  {
-    id: 'staff_pu_fic_1',
-    name: 'Martin Weber',
-    role: 'head_pu',
-    rating: 75,
-    mentality: 84,
-    salary: 1100000,
-    buyoutClause: 180000,
-    currentTeam: 'AVL List Powertrain Austria',
-    specialty: 'Calibração em Dinamômetro Dinâmico',
-    teamOrigin: 'AVL Graz Pesquisa',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_2',
-    name: 'Kevin Meyer',
-    role: 'head_pu',
-    rating: 74,
-    mentality: 83,
-    salary: 1000000,
-    buyoutClause: 150000,
-    currentTeam: 'Cosworth Historic Heritage',
-    specialty: 'Metalurgia de Pistões Forjados',
-    teamOrigin: 'Northampton Engine Works',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_3',
-    name: 'Andrea Rossi Jr.',
-    role: 'head_pu',
-    rating: 73,
-    mentality: 82,
-    salary: 950000,
-    buyoutClause: 120000,
-    currentTeam: 'Bologna Dyno Systems',
-    specialty: 'Sincronia ERS & Controle Anti-Lag',
-    teamOrigin: 'Motor Valley Itália',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_4',
-    name: 'Gabriel Santos',
-    role: 'head_pu',
-    rating: 72,
-    mentality: 85,
-    salary: 900000,
-    buyoutClause: 100000,
-    currentTeam: 'Mauá Powertrains Lab',
-    specialty: 'Combustão Sustentável 100% Etanol/E-Fuel',
-    teamOrigin: 'Engenharia Automotiva Brasil',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_5',
-    name: 'Shinji Sato',
-    role: 'head_pu',
-    rating: 71,
-    mentality: 82,
-    salary: 850000,
-    buyoutClause: 100000,
-    currentTeam: 'HKS Performance Engineering',
-    specialty: 'Pressão de Turbo & Resposta de Acelerador',
-    teamOrigin: 'Shizuoka Engine Lab',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_6',
-    name: 'Paul Dupont',
-    role: 'head_pu',
-    rating: 69,
-    mentality: 79,
-    salary: 750000,
-    buyoutClause: 80000,
-    currentTeam: 'Mecachrome Competition',
-    specialty: 'Dissipação Térmica em Radiadores',
-    teamOrigin: 'Mecachrome França',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_7',
-    name: 'Viktor Krause',
-    role: 'head_pu',
-    rating: 68,
-    mentality: 78,
-    salary: 700000,
-    buyoutClause: 50000,
-    currentTeam: 'Ilmor Engineering Tech',
-    specialty: 'Alívio de Inércia de Virabrequim',
-    teamOrigin: 'Brixworth V6 Classic',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_8',
-    name: 'Alex Thorne',
-    role: 'head_pu',
-    rating: 66,
-    mentality: 77,
-    salary: 600000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Monitoramento de Telemetria de Óleo',
-    teamOrigin: 'Gibson Technology LMP2',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_9',
-    name: 'Lars Nielsen',
-    role: 'head_pu',
-    rating: 65,
-    mentality: 76,
-    salary: 550000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Atuadores Pneumáticos de Válvula',
-    teamOrigin: 'Koenigsegg Powertrain Research',
-    isFictional: true
-  },
-  {
-    id: 'staff_pu_fic_10',
-    name: 'Sean O\'Connor',
-    role: 'head_pu',
-    rating: 62,
-    mentality: 74,
-    salary: 450000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Troca de Velas e Chicote Elétrico',
-    teamOrigin: 'Judd Engines UK',
-    isFictional: true
-  }
-];
-
-// 5.3 DIRETOR DE CORRIDA (Sporting Director)
-export const SPORTING_STAFF_MEMBERS: StaffMember[] = [
-  // Reais consagrados
-  {
-    id: 'staff_wheatley',
-    name: 'Jonathan Wheatley',
-    role: 'sporting_director',
-    rating: 94,
-    mentality: 95,
-    salary: 5500000,
-    buyoutClause: 12000000,
-    currentTeam: 'Audi F1 Team / Sauber',
-    specialty: 'Execução de Pit-Stop Recorde & Lobby Regulamentar FIA',
-    teamOrigin: 'Red Bull Racing / Audi',
-    isFictional: false
-  },
-  {
-    id: 'staff_meadows',
-    name: 'Ron Meadows',
-    role: 'sporting_director',
-    rating: 92,
-    mentality: 93,
-    salary: 5000000,
-    buyoutClause: 10000000,
-    currentTeam: 'Mercedes-AMG F1 Team',
-    specialty: 'Gestão de Crise de Rádio & Comunicação com Controle de Prova',
-    teamOrigin: 'Mercedes-AMG',
-    isFictional: false
-  },
-  {
-    id: 'staff_ioverno',
-    name: 'Diego Ioverno',
-    role: 'sporting_director',
-    rating: 90,
-    mentality: 90,
-    salary: 4500000,
-    buyoutClause: 8000000,
-    currentTeam: 'Scuderia Ferrari HP',
-    specialty: 'Procedimentos de Parque Fechado & Estratégia de Grid',
-    teamOrigin: 'Scuderia Ferrari',
-    isFictional: false
-  },
-  {
-    id: 'staff_cowell',
-    name: 'Andy Cowell',
-    role: 'sporting_director',
-    rating: 93,
-    mentality: 94,
-    salary: 6000000,
-    buyoutClause: 12000000,
-    currentTeam: 'Aston Martin F1 Team',
-    specialty: 'Liderança Organizacional & Otimização de Recursos',
-    teamOrigin: 'Mercedes HPP / Aston Martin',
-    isFictional: false
-  },
-  {
-    id: 'staff_permane',
-    name: 'Alan Permane',
-    role: 'sporting_director',
-    rating: 88,
-    mentality: 87,
-    salary: 4000000,
-    buyoutClause: 7000000,
-    currentTeam: 'Visa Cash App RB',
-    specialty: 'Interpretação Cirúrgica de Safety Car e Bandeiras Vermelhas',
-    teamOrigin: 'Enstone / Racing Bulls',
-    isFictional: false
-  },
-  {
-    id: 'staff_zehnder',
-    name: 'Beat Zehnder',
-    role: 'sporting_director',
-    rating: 89,
-    mentality: 91,
-    salary: 4200000,
-    buyoutClause: 7000000,
-    currentTeam: 'Stake F1 Team / Audi',
-    specialty: '30 Anos de Logística e Compliance Técnico FIA',
-    teamOrigin: 'Sauber Motorsport',
-    isFictional: false
-  },
-  {
-    id: 'staff_komatsu_sd',
-    name: 'Ayao Komatsu',
-    role: 'sporting_director',
-    rating: 87,
-    mentality: 89,
-    salary: 3900000,
-    buyoutClause: 6000000,
-    currentTeam: 'MoneyGram Haas F1',
-    specialty: 'Engenharia de Pista Ágil & Moral em Ambientes Enxutos',
-    teamOrigin: 'Haas F1 Team',
-    isFictional: false
-  },
-  {
-    id: 'staff_singh',
-    name: 'Randeep Singh',
-    role: 'sporting_director',
-    rating: 88,
-    mentality: 91,
-    salary: 4000000,
-    buyoutClause: 7000000,
-    currentTeam: 'McLaren F1 Team',
-    specialty: 'Modelagem Estatística de Pit-Window & Chamadas Ousadas',
-    teamOrigin: 'McLaren Racing',
-    isFictional: false
-  },
-  {
-    id: 'staff_crolla',
-    name: 'Peter Crolla',
-    role: 'sporting_director',
-    rating: 86,
-    mentality: 87,
-    salary: 3600000,
-    buyoutClause: 5500000,
-    currentTeam: 'MoneyGram Haas F1 Team',
-    specialty: 'Operações de Garagem Enxutas & Vistoria Técnica',
-    teamOrigin: 'Haas F1 Team',
-    isFictional: false
-  },
-  {
-    id: 'staff_smeets',
-    name: 'Sven Smeets',
-    role: 'sporting_director',
-    rating: 86,
-    mentality: 88,
-    salary: 3600000,
-    buyoutClause: 5500000,
-    currentTeam: 'Williams Racing',
-    specialty: 'Cultura de Garagem & Desenvolvimento de Academia',
-    teamOrigin: 'Williams Racing / VW Motorsport',
-    isFictional: false
-  },
-  {
-    id: 'staff_white',
-    name: 'Rob White',
-    role: 'sporting_director',
-    rating: 86,
-    mentality: 87,
-    salary: 3600000,
-    buyoutClause: 5500000,
-    currentTeam: 'Cadillac Formula 1 Team',
-    specialty: 'Estruturação de Fábrica do Zero & Relações com Fornecedores',
-    teamOrigin: 'Cadillac F1 / Renault F1',
-    isFictional: false
-  },
-  {
-    id: 'staff_rouse',
-    name: 'Julian Rouse',
-    role: 'sporting_director',
-    rating: 85,
-    mentality: 85,
-    salary: 3400000,
-    buyoutClause: 4800000,
-    currentTeam: 'BWT Alpine F1 Team',
-    specialty: 'Logística de Paddock & Relação com Jovens Talentos',
-    teamOrigin: 'BWT Alpine F1',
-    isFictional: false
-  },
-
-  // 10 Fictícios de Opção Barata (OVR 60 - 75)
-  {
-    id: 'staff_sport_fic_1',
-    name: 'Frank Bennett',
-    role: 'sporting_director',
-    rating: 75,
-    mentality: 84,
-    salary: 1000000,
-    buyoutClause: 150000,
-    currentTeam: 'MSA British Motorsport',
-    specialty: 'Interpretação Rápida de Boletins Técnicos FIA',
-    teamOrigin: 'Direção de Prova Donington',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_2',
-    name: 'Colin Stewart',
-    role: 'sporting_director',
-    rating: 74,
-    mentality: 82,
-    salary: 950000,
-    buyoutClause: 100000,
-    currentTeam: 'Prodrive Operations',
-    specialty: 'Gestão Financeira de Staff, Teto Salarial e Operações de Equipe',
-    teamOrigin: 'Banbury Operations',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_3',
-    name: 'Matteo Bianchi',
-    role: 'sporting_director',
-    rating: 73,
-    mentality: 83,
-    salary: 900000,
-    buyoutClause: 120000,
-    currentTeam: 'AF Corse GT Operations',
-    specialty: 'Logística de Paddock & Escalonamento de Turnos',
-    teamOrigin: 'Maranello GT Racing',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_4',
-    name: 'Simon Bradley',
-    role: 'sporting_director',
-    rating: 72,
-    mentality: 81,
-    salary: 850000,
-    buyoutClause: 80000,
-    currentTeam: 'Carlin Team Manager Office',
-    specialty: 'Coordenação de Cronometragem e Vaga no Pit-Lane',
-    teamOrigin: 'Surrey Junior Racing',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_5',
-    name: 'Erik Lindqvist',
-    role: 'sporting_director',
-    rating: 71,
-    mentality: 80,
-    salary: 800000,
-    buyoutClause: 60000,
-    currentTeam: 'Cyan Racing Logistics',
-    specialty: 'Calma Sob Pressão de Rádio de Piloto',
-    teamOrigin: 'TCR Scandinavia Manager',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_6',
-    name: 'Kenji Takahashi',
-    role: 'sporting_director',
-    rating: 70,
-    mentality: 85,
-    salary: 750000,
-    buyoutClause: 50000,
-    currentTeam: 'Super GT Race Control',
-    specialty: 'Precisão nos Tempos de Parada Obrigatória',
-    teamOrigin: 'Fuji International Speedway',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_7',
-    name: 'Pierre Lefebvre',
-    role: 'sporting_director',
-    rating: 68,
-    mentality: 79,
-    salary: 650000,
-    buyoutClause: 40000,
-    currentTeam: 'ART Grand Prix Operations',
-    specialty: 'Gestão de Alocação de Pneus Seco/Chuva',
-    teamOrigin: 'Magny-Cours Motorsport',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_8',
-    name: 'Roberto Silva',
-    role: 'sporting_director',
-    rating: 67,
-    mentality: 82,
-    salary: 600000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Comunicação Empática com Mecânicos de Box',
-    teamOrigin: 'Stock Car Brasil Team Manager',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_9',
-    name: 'Hans Gruber',
-    role: 'sporting_director',
-    rating: 65,
-    mentality: 78,
-    salary: 520000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Logística de Frete Aéreo de Peças Sobressalentes',
-    teamOrigin: 'DTM Transport & Hospitality',
-    isFictional: true
-  },
-  {
-    id: 'staff_sport_fic_10',
-    name: 'Neil Armstrong Jr.',
-    role: 'sporting_director',
-    rating: 63,
-    mentality: 75,
-    salary: 450000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Preenchimento de Formulários Técnicos de Vistoria',
-    teamOrigin: 'British GT Clerk Assistant',
-    isFictional: true
-  }
-];
-
-export const CHIEF_MECHANIC_STAFF_MEMBERS: StaffMember[] = [
-  {
-    id: 'staff_mech_calum',
-    name: 'Calum Nicholas',
-    role: 'chief_mechanic',
-    rating: 90,
-    mentality: 91,
-    salary: 2200000,
-    buyoutClause: 1500000,
-    currentTeam: 'Red Bull Racing',
-    specialty: 'Pit Crew Coreografado & Montagem Rápida de Chassis',
-    teamOrigin: 'Milton Keynes Operations'
-  },
-  {
-    id: 'staff_mech_deane',
-    name: 'Matt Deane',
-    role: 'chief_mechanic',
-    rating: 89,
-    mentality: 90,
-    salary: 2000000,
-    buyoutClause: 1400000,
-    currentTeam: 'Mercedes-AMG PETRONAS',
-    specialty: 'Montagem de Monocoque com Tolerância Zero de Folga',
-    teamOrigin: 'Brackley Garage'
-  },
-  {
-    id: 'staff_mech_james',
-    name: 'Paul James',
-    role: 'chief_mechanic',
-    rating: 88,
-    mentality: 89,
-    salary: 1900000,
-    buyoutClause: 1300000,
-    currentTeam: 'McLaren F1 Team',
-    specialty: 'Treinamento de Troca de Pneus Sub-2s & Sincronia de Macaco',
-    teamOrigin: 'Woking Garage'
-  },
-  {
-    id: 'staff_mech_lee',
-    name: 'Lee Stevenson',
-    role: 'chief_mechanic',
-    rating: 88,
-    mentality: 89,
-    salary: 1750000,
-    buyoutClause: 1100000,
-    currentTeam: 'Audi F1 Team / Sauber',
-    specialty: 'Manutenção Preventiva de Garagem & Troca Relâmpago de PU',
-    teamOrigin: 'Hinwil Garage'
-  },
-  {
-    id: 'staff_mech_handkammer',
-    name: 'Kenny Handkammer',
-    role: 'chief_mechanic',
-    rating: 87,
-    mentality: 92,
-    salary: 1600000,
-    buyoutClause: 900000,
-    currentTeam: 'Paddock Legends Heritage',
-    specialty: 'Mestre Histórico de Pit-Stops Relâmpago & Reparos Críticos',
-    teamOrigin: 'Benetton / Red Bull Racing'
-  },
-  {
-    id: 'staff_mech_fic_1',
-    name: 'Marco Bellini',
-    role: 'chief_mechanic',
-    rating: 76,
-    mentality: 84,
-    salary: 750000,
-    buyoutClause: 150000,
-    currentTeam: 'Agente Livre',
-    specialty: 'Preparação de Monocoque, Assoalho e Procedimentos de Box',
-    teamOrigin: 'Maranello GT Garage',
-    isFictional: true
-  },
-  {
-    id: 'staff_mech_fic_2',
-    name: 'Dave Jenkins',
-    role: 'chief_mechanic',
-    rating: 72,
-    mentality: 81,
-    salary: 620000,
-    buyoutClause: 80000,
-    currentTeam: 'Agente Livre',
-    specialty: 'Calibração de Pistolas Pneumáticas Paoli & Torquímetro',
-    teamOrigin: 'Silverstone Club Racing',
-    isFictional: true
-  },
-  {
-    id: 'staff_mech_fic_3',
-    name: 'Carlos ' + 'Santoro',
-    role: 'chief_mechanic',
-    rating: 68,
-    mentality: 79,
-    salary: 500000,
-    buyoutClause: 0,
-    currentTeam: 'Agente Livre',
-    specialty: 'Inspeção de Chicotes Elétricos e Sensores de Telemetria',
-    teamOrigin: 'Interlagos Stock Garage',
-    isFictional: true
-  }
-];
+// =============================================================================
+// EXPORTS FILTRADOS POR ROLE
+// =============================================================================
+export const AERO_STAFF_MEMBERS    = marketData.filter(m => m.role === 'head_aero');
+export const PU_STAFF_MEMBERS      = marketData.filter(m => m.role === 'head_pu');
+export const SPORTING_STAFF_MEMBERS = marketData.filter(m => m.role === 'head_management' || (m.role as string) === 'sporting_director');
+export const CHIEF_MECHANIC_STAFF_MEMBERS = marketData.filter(m => m.role === 'head_mechanics' || (m.role as string) === 'chief_mechanic');
 
 export const RACE_ENGINEER_MEMBERS: StaffMember[] = [
   {
@@ -3433,7 +3112,7 @@ export const ALL_STAFF_MEMBERS: StaffMember[] = [
   ...RACE_ENGINEER_MEMBERS
 ];
 
-// ============================================================================
+
 // 6. DOSSIÊ COMPLETO DE EQUIPES RIVAIS (TEMPORADA 2026)
 // ============================================================================
 export interface RivalTeamDossier {

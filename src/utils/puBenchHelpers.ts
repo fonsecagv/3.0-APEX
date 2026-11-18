@@ -348,6 +348,7 @@ export function computeNormalizedOfficialPuCard(params: {
   dnaLabel?: string;
   engineOrigin?: 'customer' | 'bought_factory' | 'phoenix';
   isYear1Project?: boolean;
+  teamName?: string;
 }): NormalizedOfficialPuCard {
   const {
     vehicleParams,
@@ -362,7 +363,11 @@ export function computeNormalizedOfficialPuCard(params: {
     dnaLabel = 'CONCEPÇÃO IN-HOUSE 2026',
     engineOrigin = 'bought_factory',
     isYear1Project = engineOrigin !== 'customer',
+    teamName,
   } = params;
+
+  // Extrai apenas o 1º nome da equipe para usar no comparativo (ex: "Dumont Racing" → "Dumont")
+  const teamShortName = teamName ? teamName.trim().split(/\s+/)[0] : null;
 
   const totalWeightKg = iceWeightKg + batteryWeightKg;
 
@@ -474,10 +479,10 @@ export function computeNormalizedOfficialPuCard(params: {
     {
       label:
         engineOrigin === 'bought_factory'
-          ? 'Seu Projeto (Fábrica Comprada · Ano 1)'
+          ? `${teamShortName ?? 'Seu Projeto'} (Fábrica Comprada · Ano 1)`
           : engineOrigin === 'phoenix'
-          ? 'Seu Projeto (Do Zero Fênix · Ano 1)'
-          : 'Seu Projeto (Cliente)',
+          ? `${teamShortName ?? 'Seu Projeto'} (Do Zero Fênix · Ano 1)`
+          : `${teamShortName ?? 'Seu Projeto'} (Cliente)`,
       score: powerScore,
       tier: 'player',
     },

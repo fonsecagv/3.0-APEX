@@ -1,17 +1,14 @@
+
 import React, { useState } from 'react';
 import type { CareerPath, ProjectAmbitionId, StaffMember } from '../../types/f1';
 import type { HQOption } from '../../data/headquartersData';
 import type { PrincipalBackgroundOption } from '../../data/principalBackgroundsData';
-import {
-  AERO_STAFF_MEMBERS,
-  PU_STAFF_MEMBERS,
-  SPORTING_STAFF_MEMBERS
-} from '../../data/marketData';
+import { AERO_STAFF_MEMBERS, PU_STAFF_MEMBERS, SPORTING_STAFF_MEMBERS } from '../../data/marketData';
 import {
   PROJECT_AMBITION_OPTIONS,
   calculateStaffInterest,
   evaluateCombinedLeadershipDna,
-  getStaffFullProfile
+  getStaffFullProfile,
 } from '../../utils/profileSheets';
 import { StaffMarketCard } from './Step5MarketCards';
 import {
@@ -28,8 +25,10 @@ import {
   Shield,
   Target,
   Users,
-  Wrench
+  Wrench,
+  Info,
 } from 'lucide-react';
+import { Specialization } from '../../types/staff';
 
 export interface Step3OrganizationAndStaffProps {
   careerPath: CareerPath;
@@ -67,6 +66,8 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
 }) => {
   const [subTab, setSubTab] = useState<SubTab3>('dna_board');
   const [roleFilter, setRoleFilter] = useState<StaffFilterRole>('aero');
+  const [specFilter, setSpecFilter] = useState<string>('');
+  const [showNegotiableOnly, setShowNegotiableOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const isRealTeam = careerPath === 'real_team';
@@ -90,6 +91,11 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
 
   const q = searchQuery.trim().toLowerCase();
   const filteredList = activeList.filter(s => {
+    // Excluir conservadores da aero
+    if (roleFilter === 'aero' && s.staffPhilosophyTag?.toUpperCase() === 'CONSERVADOR') return false;
+    // Aplicar filtro por especialização (designDna)
+    if (specFilter && s.designDna !== specFilter) return false;
+    // Busca textual
     if (!q) return true;
     const profile = getStaffFullProfile(s);
     return (
@@ -98,6 +104,21 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
       profile.staffPhilosophyTag.toLowerCase().includes(q) ||
       profile.designDna.toLowerCase().includes(q)
     );
+  });
+
+  // Ordena a lista por Overall Rating (OVR) decrescente
+  const sortedList = [...filteredList].sort((a, b) => b.rating - a.rating);
+
+  // Aplica filtro de negociáveis se ativado
+  const displayedList = sortedList.filter(member => {
+    const interest = calculateStaffInterest({
+      staff: member,
+      projectAmbition,
+      hqOption: selectedHq,
+      isRealTeam,
+      realTeamReputation,
+    });
+    return !showNegotiableOnly || interest.status === 'negotiable';
   });
 
   const hiredStaffList = [stfAero, stfPU, stfSport].filter(Boolean) as StaffMember[];
@@ -523,6 +544,20 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
               ))}
             </div>
 
+            {/* Botão para filtrar apenas negociáveis */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onPlaySound?.();
+                  setShowNegotiableOnly(!showNegotiableOnly);
+                }}
+                className={`px-3 py-1.5 text-xs font-f1-mono font-bold uppercase border transition-all whitespace-nowrap cursor-pointer ${showNegotiableOnly ? 'bg-[#E10600] border-[#E10600] text-white' : 'bg-[#15151E] border-white/10 text-zinc-400 hover:text-white'}`}
+              >
+                Só Negociáveis
+              </button>
+            </div>
+
             <div className="relative min-w-[230px]">
               <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -537,7 +572,7 @@ export const Step3OrganizationAndStaff: React.FC<Step3OrganizationAndStaffProps>
 
           {/* Grid de Cards do Mercado de Staff */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredList.map(member => {
+            {displayedList.map(member => {
               const isAssigned =
                 (roleFilter === 'aero' && selectedHeadAero === member.id) ||
                 (roleFilter === 'pu' && selectedHeadPU === member.id) ||

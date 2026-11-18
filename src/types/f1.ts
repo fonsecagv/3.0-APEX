@@ -204,12 +204,23 @@ export interface StaffAttributes {
   comunicacao: number;
   gestaoPrazo: number;
   adaptacao: number;
+  // Novos atributos
+  visaoEstrategica?: number; // 0‑100 – visão de estratégia e gestão de orçamento
+  resiliencia?: number; // 0‑100 – capacidade de reação sob pressão e recuperação
+}
+  tecnica: number;
+  criatividade: number;
+  rigorValidacao: number;
+  lideranca: number;
+  comunicacao: number;
+  gestaoPrazo: number;
+  adaptacao: number;
 }
 
 export interface StaffMember {
   id: string;
   name: string;
-  role: 'head_aero' | 'head_pu' | 'sporting_director' | 'chief_mechanic' | 'tech_director' | 'chief_engineer' | 'race_engineer';
+  role: 'head_aero' | 'head_pu' | 'sporting_director' | 'chief_mechanic' | 'tech_director' | 'chief_engineer' | 'race_engineer' | 'head_management' | 'head_mechanics';
   rating: number; // 0 - 100
   age?: number;
   mentality: number;
@@ -222,7 +233,9 @@ export interface StaffMember {
   buyoutClause?: number;
   currentTeam?: string;
   specialty: string;
-  designDna?: string;
+  specialtyPrimary?: string;
+  specialtySecondary?: string;
+  designDna?: string | any;
   staffPhilosophyTag?: string;
   preferredCarPhilosophy?: CarPhilosophy;
   attributes?: StaffAttributes;

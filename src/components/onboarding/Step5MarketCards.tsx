@@ -843,7 +843,14 @@ export const StaffMarketCard: React.FC<StaffMarketCardProps> = ({
               <span className="font-f1-wide font-black text-sm text-white group-hover:text-emerald-300 transition-colors block truncate">
                 {staffMember.name}
               </span>
-              <span className="text-[10px] text-cyan-300 font-bold block truncate">
+              {/* ESPECIALIZAÇÃO EM DESTAQUE ABSOLUTO */}
+              <span
+                className="text-[11px] font-f1-wide font-black text-cyan-400 uppercase tracking-wider block mt-0.5 truncate"
+                title={staffMember.specialty || profile.designDna}
+              >
+                🎯 {staffMember.specialty || profile.designDna}
+              </span>
+              <span className="text-[10px] text-zinc-400 block truncate mt-0.5">
                 {profile.roleLabel}
               </span>
               <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-zinc-400 flex-wrap">
@@ -1097,6 +1104,10 @@ export const StaffProfileModal: React.FC<StaffProfileModalProps> = ({
               <h3 className="font-f1-wide font-black text-xl sm:text-2xl text-white uppercase">
                 {staffMember.name}
               </h3>
+              {/* ESPECIALIDADE EM DESTAQUE NO MODAL */}
+              <span className="text-xs font-f1-wide font-black text-cyan-400 uppercase tracking-wider block">
+                🎯 {staffMember.specialty || profile.designDna}
+              </span>
               <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
                 <span className="font-bold text-white">{profile.age} anos</span>
                 <span className="text-zinc-600">·</span>
