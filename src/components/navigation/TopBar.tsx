@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useGame, GameTab } from '../../context/GameContext';
 import { useAuth } from '../../context/AuthContext';
 import { F1Logo } from '../brand/F1Logo';
@@ -14,8 +14,11 @@ import {
   Clock,
   CloudUpload,
   LogIn,
-  LogOut
+  LogOut,
+  Settings,
+  Database,
 } from 'lucide-react';
+import { SettingsGear } from '../header/SettingsGear';
 
 export const TopBar: React.FC = () => {
   const {
@@ -37,39 +40,32 @@ export const TopBar: React.FC = () => {
     setSoundEnabled,
     playRadioSound,
     exportCareerStatePayload,
-    openGrandsPrixMode
+    openGrandsPrixMode,
+    cloudSaving,
+    cloudSaveStatus,
+    authError,
+    user,
+    signInWithGoogle,
+    signOutUser,
+    handleCloudSave,
+    saveSuccess,
+    setSaveSuccess,
   } = useGame();
 
-  const { user, signInWithGoogle, signOutUser, authError } = useAuth();
+  const { signInWithGoogle: authGoogle, signOutUser: authSignOut } = useAuth();
 
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [cloudSaving, setCloudSaving] = useState(false);
-  const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
-
-  const isWorksTeam =
-    playerTeam?.isManufacturer ||
-    playerTeam?.engineOrigin === 'bought_factory' ||
-    playerTeam?.engineOrigin === 'phoenix';
-
-  const activeClientsCount = puClients?.filter(c => c.status === 'active').length || 0;
-
-  const navItems: { id: GameTab; label: string; badge?: string }[] = [
-    { id: 'overview', label: t.command },
-    { id: 'engineering', label: t.engineering },
-    { id: 'facilities', label: t.facilities },
-    { id: 'team', label: t.personnel },
-    { id: 'financials', label: t.costCap },
-    { id: 'race_weekend', label: t.grandPrix },
-    ...(isWorksTeam
-      ? [
-          {
-            id: 'pu_clients' as GameTab,
-            label: 'Clientes de PU',
-            badge: activeClientsCount > 0 ? `${activeClientsCount}/2` : undefined
-          }
-        ]
-      : [])
-  ];
+  // Dropdown state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleManualSave = () => {
     saveGame();
@@ -77,50 +73,37 @@ export const TopBar: React.FC = () => {
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
-  const handleCloudSave = async () => {
-    setCloudSaving(true);
-    setCloudSaveStatus('idle');
-    try {
-      let activeUser = user;
-      if (!activeUser) {
-        activeUser = await signInWithGoogle();
-      }
-      if (!activeUser) {
-        setCloudSaveStatus('error');
-        return;
-      }
-      const token = await activeUser.getIdToken();
-      await fetch('/api/db/seed', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = exportCareerStatePayload();
-      const resp = await fetch('/api/career/snapshots', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!resp.ok) throw new Error('Snapshot save failed');
-      setCloudSaveStatus('saved');
-      playRadioSound();
-      setTimeout(() => setCloudSaveStatus('idle'), 2500);
-    } catch {
-      setCloudSaveStatus('error');
-    } finally {
-      setCloudSaving(false);
-    }
-  };
+  // Build navigation tabs (including optional PU Clients)
+  const navTabs = [
+    { id: 'overview', label: t.command },
+    { id: 'engineering', label: t.engineering },
+    { id: 'facilities', label: t.facilities },
+    { id: 'team', label: t.personnel },
+    { id: 'financials', label: t.costCap },
+    { id: 'race_weekend', label: t.grandPrix },
+    ...(playerTeam?.isManufacturer ||
+    playerTeam?.engineOrigin === 'bought_factory' ||
+    playerTeam?.engineOrigin === 'phoenix'
+      ? [
+          {
+            id: 'pu_clients',
+            label: 'Clientes de PU',
+            badge:
+              puClients?.filter((c) => c.status === 'active').length > 0
+                ? `${puClients?.filter((c) => c.status === 'active').length}/2`
+                : undefined,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <header className="sticky top-0 z-50 bg-[#15151E] border-b border-[#2C2C3A] text-white select-none">
-      {/* Red F1 Signature Baseline Line */}
+      {/* Top line */}
       <div className="h-[2px] w-full bg-gradient-to-r from-[#E10600] via-[#E10600] to-transparent" />
 
       <div className="max-w-[1440px] mx-auto px-3 lg:px-5 min-h-16 py-2 flex flex-wrap xl:flex-nowrap items-center justify-between gap-2.5">
-        {/* Zone 1: Brand Wordmark & Main Menu Return */}
+        {/* Left – Home + Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={() => {
@@ -141,27 +124,27 @@ export const TopBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-0.5 xl:gap-1 min-w-0 flex-1 justify-center overflow-x-auto">
-          {navItems.map(item => {
-            const isActive = activeTab === item.id;
+        {/* Center – Navigation tabs */}
+        <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 justify-center">
+          {navTabs.map((tab) => {
+            const isActive = activeTab === tab.id;
             return (
               <button
-                key={item.id}
+                key={tab.id}
                 onClick={() => {
-                  setActiveTab(item.id);
+                  setActiveTab(tab.id as GameTab);
                   playRadioSound();
                 }}
-                className={`px-2 xl:px-2.5 py-2 text-[11px] xl:text-xs font-f1-wide uppercase tracking-wider transition-colors relative whitespace-nowrap shrink-0 cursor-pointer border-b-2 ${
+                className={`px-2 xl:px-2.5 py-2 text-[11px] xl:text-xs font-f1-wide uppercase tracking-wider transition-colors whitespace-nowrap border-b-2 ${
                   isActive
                     ? 'text-white font-bold border-[#E10600]'
-                    : 'text-zinc-400 hover:text-white border-transparent'
+                    : 'text-zinc-400 border-transparent hover:text-white'
                 }`}
               >
-                <span>{item.label}</span>
-                {item.badge && (
+                <span>{tab.label}</span>
+                {tab.badge && (
                   <span className="ml-1 text-[9px] font-f1-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.5 font-bold">
-                    {item.badge}
+                    {tab.badge}
                   </span>
                 )}
               </button>
@@ -169,9 +152,9 @@ export const TopBar: React.FC = () => {
           })}
         </nav>
 
-        {/* Zone 3: Quick Save, Language, Sound & Primary Action */}
+        {/* Right – Quick actions + Settings dropdown */}
         <div className="flex items-center gap-1.5 xl:gap-2 shrink-0 ml-auto">
-          {/* Quick Save Button (Local) */}
+          {/* Save button */}
           <button
             onClick={handleManualSave}
             className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -183,138 +166,154 @@ export const TopBar: React.FC = () => {
               <Save className="w-3.5 h-3.5 text-[#E10600]" />
             )}
             <span className="hidden 2xl:inline text-[11px] uppercase">
-              {saveSuccess ? (language === 'pt' ? 'Salvo!' : 'Saved!') : (language === 'pt' ? 'Salvar' : 'Save')}
+              {saveSuccess ? (language === 'pt' ? 'Salvo!' : 'Saved!') : language === 'pt' ? 'Salvar' : 'Save'}
             </span>
           </button>
 
-          {/* Cloud SQL Save & Auth Button */}
-          <button
-            onClick={handleCloudSave}
-            disabled={cloudSaving}
-            className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            title={authError || (user ? `Cloud SQL (${user.email || 'Google'})` : 'Conectar Google e salvar no Cloud SQL')}
-          >
-            <CloudUpload
-              className={`w-3.5 h-3.5 ${
-                cloudSaveStatus === 'saved'
-                  ? 'text-emerald-400'
-                  : cloudSaveStatus === 'error'
-                  ? 'text-red-400'
-                  : 'text-cyan-400'
+          {/* Settings gear dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setSettingsOpen((v) => !v)}
+              title="Configurações"
+              className={`p-2 rounded border transition-colors ${
+                settingsOpen
+                  ? 'bg-zinc-800 border-red-500 text-white'
+                  : 'bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300'
               }`}
-            />
-            <span className="hidden 2xl:inline text-[11px] uppercase">
-              {cloudSaving
-                ? '...'
-                : cloudSaveStatus === 'saved'
-                ? 'Nuvem OK'
-                : cloudSaveStatus === 'error'
-                ? 'Erro'
-                : 'Cloud SQL'}
-            </span>
-          </button>
-
-          {user ? (
-            <button
-              onClick={signOutUser}
-              className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer"
-              title={`Conectado: ${user.email || user.displayName || 'Engenheiro'} — Clique para sair`}
             >
-              <LogOut className="w-3.5 h-3.5 text-emerald-400" />
+              <Settings className={`w-5 h-5 transition-transform ${settingsOpen ? 'rotate-45' : ''}`} />
             </button>
-          ) : (
-            <button
-              onClick={signInWithGoogle}
-              className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer"
-              title="Entrar com Google (Firebase Auth)"
-            >
-              <LogIn className="w-3.5 h-3.5 text-zinc-300" />
-            </button>
-          )}
 
-          {/* Language Toggle */}
-          <button
-            onClick={() => {
-              setLanguage(language === 'pt' ? 'en' : 'pt');
-              playRadioSound();
-            }}
-            className="px-2 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-xs font-f1-mono text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer"
-          >
-            <Globe className="w-3.5 h-3.5 text-[#E10600]" />
-            <span className="font-bold">{language === 'pt' ? 'PT' : 'EN'}</span>
-          </button>
+            {settingsOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-[#14161c] border border-zinc-700 rounded shadow-2xl py-2 text-xs z-50" ref={menuRef}>
+                <div className="px-3 py-1.5 text-[10px] font-bold tracking-widest text-zinc-500 uppercase border-b border-zinc-800">
+                  Configurações & Nuvem
+                </div>
 
-          {/* Sound Toggle */}
-          <button
-            onClick={() => {
-              setSoundEnabled(!soundEnabled);
-              if (!soundEnabled) playRadioSound();
-            }}
-            className="p-2 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title={language === 'pt' ? 'Efeitos Sonoros' : 'Sound Effects'}
-          >
-            {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-zinc-600" />}
-          </button>
+                {/* Áudio */}
+                <button
+                  onClick={() => {
+                    setSoundEnabled(!soundEnabled);
+                    if (!soundEnabled) playRadioSound();
+                  }}
+                  className="w-full px-3 py-2 flex items-center justify-between hover:bg-zinc-800/80 text-zinc-200"
+                >
+                  <span className="flex items-center gap-2">
+                    {soundEnabled ? (
+                      <Volume2 size={15} className="text-emerald-400" />
+                    ) : (
+                      <VolumeX size={15} className="text-red-500" />
+                    )}
+                    Áudio do Jogo
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-400">{soundEnabled ? 'ATIVO' : 'MUTADO'}</span>
+                </button>
 
-          {/* Contador Regressivo dos Testes do Bahrein (visível em telas amplas) */}
-          <div className={`hidden 2xl:flex items-center gap-1.5 px-2.5 py-1 border text-xs font-f1-mono ${
-            semanasParaTeste >= 0
-              ? 'bg-[#1C1C26] border-white/10 text-zinc-300'
-              : 'bg-red-950/60 border-[#E10600] text-red-300'
-          }`}>
-            <Clock className={`w-3.5 h-3.5 ${semanasParaTeste >= 0 ? 'text-cyan-400' : 'text-[#E10600]'}`} />
-            <span className="font-bold">BAHREIN:</span>
-            <span className={`font-bold tabular-nums ${semanasParaTeste >= 0 ? 'text-emerald-400' : 'text-red-400 font-f1-wide'}`}>
-              {semanasParaTeste >= 0 ? `${semanasParaTeste} sem.` : `ATRASADO`}
-            </span>
+                {/* Idioma */}
+                <button
+                  onClick={() => {
+                    setLanguage(language === 'pt' ? 'en' : 'pt');
+                    playRadioSound();
+                  }}
+                  className="w-full px-3 py-2 flex items-center justify-between hover:bg-zinc-800/80 text-zinc-200"
+                >
+                  <span className="flex items-center gap-2">
+                    <Globe size={15} className="text-sky-400" />
+                    Idioma / Language
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-bold text-[10px]">
+                    {language === 'pt' ? 'PT-BR' : 'EN-US'}
+                  </span>
+                </button>
+
+                <div className="my-1 border-t border-zinc-800" />
+
+                {/* Firebase login */}
+                <button
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    signInWithGoogle();
+                  }}
+                  className="w-full px-3 py-2 flex items-center gap-2 hover:bg-zinc-800/80 text-zinc-200"
+                >
+                  <LogIn size={15} className="text-amber-400" />
+                  Conectar / Login Firebase
+                </button>
+
+                {/* Cloud SQL */}
+                <button
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    handleCloudSave();
+                  }}
+                  className="w-full px-3 py-2 flex items-center gap-2 hover:bg-zinc-800/80 text-zinc-200"
+                >
+                  <Database size={15} className="text-cyan-400" />
+                  Configurar Cloud SQL
+                </button>
+
+                {/* Cloud SQL Save – mantém visual antigo */}
+                <button
+                  onClick={handleCloudSave}
+                  disabled={cloudSaving}
+                  className="w-full px-3 py-2 flex items-center gap-2 text-zinc-300 hover:text-white disabled:opacity-50"
+                  title={authError || (user ? `Cloud SQL (${user.email || 'Google'})` : 'Conectar Google e salvar no Cloud SQL')}
+                >
+                  <CloudUpload
+                    className={`w-3.5 h-3.5 ${
+                      cloudSaveStatus === 'saved'
+                        ? 'text-emerald-400'
+                        : cloudSaveStatus === 'error'
+                        ? 'text-red-400'
+                        : 'text-cyan-400'
+                    }`}
+                  />
+                  <span className="hidden 2xl:inline">
+                    {cloudSaving
+                      ? '...'
+                      : cloudSaveStatus === 'saved'
+                      ? 'Nuvem OK'
+                      : cloudSaveStatus === 'error'
+                      ? 'Erro'
+                      : 'Cloud SQL'}
+                  </span>
+                </button>
+
+                {/* Logout if logged */}
+                {user && (
+                  <button
+                    onClick={async () => {
+                      await signOutUser();
+                      playRadioSound();
+                    }}
+                    className="w-full px-3 py-2 flex items-center gap-2 hover:bg-zinc-800/80 text-zinc-200"
+                  >
+                    <LogOut size={15} className="text-emerald-400" />
+                    Sair ({user.email?.split('@')[0] || 'Google'})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Calendar Indicator -> Quick Jump to Grands Prix & Circuits Catalog */}
-          <button
-            type="button"
-            onClick={() => {
-              openGrandsPrixMode();
-              playRadioSound();
-            }}
-            title={language === 'pt' ? 'Abrir modo Grandes Prêmios & Todos os Circuitos' : 'Open Grands Prix & Circuits Explorer'}
-            className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 hover:border-[#E10600]/60 text-xs font-f1-mono text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Calendar className="w-3.5 h-3.5 text-[#E10600]" />
-            <span>S{currentWeek}</span>
-            <span className="hidden xl:inline text-zinc-500">·</span>
-            <span className="hidden xl:inline text-white font-bold max-w-[100px] truncate">{currentCircuit.city}</span>
-          </button>
+          {/* GP badge */}
+          <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-mono">
+            <Calendar size={13} className="text-zinc-500" />
+            <span>S1 · Melbourne</span>
+          </div>
 
-          {/* Primary Action Button */}
+          {/* Avançar semana */}
           <button
             onClick={() => {
               advanceWeek();
               playRadioSound();
             }}
-            className="px-3.5 py-2 bg-[#E10600] hover:bg-[#c20500] text-white font-f1-wide font-bold text-xs uppercase tracking-wider transition-colors f1-tab-chamfer flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-[#E10600] hover:bg-[#c20500] text-white text-xs font-black uppercase tracking-wider"
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
+            <Play size={12} fill="currentColor" />
             <span>{t.advanceWeek}</span>
           </button>
         </div>
-      </div>
-
-      {/* Mobile Navigation bar */}
-      <div className="md:hidden flex items-center justify-around px-2 py-2 border-t border-white/5 bg-[#1C1C26] overflow-x-auto">
-        {navItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setActiveTab(item.id);
-              playRadioSound();
-            }}
-            className={`px-2 py-1 text-[11px] font-f1-wide uppercase tracking-wider whitespace-nowrap ${
-              activeTab === item.id ? 'text-[#E10600] font-bold' : 'text-zinc-400'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
       </div>
     </header>
   );

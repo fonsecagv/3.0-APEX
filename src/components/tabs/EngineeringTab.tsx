@@ -14,6 +14,7 @@ import { validateFia2026Compliance } from '../../engine/regulatoryEngine';
 import { ModulesAuditConsole } from '../engineering/ModulesAuditConsole';
 import { Packaging3DViewport } from '../engineering/Packaging3DViewport';
 import { CarRadarComparisonChart } from '../engineering/CarRadarComparisonChart';
+import { EngineeringPerformanceTelemetry } from '../engineering/EngineeringPerformanceTelemetry';
 import { PersonAvatar } from '../common/PersonAvatar';
 import { evaluateChiefCadFeedback } from '../../engine/engineeringFeedbackEngine';
 import { buildPackagingArchitecture, FIA_2026_DEFAULT_EDITION } from '../../engine/modules/m03Packaging';
@@ -103,7 +104,7 @@ export const EngineeringTab: React.FC = () => {
   const [selectedType, setSelectedType] = useState<ComponentSpec['type']>('pu');
 
   // Simulation panel sub-tab & dirty tracker
-  const [engineeringViewMode, setEngineeringViewMode] = useState<'cad' | 'showroom3d' | 'workbench'>('cad');
+  const [engineeringViewMode, setEngineeringViewMode] = useState<'cad' | 'showroom3d' | 'workbench' | 'telemetry'>('cad');
   const [showroomTeamId, setShowroomTeamId] = useState<string>(playerTeam?.id || 'player_car');
 
   useEffect(() => {
@@ -485,10 +486,23 @@ export const EngineeringTab: React.FC = () => {
         >
           M01–M12 Engenharia SI · Packaging 3D & Gates (01–12)
         </button>
+        <button
+          type="button"
+          onClick={() => setEngineeringViewMode('telemetry')}
+          className={`px-4 py-2 text-xs font-f1-wide uppercase tracking-wider border transition-colors cursor-pointer ${
+            engineeringViewMode === 'telemetry'
+              ? 'bg-[#E10600] border-[#E10600] text-white font-bold'
+              : 'bg-[#1C1C26] border-white/10 text-zinc-300 hover:text-white'
+          }`}
+        >
+          Telemetria de Performance & Grid
+        </button>
       </div>
 
       {engineeringViewMode === 'workbench' ? (
         <ModulesAuditConsole />
+      ) : engineeringViewMode === 'telemetry' ? (
+        <EngineeringPerformanceTelemetry />
       ) : engineeringViewMode === 'showroom3d' ? (
         <div className="space-y-4">
           <F1TabBucket
