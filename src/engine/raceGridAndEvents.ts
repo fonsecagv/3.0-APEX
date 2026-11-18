@@ -686,6 +686,36 @@ export interface RaceTickOutput {
   triggeredRedFlag: boolean;
 }
 
+export function estimateCompoundLapsLife(
+  compound: LiveCarState['tireCompound'],
+  circuitTireSeverity: number = 3,
+  trackTempC: number = 35
+): { idealLaps: number; maxLaps: number; wearPerLap: number } {
+  let baseNominalLaps = 20;
+  if (compound === 'soft') baseNominalLaps = 16;
+  else if (compound === 'medium') baseNominalLaps = 26;
+  else if (compound === 'hard') baseNominalLaps = 38;
+  else if (compound === 'inter') baseNominalLaps = 28;
+  else if (compound === 'wet') baseNominalLaps = 32;
+
+  const severityFactor = 0.75 + circuitTireSeverity * 0.12;
+  const tempFactor =
+    trackTempC > 45 && compound === 'soft'
+      ? 1.35
+      : trackTempC > 40
+      ? 1.15
+      : trackTempC < 25
+      ? 0.92
+      : 1.0;
+
+  const totalDegFactor = severityFactor * tempFactor;
+  const idealLaps = Math.max(6, Math.round(baseNominalLaps / totalDegFactor));
+  const maxLaps = Math.round(idealLaps * 1.3);
+  const wearPerLap = Number((70 / idealLaps).toFixed(2));
+
+  return { idealLaps, maxLaps, wearPerLap };
+}
+
 function getCompoundWeatherPaceAndRisk(
   compound: LiveCarState['tireCompound'],
   weather: RaceTickInput['trackWeather']
@@ -1216,6 +1246,22 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       };
     }
 
+    const effectiveTrackTempC =
+      input.trackTempC ??
+      (input.trackWeather === 'heavy_rain' ? 23
+        : input.trackWeather === 'light_rain' ? 26
+        : input.trackWeather === 'overcast' ? 34
+        : 44 + input.coolingDemandIndex01 * 10);
+    const modeHeatOffset = effectivePaceMode === 'attack' ? 8.5 : effectivePaceMode === 'conserve' ? -5.0 : 0;
+    const mixHeatOffset = car.fuelMixMode === 'rich' ? 6.0 : car.fuelMixMode === 'lean' ? -4.5 : 0;
+    const coolingPenaltyC = car.isPlayer ? Math.max(-4, -input.playerThermalMarginC * 0.85) : 0;
+    const rawIceTempC = 94 + Math.max(0, effectiveTrackTempC - 35) * 0.52
+      + input.coolingDemandIndex01 * 7.5 + modeHeatOffset + mixHeatOffset + coolingPenaltyC;
+    const nextIceTempC = Math.round(((car.iceTempC ?? 99) * 0.7 + rawIceTempC * 0.3) * 10) / 10;
+    const thermalDerating = nextIceTempC >= 115
+      || (car.isPlayer && input.playerThermalMarginC < -4 && car.batteryTempC > 64);
+    if (thermalDerating) speedMod *= 0.94;
+
     // Atualização de distância e volta
     let newDist = car.distanceOnLap + baseSpeed * speedMod;
     let newLap = car.lap;
@@ -1298,6 +1344,81 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
         }
       }
 
+      // ═══════════════════════════════════════════════════════════════
+      // ESTRATÉGIA AUTOMÁTICA DE PIT STOP DA IA
+      // Clima, Desgaste de Pneu, Dano no Chassi → decisão inteligente
+      // ═══════════════════════════════════════════════════════════════
+      if (!car.isPlayer && !inPit) {
+        const isSlick = car.tireCompound === 'soft' || car.tireCompound === 'medium' || car.tireCompound === 'hard';
+        const isWetTire = car.tireCompound === 'wet';
+        const isInterTire = car.tireCompound === 'inter';
+        const remainingLaps = input.totalLaps - newLap;
+        let aiPitCompound: LiveCarState['tireCompound'] | null = null;
+
+        // 1) Chuva forte + pneus slick → pit imediato para WET (evita aquaplanagem fatal)
+        if (input.trackWeather === 'heavy_rain' && isSlick) {
+          aiPitCompound = 'wet';
+        }
+        // 2) Chuva leve + pneus slick → pit para INTER
+        else if (input.trackWeather === 'light_rain' && isSlick) {
+          aiPitCompound = 'inter';
+        }
+        // 3) Chuva forte + inter (crashRisk 1.85) com desgaste → upgrade para WET
+        else if (input.trackWeather === 'heavy_rain' && isInterTire && car.tireWearPercent > 30) {
+          aiPitCompound = 'wet';
+        }
+        // 4) Pista seca + pneus de chuva → pit para slicks (perda enorme de ritmo em pista seca)
+        else if ((input.trackWeather === 'sunny' || input.trackWeather === 'overcast') && (isWetTire || isInterTire)) {
+          aiPitCompound = remainingLaps > 20 ? 'medium' : 'hard';
+        }
+        // 5) Desgaste alto (>= 68%) → pit para pneus frescos
+        else if (car.tireWearPercent >= 68 && remainingLaps > 5) {
+          if (input.trackWeather === 'heavy_rain') aiPitCompound = 'wet';
+          else if (input.trackWeather === 'light_rain') aiPitCompound = 'inter';
+          else aiPitCompound = remainingLaps > 22 ? 'medium' : 'hard';
+        }
+        // 6) Dano significativo no chassi (>= 40%) sem pit anterior → pit de reparo
+        else if (newDamage >= 40 && car.pitStopsDone === 0 && remainingLaps > 8) {
+          if (input.trackWeather === 'heavy_rain') aiPitCompound = 'wet';
+          else if (input.trackWeather === 'light_rain') aiPitCompound = 'inter';
+          else aiPitCompound = 'medium';
+        }
+
+        // Executar pit stop se decisão tomada e restam voltas suficientes
+        if (aiPitCompound && remainingLaps > 2) {
+          const pitTimeSec = 22.0 + rng() * 2.5;
+          events.push({
+            lap: newLap,
+            flag: 'green' as TrackFlagStatus,
+            title: `PIT STOP — #${car.driverNumber} ${car.shortCode}`,
+            message: `${car.driverName} entra nos boxes para ${aiPitCompound.toUpperCase()} na volta ${newLap}.`
+          });
+          return {
+            ...car,
+            paceMode: effectivePaceMode,
+            lap: newLap,
+            distanceOnLap: newDist,
+            totalDistance: newLap - 1 + newDist,
+            tireCompound: aiPitCompound,
+            tireAgeLaps: 0,
+            tireWearPercent: 0,
+            tireGrainingBlistering: 0,
+            inPitLane: true,
+            pitStopsDone: car.pitStopsDone + 1,
+            pitDurationSec: pitTimeSec,
+            damagePercent: Math.max(0, newDamage - 25),
+            fuelRemainingKg: Math.round(newFuelRemaining * 100) / 100,
+            penaltySec: 0,
+            penaltiesCount: newPenaltiesCount,
+            hasBlueFlag,
+            lastIncidentText: `Pit Stop #${car.pitStopsDone + 1} → ${aiPitCompound.toUpperCase()}`,
+            errorRiskPct: errorEval.errorRiskPct,
+            errorStateLabel: errorEval.errorStateLabel,
+            lastErrorType
+          };
+        }
+      }
+
       const mixLapDelta = car.fuelMixMode === 'rich' ? -0.3 : car.fuelMixMode === 'lean' ? 0.25 : 0;
       const physicsLapOffset = car.isPlayer
         ? (80 - input.playerCarRating) * 0.06 + (input.playerTotalMassKg - 772) * 0.03
@@ -1325,42 +1446,11 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
     else if (car.engineMode === 'harvest') newSoc = Math.min(100, newSoc + (1.4 + trackErsHarvestBias * 0.4) * input.raceSpeed);
     else newSoc = Math.max(10, Math.min(95, newSoc + trackErsHarvestBias * 0.25 + (rng() * 0.4 - 0.2)));
 
-    const effectiveTrackTempC =
-      input.trackTempC ??
-      (input.trackWeather === 'heavy_rain'
-        ? 23
-        : input.trackWeather === 'light_rain'
-        ? 26
-        : input.trackWeather === 'overcast'
-        ? 34
-        : 44 + input.coolingDemandIndex01 * 10);
-
     const targetBatteryTemp = car.isPlayer
       ? Math.min(98, input.playerBatteryCellTempC + (100 - newSoc) * 0.12 + input.coolingDemandIndex01 * 4.5)
       : Math.min(95, 45 + (100 - newSoc) * 0.4);
 
-    // Temperatura ICE/PU (°C): Ataque + Mistura Rica + Calor > 50°C pode romper 115°C
-    const modeHeatOffset =
-      effectivePaceMode === 'attack' ? 8.5 : effectivePaceMode === 'conserve' ? -5.0 : 0;
-    const mixHeatOffset = car.fuelMixMode === 'rich' ? 6.0 : car.fuelMixMode === 'lean' ? -4.5 : 0;
-    const coolingPenaltyC = car.isPlayer ? Math.max(-4, -input.playerThermalMarginC * 0.85) : 0;
-    const rawIceTempC =
-      94 +
-      Math.max(0, effectiveTrackTempC - 35) * 0.52 +
-      input.coolingDemandIndex01 * 7.5 +
-      modeHeatOffset +
-      mixHeatOffset +
-      coolingPenaltyC;
-    const prevIceTemp = car.iceTempC ?? 99;
-    const nextIceTempC = Math.round((prevIceTemp * 0.7 + rawIceTempC * 0.3) * 10) / 10;
-
-    const thermalDerating =
-      nextIceTempC >= 115 ||
-      (car.isPlayer && input.playerThermalMarginC < -4 && car.batteryTempC > 64);
     const hasDerating = newSoc <= 5 || thermalDerating;
-    if (thermalDerating) {
-      speedMod *= 0.94; // Derating térmico reduz potência entregue
-    }
 
     // Fórmula de Desgaste de Pneus:
     // Base × Modo (Ataque 3x, Normal 1x, Economia 0.6x) × Temp. da Pista × Fator Carro/Suspensão ÷ Gestão de Pneus do Piloto
@@ -1419,6 +1509,7 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       fuelRemainingKg: Math.round(newFuelRemaining * 100) / 100,
       socPercent: Math.round(newSoc),
       hasDerating,
+      tireAgeLaps: newLap > car.lap ? car.tireAgeLaps + 1 : car.tireAgeLaps,
       tireWearPercent: Math.round(newWear * 1000) / 1000,
       tireTempC: nextTireTempC,
       inPitLane: inPit,
