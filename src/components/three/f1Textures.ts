@@ -576,6 +576,27 @@ export function createF1TextureBundle(
   maxAnisotropy: number,
   driverIndex: 0 | 1 = 0
 ): F1TextureBundle {
+  if (typeof document === 'undefined') {
+    const fallbackCanvas = {
+      width: 2,
+      height: 2,
+      getContext: () => null,
+    } as unknown as HTMLCanvasElement;
+    const dummy = new THREE.CanvasTexture(fallbackCanvas);
+    return {
+      carbonAlbedo: dummy,
+      carbonBump: dummy,
+      liveryBody: dummy,
+      liveryNose: dummy,
+      liveryFin: dummy,
+      tireSidewall: dummy,
+      tireTreadBump: dummy,
+      brakeDisc: dummy,
+      floorShadow: dummy,
+      dispose: () => dummy.dispose(),
+    };
+  }
+
   const activeDriver = spec.drivers[driverIndex] || spec.drivers[0];
   const carbon = createCarbonPair(maxAnisotropy);
   const liveryBody = createLiveryBodyTexture(spec, maxAnisotropy);

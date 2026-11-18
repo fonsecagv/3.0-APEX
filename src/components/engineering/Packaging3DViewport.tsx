@@ -7,7 +7,7 @@ import type { AeroMode, Driver, Team, TireCompound } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { LIVERY_2026_CATALOG, resolveTeamLivery2026, type Livery2026Spec } from '../../data/f12026Liveries';
 import { buildF1Car2026, type BuiltF1Car, type CarVisualMode } from '../three/f1CarBuilder';
-import { loadOrBuildF1Car } from '../three/f1ModelLoader';
+import { loadOrBuildF1Car, type CarModelMetadata, type LoadedF1CarInstance } from '../three/f1ModelLoader';
 import { ChevronDown, ChevronUp, Eye, Layers, Maximize2, Minimize2, RotateCw, Sparkles, Wind, X } from 'lucide-react';
 
 interface Packaging3DViewportProps {
@@ -109,6 +109,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   const [viewPreset, setViewPreset] = useState<CameraViewPreset>('iso');
   const [visualMode, setVisualMode] = useState<CarVisualMode>(defaultVisualMode);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [carMetadata, setCarMetadata] = useState<CarModelMetadata | null>(null);
   const [aeroMode, setAeroMode] = useState<AeroMode>('mode_z');
   const [tireCompound, setTireCompound] = useState<TireCompound>('soft');
   const [explodePct, setExplodePct] = useState<number>(0);
@@ -520,6 +521,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       builtCar.applyExplodeFactor(explodeTargetRef.current);
       scene.add(builtCar.root);
       carRef.current = builtCar;
+      setCarMetadata(builtCar.metadata);
       requestRenderRef.current();
     });
 
@@ -760,6 +762,29 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
 
       {/* Top-Right Chassis, Driver & T-Cam Telemetry Strip */}
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        {carMetadata && (
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#101017]/94 border border-white/15 px-2 py-1 text-[9px] font-f1-mono">
+            <span
+              className={`px-1.5 py-0.2 uppercase font-bold border ${
+                carMetadata.source === 'team_glb'
+                  ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
+                  : carMetadata.source === 'base_glb'
+                  ? 'bg-cyan-950/80 border-cyan-500/60 text-cyan-300'
+                  : 'bg-zinc-800 border-white/20 text-zinc-300'
+              }`}
+            >
+              {carMetadata.source === 'team_glb'
+                ? '3D GLB Oficial'
+                : carMetadata.source === 'base_glb'
+                ? 'GLB Base 2026'
+                : 'CAD Paramétrico'}
+            </span>
+            <span className="text-zinc-400">
+              {(carMetadata.triangleCount / 1000).toFixed(1)}k tris
+            </span>
+          </div>
+        )}
+
         <div className="hidden lg:flex items-center gap-2 bg-[#101017]/94 border border-white/15 px-3 py-1.5 text-[10px] font-f1-mono">
           <span
             className="w-2.5 h-2.5 border border-white/30 shrink-0"
