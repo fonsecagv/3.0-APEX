@@ -14,6 +14,33 @@ export type LiveryPattern2026 =
   | 'cadillac_stealth'
   | 'custom';
 
+export interface CarAeroProfile {
+  /** Nose tip & monocoque forward taper geometry */
+  noseStyle: 'slim_needle' | 'broad_spoon' | 'wedge_chisel' | 'sculpted_curve';
+  /** Roll-hoop / airbox intake cross-section */
+  airboxShape: 'triangle' | 'oval_wide' | 'teardrop' | 'circular';
+  /** Sidepod undercut & upper shoulder surface profile */
+  sidepodProfile: 'downwash_ramp' | 'waterslide_gully' | 'compact_inwash' | 'box_shoulder';
+  /** Shark-fin dorsal engine-cover blade profile */
+  finProfile: 'swept_long' | 'tall_notched' | 'stepped_vane' | 'compact_blade';
+  /** 18-inch wheel aero cover geometry & spoke architecture */
+  wheelCoverStyle: 'solid_aero' | 'turbine_10' | 'spoke_5_open' | 'mesh_fan';
+  /** Halo protective titanium structure finish color */
+  haloHex: string;
+  /** Suspension wishbones finish (e.g. crisp white on Audi R26, satin carbon on most teams) */
+  wishboneHex: string;
+  /** Brake caliper anodizing color */
+  caliperHex: string;
+  /** Front wing primary painted element color */
+  frontWingPrimaryHex: string;
+  /** Front wing endplate base color */
+  frontWingEndplateHex: string;
+  /** Floor edge strake trim highlight */
+  floorTrimHex: string;
+  /** Cockpit cowl / upper engine cover collar hue */
+  cowlHex: string;
+}
+
 export interface DriverShowroomProfile {
   name: string;
   shortCode: string;
@@ -39,6 +66,7 @@ export interface Livery2026Spec {
   helmetPrimaryHex: string;
   helmetSecondaryHex: string;
   finishType: 'gloss' | 'matte' | 'satin_carbon';
+  aeroGeometry: CarAeroProfile;
   engineBadge: string;
   driversSummary: string;
   visualNotes: string;
@@ -56,14 +84,28 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     primaryHex: '#DC0000',
     secondaryHex: '#F5F5F5',
     accentHex: '#FFE500',
-    rearWingAccentHex: '#DC0000',
+    rearWingAccentHex: '#15171E',
     rimAccentHex: '#DC0000',
     helmetPrimaryHex: '#DC0000',
     helmetSecondaryHex: '#F5F5F5',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'slim_needle',
+      airboxShape: 'triangle',
+      sidepodProfile: 'downwash_ramp',
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'spoke_5_open',
+      haloHex: '#F5F5F5',
+      wishboneHex: '#181A22',
+      caliperHex: '#DC0000',
+      frontWingPrimaryHex: '#DC0000',
+      frontWingEndplateHex: '#15171E',
+      floorTrimHex: '#F5F5F5',
+      cowlHex: '#F5F5F5',
+    },
     engineBadge: 'Ferrari 067 V6 Turbo-Hybrid',
     driversSummary: 'Charles Leclerc (#16) & Lewis Hamilton (#44)',
-    visualNotes: 'Vermelho clássico de Maranello em combinação limpa com carenagem superior branca e filete amarelo.',
+    visualNotes: 'Rosso Corsa envernizado com capô superior branco, halo branco e friso tricolor nas endplates.',
     primaryNumbers: [16, 44],
     drivers: [
       {
@@ -92,17 +134,31 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     shortName: 'AUD',
     carModelName: 'Revolut R26',
     patternStyle: 'audi_titan',
-    primaryHex: '#8E95A0',
-    secondaryHex: '#13151A',
+    primaryHex: '#7D848F',
+    secondaryHex: '#13151B',
     accentHex: '#FF1A2D',
-    rearWingAccentHex: '#FF1A2D',
+    rearWingAccentHex: '#15171E',
     rimAccentHex: '#FF1A2D',
     helmetPrimaryHex: '#14161B',
     helmetSecondaryHex: '#FF1A2D',
     finishType: 'matte',
+    aeroGeometry: {
+      noseStyle: 'wedge_chisel',
+      airboxShape: 'circular',
+      sidepodProfile: 'box_shoulder',
+      finProfile: 'stepped_vane',
+      wheelCoverStyle: 'turbine_10',
+      haloHex: '#1A1D24',
+      wishboneHex: '#E5E7EB',
+      caliperHex: '#FF1A2D',
+      frontWingPrimaryHex: '#7D848F',
+      frontWingEndplateHex: '#7D848F',
+      floorTrimHex: '#FF1A2D',
+      cowlHex: '#7D848F',
+    },
     engineBadge: 'Audi F1 Hybrid V6 (Neuburg)',
     driversSummary: 'Nico Hülkenberg (#27) & Gabriel Bortoleto (#5)',
-    visualNotes: 'Titânio acetinado na dianteira em corte diagonal para carbono escuro e vermelho neon.',
+    visualNotes: 'Titânio fosco na dianteira em corte diagonal para carbono escuro, triângulos suspensivos brancos e anéis vermelhos.',
     primaryNumbers: [27, 5],
     drivers: [
       {
@@ -139,9 +195,23 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     helmetPrimaryHex: '#0B1936',
     helmetSecondaryHex: '#FACC15',
     finishType: 'matte',
+    aeroGeometry: {
+      noseStyle: 'broad_spoon',
+      airboxShape: 'teardrop',
+      sidepodProfile: 'downwash_ramp',
+      finProfile: 'tall_notched',
+      wheelCoverStyle: 'solid_aero',
+      haloHex: '#0B1936',
+      wishboneHex: '#171A24',
+      caliperHex: '#E01A38',
+      frontWingPrimaryHex: '#0B1936',
+      frontWingEndplateHex: '#0B1936',
+      floorTrimHex: '#E01A38',
+      cowlHex: '#0B1936',
+    },
     engineBadge: 'Red Bull-Ford DM01',
     driversSummary: 'Max Verstappen (#3) & Isack Hadjar (#6)',
-    visualNotes: 'Azul-marinho fosco de Milton Keynes com bico amarelo, sol no capô e grafismo vermelho.',
+    visualNotes: 'Azul-marinho acetinado de Milton Keynes com bico amarelo, sol dourado na tomada de ar e letras vermelhas na asa.',
     primaryNumbers: [3, 6],
     drivers: [
       {
@@ -170,17 +240,31 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     shortName: 'MER',
     carModelName: 'W17',
     patternStyle: 'mercedes_silver_black',
-    primaryHex: '#11141A',
+    primaryHex: '#13161D',
     secondaryHex: '#C8CDD6',
     accentHex: '#00D2BE',
-    rearWingAccentHex: '#11141A',
+    rearWingAccentHex: '#00D2BE',
     rimAccentHex: '#00D2BE',
     helmetPrimaryHex: '#C8CDD6',
     helmetSecondaryHex: '#00D2BE',
     finishType: 'satin_carbon',
+    aeroGeometry: {
+      noseStyle: 'broad_spoon',
+      airboxShape: 'oval_wide',
+      sidepodProfile: 'compact_inwash',
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'turbine_10',
+      haloHex: '#151820',
+      wishboneHex: '#1A1D26',
+      caliperHex: '#00D2BE',
+      frontWingPrimaryHex: '#151820',
+      frontWingEndplateHex: '#151820',
+      floorTrimHex: '#00D2BE',
+      cowlHex: '#13161D',
+    },
     engineBadge: 'Mercedes-AMG M17 E-Power',
     driversSummary: 'George Russell (#63) & Andrea Kimi Antonelli (#12)',
-    visualNotes: 'Carbono preto predominante com prata na frente do bico e frisos verdes Petronas.',
+    visualNotes: 'Prata na dianteira degradando para carbono exposto acetinado com onda ciano Petronas e estrelas no capô.',
     primaryNumbers: [63, 12],
     drivers: [
       {
@@ -212,14 +296,28 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     primaryHex: '#FF7A00',
     secondaryHex: '#16181E',
     accentHex: '#38BDF8',
-    rearWingAccentHex: '#16181E',
+    rearWingAccentHex: '#FF7A00',
     rimAccentHex: '#FF7A00',
     helmetPrimaryHex: '#D9FF00',
     helmetSecondaryHex: '#FF7A00',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'sculpted_curve',
+      airboxShape: 'teardrop',
+      sidepodProfile: 'downwash_ramp',
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'spoke_5_open',
+      haloHex: '#16181E',
+      wishboneHex: '#181A22',
+      caliperHex: '#FF7A00',
+      frontWingPrimaryHex: '#FF7A00',
+      frontWingEndplateHex: '#FF7A00',
+      floorTrimHex: '#94A3B8',
+      cowlHex: '#FF7A00',
+    },
     engineBadge: 'Mercedes-AMG M17 Cliente',
     driversSummary: 'Lando Norris (#4) & Oscar Piastri (#81)',
-    visualNotes: 'Laranja papaya característico em contraste direto com fibra de carbono exposta.',
+    visualNotes: 'Laranja papaya envernizado em corte dinâmico com laterais em fibra de carbono e asa traseira papaya.',
     primaryNumbers: [4, 81],
     drivers: [
       {
@@ -256,9 +354,23 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     helmetPrimaryHex: '#00594F',
     helmetSecondaryHex: '#CEDC00',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'slim_needle',
+      airboxShape: 'oval_wide',
+      sidepodProfile: 'waterslide_gully',
+      finProfile: 'stepped_vane',
+      wheelCoverStyle: 'mesh_fan',
+      haloHex: '#00594F',
+      wishboneHex: '#181C1D',
+      caliperHex: '#CEDC00',
+      frontWingPrimaryHex: '#00594F',
+      frontWingEndplateHex: '#14181A',
+      floorTrimHex: '#CEDC00',
+      cowlHex: '#00594F',
+    },
     engineBadge: 'Honda HRC RA626H',
     driversSummary: 'Fernando Alonso (#14) & Lance Stroll (#18)',
-    visualNotes: 'Verde britânico tradicional, contrastes em preto e detalhe azul claro no aerofólio traseiro.',
+    visualNotes: 'Verde britânico metálico com filetes verde-limão, canais waterslide e flap traseiro azul Aramco.',
     primaryNumbers: [14, 18],
     drivers: [
       {
@@ -287,17 +399,31 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     shortName: 'ALP',
     carModelName: 'A526',
     patternStyle: 'alpine_bwt',
-    primaryHex: '#007BFF',
+    primaryHex: '#0F1F5C',
     secondaryHex: '#F458B0',
-    accentHex: '#171920',
+    accentHex: '#38BDF8',
     rearWingAccentHex: '#F458B0',
     rimAccentHex: '#F458B0',
-    helmetPrimaryHex: '#007BFF',
+    helmetPrimaryHex: '#0F1F5C',
     helmetSecondaryHex: '#F458B0',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'sculpted_curve',
+      airboxShape: 'teardrop',
+      sidepodProfile: 'waterslide_gully',
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'turbine_10',
+      haloHex: '#F458B0',
+      wishboneHex: '#181B26',
+      caliperHex: '#F458B0',
+      frontWingPrimaryHex: '#0F1F5C',
+      frontWingEndplateHex: '#161820',
+      floorTrimHex: '#F458B0',
+      cowlHex: '#0F1F5C',
+    },
     engineBadge: 'Mercedes-AMG M17 Cliente',
     driversSummary: 'Pierre Gasly (#10) & Franco Colapinto (#43)',
-    visualNotes: 'Azul Alpine e rosa BWT com transição para motor Mercedes em 2026.',
+    visualNotes: 'Azul Alpine profundo com bico, halo, sidepods e asa traseira em rosa metálico BWT.',
     primaryNumbers: [10, 43],
     drivers: [
       {
@@ -327,16 +453,30 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     carModelName: 'FW48',
     patternStyle: 'williams_royal',
     primaryHex: '#0047AB',
-    secondaryHex: '#D4D8DF',
-    accentHex: '#38BDF8',
-    rearWingAccentHex: '#0047AB',
+    secondaryHex: '#38BDF8',
+    accentHex: '#F8FAFC',
+    rearWingAccentHex: '#151822',
     rimAccentHex: '#38BDF8',
     helmetPrimaryHex: '#0047AB',
-    helmetSecondaryHex: '#D4D8DF',
+    helmetSecondaryHex: '#38BDF8',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'wedge_chisel',
+      airboxShape: 'oval_wide',
+      sidepodProfile: 'compact_inwash',
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'spoke_5_open',
+      haloHex: '#0047AB',
+      wishboneHex: '#171B24',
+      caliperHex: '#38BDF8',
+      frontWingPrimaryHex: '#0047AB',
+      frontWingEndplateHex: '#151822',
+      floorTrimHex: '#38BDF8',
+      cowlHex: '#0047AB',
+    },
     engineBadge: 'Mercedes-AMG M17 Cliente',
     driversSummary: 'Carlos Sainz (#55) & Alexander Albon (#23)',
-    visualNotes: 'Azul royal como base com prata e azul claro em pontos estratégicos da carenagem.',
+    visualNotes: 'Azul royal brilhante com ondas azul-celeste nos sidepods, detalhes brancos e ponta branca na asa dianteira.',
     primaryNumbers: [55, 23],
     drivers: [
       {
@@ -368,14 +508,28 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     primaryHex: '#F1F3F6',
     secondaryHex: '#E10600',
     accentHex: '#FACC15',
-    rearWingAccentHex: '#161A24',
+    rearWingAccentHex: '#161C2E',
     rimAccentHex: '#E10600',
     helmetPrimaryHex: '#F1F3F6',
     helmetSecondaryHex: '#E10600',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'sculpted_curve',
+      airboxShape: 'teardrop',
+      sidepodProfile: 'downwash_ramp',
+      finProfile: 'tall_notched',
+      wheelCoverStyle: 'turbine_10',
+      haloHex: '#161C2E',
+      wishboneHex: '#181C26',
+      caliperHex: '#E10600',
+      frontWingPrimaryHex: '#F1F3F6',
+      frontWingEndplateHex: '#F1F3F6',
+      floorTrimHex: '#161C2E',
+      cowlHex: '#F1F3F6',
+    },
     engineBadge: 'Red Bull-Ford Cliente',
     driversSummary: 'Liam Lawson (#30) & Arvid Lindblad (#41)',
-    visualNotes: 'Carenagem branca perolada com detalhes em vermelho e amarelo.',
+    visualNotes: 'Branco perolado com tomada de ar amarela e touro vermelho, traseira azul-marinho e ponta da asa branca.',
     primaryNumbers: [30, 41],
     drivers: [
       {
@@ -412,9 +566,23 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     helmetPrimaryHex: '#F2F4F7',
     helmetSecondaryHex: '#DA291C',
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'wedge_chisel',
+      airboxShape: 'triangle',
+      sidepodProfile: 'compact_inwash',
+      finProfile: 'tall_notched',
+      wheelCoverStyle: 'spoke_5_open',
+      haloHex: '#F2F4F7',
+      wishboneHex: '#181A22',
+      caliperHex: '#DA291C',
+      frontWingPrimaryHex: '#17181E',
+      frontWingEndplateHex: '#17181E',
+      floorTrimHex: '#DA291C',
+      cowlHex: '#F2F4F7',
+    },
     engineBadge: 'Ferrari 067 Cliente',
     driversSummary: 'Esteban Ocon (#31) & Oliver Bearman (#87)',
-    visualNotes: 'Pintura predominantemente branca com presença marcante do vermelho Haas.',
+    visualNotes: 'Branco predominante com faixas dinâmicas pretas e vermelho Haas no capô, halo branco e asa traseira vermelha.',
     primaryNumbers: [31, 87],
     drivers: [
       {
@@ -443,17 +611,31 @@ export const LIVERY_2026_CATALOG: Livery2026Spec[] = [
     shortName: 'CAD',
     carModelName: 'MAC-26',
     patternStyle: 'cadillac_stealth',
-    primaryHex: '#16171D',
-    secondaryHex: '#C59B38',
-    accentHex: '#D1D5DB',
-    rearWingAccentHex: '#16171D',
-    rimAccentHex: '#C59B38',
-    helmetPrimaryHex: '#16171D',
-    helmetSecondaryHex: '#C59B38',
+    primaryHex: '#14161B',
+    secondaryHex: '#F3F4F6',
+    accentHex: '#94A3B8',
+    rearWingAccentHex: '#F3F4F6',
+    rimAccentHex: '#D1D5DB',
+    helmetPrimaryHex: '#14161B',
+    helmetSecondaryHex: '#F3F4F6',
     finishType: 'satin_carbon',
+    aeroGeometry: {
+      noseStyle: 'broad_spoon',
+      airboxShape: 'triangle',
+      sidepodProfile: 'box_shoulder',
+      finProfile: 'compact_blade',
+      wheelCoverStyle: 'mesh_fan',
+      haloHex: '#F3F4F6',
+      wishboneHex: '#191C24',
+      caliperHex: '#D1D5DB',
+      frontWingPrimaryHex: '#14161B',
+      frontWingEndplateHex: '#14161B',
+      floorTrimHex: '#94A3B8',
+      cowlHex: '#14161B',
+    },
     engineBadge: 'Ferrari 067 Cliente (GM)',
     driversSummary: 'Sergio Pérez (#11) & Valtteri Bottas (#77)',
-    visualNotes: 'Fibra escura stealth com detalhes em dourado Cadillac e prata.',
+    visualNotes: 'Carbono acetinado obsidiana em divisão geométrica contrastante branco gelo, halo branco e asa traseira branca.',
     primaryNumbers: [11, 77],
     drivers: [
       {
@@ -487,7 +669,8 @@ function deriveDriverCode(name: string): string {
 export function resolveTeamLivery2026(
   team?: Partial<Team> | null,
   fallbackDriversLabel?: string,
-  teamDrivers?: Driver[]
+  teamDrivers?: Driver[],
+  sidepodConcept?: 'downwash' | 'conventional' | 'zeropod'
 ): Livery2026Spec {
   const id = team?.id || 'apex';
   const preset = LIVERY_2026_CATALOG.find((item) => item.teamId === id);
@@ -528,12 +711,14 @@ export function resolveTeamLivery2026(
     return preset;
   }
 
+  const trimmedChassis = team?.carModelName?.trim();
+
   if (preset && team?.isPlayer) {
     return {
       ...preset,
       teamName: team.name || preset.teamName,
       shortName: team.shortName || preset.shortName,
-      carModelName: team.carModelName || preset.carModelName,
+      carModelName: trimmedChassis || preset.carModelName,
       primaryHex: primary,
       secondaryHex: secondary,
       engineBadge: team.engineSupplier ? `PU ${team.engineSupplier}` : preset.engineBadge,
@@ -566,11 +751,18 @@ export function resolveTeamLivery2026(
     },
   ];
 
+  const mappedSidepod: CarAeroProfile['sidepodProfile'] =
+    sidepodConcept === 'zeropod'
+      ? 'compact_inwash'
+      : sidepodConcept === 'conventional'
+      ? 'box_shoulder'
+      : 'downwash_ramp';
+
   return {
     teamId: id,
     teamName: team?.name || 'APEX Grand Prix Team',
     shortName: team?.shortName || 'APX',
-    carModelName: team?.carModelName || 'APEX-26',
+    carModelName: trimmedChassis || 'APEX-26',
     patternStyle: 'custom',
     primaryHex: primary,
     secondaryHex: secondary,
@@ -580,6 +772,20 @@ export function resolveTeamLivery2026(
     helmetPrimaryHex: customDrivers[0].helmetPrimaryHex,
     helmetSecondaryHex: customDrivers[0].helmetSecondaryHex,
     finishType: 'gloss',
+    aeroGeometry: {
+      noseStyle: 'sculpted_curve',
+      airboxShape: 'teardrop',
+      sidepodProfile: mappedSidepod,
+      finProfile: 'swept_long',
+      wheelCoverStyle: 'spoke_5_open',
+      haloHex: '#161820',
+      wishboneHex: '#181A22',
+      caliperHex: primary,
+      frontWingPrimaryHex: primary,
+      frontWingEndplateHex: '#161820',
+      floorTrimHex: secondary,
+      cowlHex: primary,
+    },
     engineBadge: team?.engineSupplier ? `PU ${team.engineSupplier}` : 'PU Híbrida 2026 50/50',
     driversSummary: computedDriversSummary || 'Dupla Titular da Equipe',
     visualNotes: 'Pintura personalizada da escuderia com pacote aerodinâmico ativo FIA 2026.',

@@ -5,6 +5,7 @@ import { TireCompound, EngineMode, AeroMode, PaceMode, FuelMixMode } from '../..
 import { RealCircuitMap } from '../circuits/RealCircuitMap';
 import { PersonAvatar } from '../common/PersonAvatar';
 import { evaluatePracticeSetup, type SetupParameterStatus } from '../../engine/setupFeedbackEngine';
+import { evaluateRacePitWallRadio, isWetWeather } from '../../engine/raceGridAndEvents';
 import {
   Flag,
   Play,
@@ -64,6 +65,7 @@ export const WeekendTab: React.FC = () => {
     orderPitStop,
     finishRaceWeekend,
     drivers,
+    staff,
     allTeams,
     playerTeam,
     vehiclePhysics,
@@ -80,6 +82,25 @@ export const WeekendTab: React.FC = () => {
   const activeCar = playerCars.find(c => c.driverId === selectedDriverTactics) || playerCars[0];
   const allPlayerCarsRetired =
     playerCars.length > 0 && playerCars.every(c => c.status === 'retired' || c.isDisqualified);
+  const wetPaceLocked = isWetWeather(trackWeather);
+  const computedTrackTempC =
+    trackWeather === 'heavy_rain'
+      ? 23
+      : trackWeather === 'light_rain'
+      ? 26
+      : trackWeather === 'overcast'
+      ? 34
+      : Math.round(38 + currentTrackPhysics.coolingDemandIndex01 * 15);
+  const chiefEngineerName =
+    staff.find(s => s.role === 'head_aero' && (s.currentTeam === playerTeam.name || s.id.startsWith('staff_head')))?.name ||
+    staff.find(s => s.role === 'sporting_director')?.name ||
+    'Marcus Vance';
+  const pitWallRadioMessages = evaluateRacePitWallRadio({
+    playerCars,
+    weather: trackWeather,
+    trackTempC: computedTrackTempC,
+    chiefEngineerName,
+  });
 
   const activeDrivers = drivers.filter(d => playerTeam.drivers?.includes(d.id));
   const driverFeedbackAvg =
@@ -670,7 +691,7 @@ export const WeekendTab: React.FC = () => {
           <div className="bg-[#1C1C26] border border-white/10 p-3 f1-pattern-micro-grid flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 bg-[#E10600] rounded-none animate-pulse" />
+                <span className="w-2.5 h-2.5 bg-[#E10600] rounded-none" />
                 <span className="font-f1-wide font-black text-sm text-white uppercase tracking-wider">
                   LIVE GRAND PRIX
                 </span>
@@ -683,9 +704,9 @@ export const WeekendTab: React.FC = () => {
               <div
                 className={`px-2.5 py-1 text-xs font-f1-wide font-bold uppercase border flex items-center gap-1.5 ${
                   trackFlagStatus === 'red'
-                    ? 'bg-red-600/25 border-red-500 text-red-300 animate-pulse'
+                    ? 'bg-red-600/25 border-red-500 text-red-300'
                     : trackFlagStatus === 'sc' || safetyCarStatus === 'full_sc'
-                    ? 'bg-amber-500/25 border-amber-400 text-amber-300 animate-pulse'
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-300'
                     : trackFlagStatus === 'vsc' || safetyCarStatus === 'vsc'
                     ? 'bg-yellow-500/20 border-yellow-400 text-yellow-200'
                     : trackFlagStatus === 'yellow'
@@ -821,7 +842,7 @@ export const WeekendTab: React.FC = () => {
                           </span>
                           {getCompoundBadge(car.tireCompound)}
                           <span className="text-[10px] text-zinc-500 tabular-nums">
-                            {car.tireWearPercent}%w
+                            {Math.round(car.tireWearPercent)}%w
                           </span>
                           {car.hasBlueFlag && !isOut && (
                             <span className="text-[9px] bg-blue-600/80 text-white px-1 font-bold" title="Bandeira Azul">
@@ -989,16 +1010,22 @@ export const WeekendTab: React.FC = () => {
                           </span>
                         </div>
                         <div className="bg-[#15151E] p-2 border border-white/5">
-                          <span className="text-zinc-400 block">TEMP. ERS / MARGEM</span>
-                          <span className={vehiclePhysics.thermalMarginC < 4 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                            {activeCar.batteryTempC.toFixed(1)}°C ({vehiclePhysics.thermalMarginC}°C)
+                          <span className="text-zinc-400 block">TEMP. ICE / ERS</span>
+                          <span className={(activeCar.iceTempC ?? 99) >= 115 ? 'text-red-400 font-bold' : vehiclePhysics.thermalMarginC < 4 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                            {(activeCar.iceTempC ?? 99).toFixed(1)}°C / {activeCar.batteryTempC.toFixed(1)}°C
                           </span>
+                          {(activeCar.iceTempC ?? 99) >= 115 && (
+                            <span className="text-[9px] text-red-300 font-bold block">DERATING TÉRMICO</span>
+                          )}
                         </div>
                         <div className="bg-[#15151E] p-2 border border-white/5">
-                          <span className="text-zinc-400 block">JANELA PNEU</span>
-                          <span className="text-cyan-300 font-bold">
-                            {vehiclePhysics.tireThermalWindowHealthPct}% (x{vehiclePhysics.tireWearRateMultiplier})
+                          <span className="text-zinc-400 block">PISTA / PNEU</span>
+                          <span className={computedTrackTempC > 50 && activeCar.tireCompound === 'soft' ? 'text-amber-400 font-bold' : 'text-cyan-300 font-bold'}>
+                            {computedTrackTempC}°C Asfalto · {vehiclePhysics.tireThermalWindowHealthPct}%
                           </span>
+                          {computedTrackTempC > 50 && activeCar.tireCompound === 'soft' && (
+                            <span className="text-[9px] text-amber-300 font-bold block">BLISTERING (&gt;50°C SOFT)</span>
+                          )}
                         </div>
                         <div className="bg-[#15151E] p-2 border border-white/5">
                           <span className="text-zinc-400 block">MASSA / POTÊNCIA</span>
@@ -1007,6 +1034,42 @@ export const WeekendTab: React.FC = () => {
                           </span>
                         </div>
                       </div>
+
+                      {/* Pilot Error Risk Telemetry Bar */}
+                      {(() => {
+                        const riskPct = activeCar.errorRiskPct ?? 18;
+                        const stateLabel =
+                          activeCar.errorStateLabel === 'erratico'
+                            ? 'Errático'
+                            : activeCar.errorStateLabel === 'pressao'
+                            ? 'Sob Pressão'
+                            : 'Calmo';
+                        const riskColor =
+                          riskPct > 60 ? 'text-red-400' : riskPct > 30 ? 'text-amber-400' : 'text-emerald-400';
+                        const barColor =
+                          riskPct > 60 ? 'bg-red-500' : riskPct > 30 ? 'bg-amber-400' : 'bg-emerald-500';
+                        return (
+                          <div className="bg-[#15151E] p-3 border border-white/5 space-y-1.5">
+                            <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-f1-mono">
+                              <span className="text-zinc-400 uppercase flex items-center gap-1.5">
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                                TELEMETRIA DE RISCO DE ERRO (PILOTO)
+                              </span>
+                              <span className={`font-bold tabular-nums uppercase ${riskColor}`}>
+                                {riskPct}% · {stateLabel}
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-white/10 overflow-hidden">
+                              <div className={`h-full transition-all duration-300 ${barColor}`} style={{ width: `${riskPct}%` }} />
+                            </div>
+                            {activeCar.lastIncidentText && (
+                              <div className="text-[10px] font-f1-mono text-amber-300">
+                                Último evento: {activeCar.lastIncidentText}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* E-Fuel Consumption & Telemetry Bar (2026 Regulation) */}
                       <div className="bg-[#15151E] p-3 border border-white/5 space-y-2.5">
@@ -1024,7 +1087,7 @@ export const WeekendTab: React.FC = () => {
                         <div className="space-y-1">
                           <div className="flex justify-between text-[10px] font-f1-mono text-zinc-400">
                             <span>Carga no Tanque</span>
-                            <span className={activeCar.fuelRemainingKg < 10 ? 'text-red-400 font-bold animate-pulse' : 'text-zinc-300'}>
+                            <span className={activeCar.fuelRemainingKg < 10 ? 'text-red-400 font-bold' : 'text-zinc-300'}>
                               {((activeCar.fuelRemainingKg / activeCar.fuelInitialKg) * 100).toFixed(0)}%
                               {activeCar.fuelRemainingKg < 10 && ' (CRÍTICO: RISCO PANE SECA)'}
                             </span>
@@ -1108,23 +1171,44 @@ export const WeekendTab: React.FC = () => {
                       {/* Tactical Directives: Pace & ERS & Active Aero */}
                       {activeCar.status === 'running' && !activeCar.isDisqualified && (
                       <div className="space-y-3">
-                        {/* Pace Mode */}
+                        {/* Pace Mode (Ataque / Normal / Economia + Trava de Chuva) */}
                         <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
-                          <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">DRIVER PACE MODE</span>
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {(['conserve', 'balanced', 'push', 'attack'] as PaceMode[]).map(mode => (
-                              <button
-                                key={mode}
-                                onClick={() => updateDriverTactics(activeCar.driverId, { paceMode: mode })}
-                                className={`py-1.5 text-xs font-f1-wide uppercase tracking-wider ${
-                                  activeCar.paceMode === mode
-                                    ? 'bg-[#E10600] text-white font-bold'
-                                    : 'bg-[#1C1C26] text-zinc-400 hover:text-white'
-                                }`}
-                              >
-                                {mode}
-                              </button>
-                            ))}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] font-f1-mono text-zinc-400 uppercase">
+                              MODO DE RITMO DO PILOTO (PIT WALL)
+                            </span>
+                            {wetPaceLocked && (
+                              <span className="text-[9px] font-f1-mono px-2 py-0.5 bg-cyan-950/70 border border-cyan-500/50 text-cyan-300 font-bold uppercase">
+                                TRAVA DE CHUVA: MODO NORMAL ATIVO
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {(
+                              [
+                                { id: 'attack' as PaceMode, label: 'ATAQUE', sub: '3x Desgaste · +Ritmo' },
+                                { id: 'balanced' as PaceMode, label: 'NORMAL', sub: '1x Nominal' },
+                                { id: 'conserve' as PaceMode, label: 'ECONOMIA', sub: '0.6x Pneu · Menos Erro' },
+                              ] as const
+                            ).map(modeObj => {
+                              const lockedOut = wetPaceLocked && modeObj.id !== 'balanced';
+                              const isSelected = activeCar.paceMode === modeObj.id || (wetPaceLocked && modeObj.id === 'balanced');
+                              return (
+                                <button
+                                  key={modeObj.id}
+                                  disabled={lockedOut}
+                                  onClick={() => updateDriverTactics(activeCar.driverId, { paceMode: modeObj.id })}
+                                  className={`py-2 px-1.5 text-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                                    isSelected
+                                      ? 'bg-[#E10600] text-white font-bold'
+                                      : 'bg-[#1C1C26] text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  <span className="block text-xs font-f1-wide uppercase">{modeObj.label}</span>
+                                  <span className="block text-[9px] font-f1-mono opacity-80">{modeObj.sub}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -1227,7 +1311,7 @@ export const WeekendTab: React.FC = () => {
                         <div className="bg-[#15151E] p-3 border border-white/5 space-y-2">
                           <div className="flex items-center justify-between text-xs font-f1-mono">
                             <span className="text-zinc-400 uppercase">PIT STRATEGY CALL</span>
-                            <span className="text-zinc-400">Current: {activeCar.tireCompound.toUpperCase()} ({activeCar.tireWearPercent}% wear)</span>
+                            <span className="text-zinc-400">Current: {activeCar.tireCompound.toUpperCase()} ({Math.round(activeCar.tireWearPercent)}% wear)</span>
                           </div>
                           
                           <div className="flex items-center gap-2">
@@ -1253,6 +1337,40 @@ export const WeekendTab: React.FC = () => {
                         </div>
                       </div>
                       )}
+
+                      {/* Live Pit Wall Radio Feed */}
+                      <div className="bg-[#15151E] p-3 border border-cyan-500/30 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-f1-mono">
+                          <span className="text-cyan-300 font-bold uppercase flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5" />
+                            RÁDIO DO PIT WALL EM TEMPO REAL
+                          </span>
+                          <span className="text-[10px] text-zinc-400">{pitWallRadioMessages.length} alerta(s)</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto text-[11px] font-f1-mono">
+                          {pitWallRadioMessages.length === 0 ? (
+                            <div className="text-zinc-500">
+                              Canal limpo: temperaturas, aderência e janela dos pneus dentro dos limites operacionais.
+                            </div>
+                          ) : (
+                            pitWallRadioMessages.map(msg => (
+                              <div
+                                key={msg.id}
+                                className={`p-2 border-l-2 bg-[#1C1C26] ${
+                                  msg.severity === 'critical'
+                                    ? 'border-red-500 text-red-200'
+                                    : 'border-amber-400 text-amber-200'
+                                }`}
+                              >
+                                <div className="text-[9px] font-bold uppercase text-zinc-400">
+                                  {msg.senderRole} · {msg.senderName}
+                                </div>
+                                <div className="leading-snug mt-0.5">"{msg.message}"</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </F1TabBucket>
                 </div>

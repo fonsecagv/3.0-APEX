@@ -26,7 +26,9 @@ import {
   BaseDeFasPoint,
   PuClientContract,
   SeasonEventCard,
-  MidSeasonDilemma
+  MidSeasonDilemma,
+  TrackFeedbackEntry,
+  CarUpgradeMilestone
 } from '../types/f1';
 import {
   computeRdFacilityCapacity,
@@ -53,10 +55,17 @@ import {
   computeDriverRaceProfile,
   sortRaceClassification,
   stepRaceSimulationTick,
+  isWetWeather,
   type TrackFlagStatus,
   type RaceControlEvent,
   type RaceFlagState
 } from '../engine/raceGridAndEvents';
+import {
+  computeDriverXpGain,
+  applyDriverXpAndEvolution,
+  computeStaffXpGain,
+  applyStaffXpAndEvolution,
+} from '../engine/rpgProgressionEngine';
 import { PRINCIPAL_BACKGROUNDS } from '../data/principalBackgroundsData';
 import { PU_CLIENT_PROPOSALS } from '../data/puClientsData';
 import {
@@ -80,6 +89,19 @@ import {
 } from '../circuits';
 import { generateNewDrivers } from '../data/marketData';
 import { Language, Translations, TRANSLATIONS } from '../i18n/translations';
+import {
+  CAREER_ACTIVE_SCREEN_KEY,
+  CAREER_RECENT_SAVE_KEY,
+  CAREER_SAVE_SLOTS_KEY,
+  PersistedCareerSave,
+  PersistedCareerState,
+  buildCareerSavePayload,
+  readRecentCareerSave,
+  readSavedSlotsList,
+  setActiveScreenPreference,
+  shouldStartOnStartScreenOnBoot,
+  writeCareerSaveToStorage,
+} from '../utils/careerPersistence';
 
 export type { TrackFlagStatus, RaceControlEvent };
 export type GameTab = 'overview' | 'engineering' | 'facilities' | 'team' | 'financials' | 'race_weekend' | 'pu_clients';
@@ -104,6 +126,7 @@ export interface NewGameConfig {
 
 interface GameContextType {
   // Start Screen & Language
+  careerInitialized: boolean;
   showStartScreen: boolean;
   setShowStartScreen: (show: boolean) => void;
   showOnboarding: boolean;
@@ -119,7 +142,7 @@ interface GameContextType {
   playRadioSound: () => void;
   
   // Save / Load
-  saveGame: (slotId?: string) => void;
+  saveGame: (slotId?: string, overrideState?: Record<string, unknown>) => void;
   loadGame: (slotId: string) => boolean;
   loadRecentSave: () => boolean;
   exportCareerStatePayload: () => {
@@ -351,135 +374,248 @@ interface GameContextType {
   resolveSeasonEventCard: (optionIndex: number) => void;
   pendingMidSeasonDilemma: MidSeasonDilemma | null;
   resolveMidSeasonDilemma: (strategy: 'current_car' | 'balanced' | 'next_year') => void;
+
+  // Engineering Track Feedback Inbox, 24-GP Upgrade Timeline & PU Development Points
+  trackFeedbackLog: TrackFeedbackEntry[];
+  upgradeTimeline: CarUpgradeMilestone[];
+  puDevPoints: number;
+  investPuDevPoints: (target: 'power' | 'reliability') => boolean;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [showStartScreen, setShowStartScreen] = useState<boolean>(() => {
-    // Check if there is an active game already in memory
-    return true;
-  });
+  const [bootSave] = useState<PersistedCareerSave | null>(() => readRecentCareerSave());
+  const sBoot = bootSave?.state;
+
+  const [careerInitialized, setCareerInitialized] = useState<boolean>(() => Boolean(sBoot));
+  const [showStartScreen, setShowStartScreenState] = useState<boolean>(() =>
+    shouldStartOnStartScreenOnBoot(bootSave)
+  );
+  const setShowStartScreen = (show: boolean) => {
+    setShowStartScreenState(show);
+    setActiveScreenPreference(show ? 'start' : 'career');
+  };
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('f1_apex_lang') as Language) || 'pt';
   });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [realisticCorrelation, setRealisticCorrelation] = useState<boolean>(true);
-  const [hasRecentSave, setHasRecentSave] = useState<boolean>(false);
-  const [saveSlots, setSaveSlots] = useState<SaveSlotInfo[]>([]);
+  const [hasRecentSave, setHasRecentSave] = useState<boolean>(() => Boolean(bootSave));
+  const [saveSlots, setSaveSlots] = useState<SaveSlotInfo[]>(() => readSavedSlotsList());
   const [resetToastMessage, setResetToastMessage] = useState<string | null>(null);
   const [onboardingSessionKey, setOnboardingSessionKey] = useState<number>(1);
 
-  const [activeTab, setActiveTab] = useState<GameTab>('overview');
+  const [activeTab, setActiveTab] = useState<GameTab>(() => sBoot?.activeTab || 'overview');
   const [dashboardViewMode, setDashboardViewMode] = useState<'command' | 'grands_prix'>('command');
   const openGrandsPrixMode = () => {
     setDashboardViewMode('grands_prix');
     setActiveTab('overview');
   };
-  const [currentWeek, setCurrentWeek] = useState(1);
-  const [seasonYear, setSeasonYear] = useState(2026);
-  const [currentCircuitIndex, setCurrentCircuitIndex] = useState(0);
+  const [currentWeek, setCurrentWeek] = useState(() => sBoot?.currentWeek || 1);
+  const [seasonYear, setSeasonYear] = useState(() => sBoot?.seasonYear || 2026);
+  const [currentCircuitIndex, setCurrentCircuitIndex] = useState(() => sBoot?.currentCircuitIndex || 0);
 
-  const [allTeams, setAllTeams] = useState<Team[]>(INITIAL_TEAMS);
-  const [drivers, setDrivers] = useState<Driver[]>(INITIAL_DRIVERS);
-  const [staff, setStaff] = useState<StaffMember[]>(INITIAL_STAFF);
-  const [facilities, setFacilities] = useState<Facility[]>(INITIAL_FACILITIES);
-  const [components, setComponents] = useState<ComponentSpec[]>(INITIAL_COMPONENTS);
-  const [sponsors, setSponsors] = useState<Sponsor[]>(INITIAL_SPONSORS);
-  
-  const [financials, setFinancials] = useState<TeamFinancials>({
-    bankBalance: 135000000,
-    costCapLimit: 135000000,
-    costCapSpent: 38000000,
-    atrWindTunnelHoursAvailable: 360,
-    atrCfdMegaAllocations: 300,
-    atrPeriodWeeksLeft: 8
+  const [allTeams, setAllTeams] = useState<Team[]>(() =>
+    sBoot?.allTeams?.length ? sBoot.allTeams : INITIAL_TEAMS
+  );
+  const [drivers, setDrivers] = useState<Driver[]>(() =>
+    sBoot?.drivers?.length
+      ? sBoot.drivers.map(d => ({ ...d, trust: d.trust ?? 75 }))
+      : INITIAL_DRIVERS
+  );
+  const [staff, setStaff] = useState<StaffMember[]>(() => {
+    if (!sBoot?.staff?.length) return INITIAL_STAFF;
+    const existingIds = new Set(sBoot.staff.map(st => st.id));
+    const missingStaff = INITIAL_STAFF.filter(st => st.role === 'chief_mechanic' && !existingIds.has(st.id));
+    return [...sBoot.staff, ...missingStaff].map(st => ({ ...st, trust: st.trust ?? 75 }));
   });
+  const [facilities, setFacilities] = useState<Facility[]>(() => {
+    if (!sBoot?.facilities?.length) return INITIAL_FACILITIES;
+    const playerSavedTeam = sBoot.allTeams?.find(t => t.isPlayer);
+    const isSavedWorks = Boolean(
+      playerSavedTeam?.isManufacturer ||
+        playerSavedTeam?.engineOrigin === 'bought_factory' ||
+        playerSavedTeam?.engineOrigin === 'phoenix'
+    );
+    const byId = new Map<string, Facility>(sBoot.facilities.map(f => [f.id, f]));
+    const merged: Facility[] = COMMON_FACILITIES_INITIAL.map(baseFac => {
+      const existing = byId.get(baseFac.id);
+      return existing ? { ...baseFac, ...existing } : { ...baseFac };
+    });
+    if (isSavedWorks) {
+      const existingWorks = byId.get(WORKS_PU_FACTORY_INITIAL.id);
+      merged.push(existingWorks ? { ...WORKS_PU_FACTORY_INITIAL, ...existingWorks } : { ...WORKS_PU_FACTORY_INITIAL });
+    }
+    return merged;
+  });
+  const [components, setComponents] = useState<ComponentSpec[]>(() =>
+    sBoot?.components?.length ? sBoot.components : INITIAL_COMPONENTS
+  );
+  const [sponsors, setSponsors] = useState<Sponsor[]>(() =>
+    sBoot?.sponsors?.length ? sBoot.sponsors : INITIAL_SPONSORS
+  );
+
+  const [financials, setFinancials] = useState<TeamFinancials>(() =>
+    sBoot?.financials || {
+      bankBalance: 135000000,
+      costCapLimit: 135000000,
+      costCapSpent: 38000000,
+      atrWindTunnelHoursAvailable: 360,
+      atrCfdMegaAllocations: 300,
+      atrPeriodWeeksLeft: 8
+    }
+  );
 
   const [principalProfile, setPrincipalProfile] = useState<{
     name: string;
     background: PrincipalBackgroundId;
-  }>({
-    name: 'Guilherme',
-    background: 'chief_engineer'
-  });
+  }>(() =>
+    sBoot?.principalProfile || {
+      name: 'Guilherme',
+      background: 'chief_engineer'
+    }
+  );
 
   // DNA Initial Modifiers (GameState)
-  const [modificadorErroCorrelacao, setModificadorErroCorrelacao] = useState<number>(-0.35);
-  const [modificadorSinergiaPiloto, setModificadorSinergiaPiloto] = useState<number>(-15);
-  const [modificadorTempoPeD, setModificadorTempoPeD] = useState<number>(1.0);
-  const [modificadorConfiabilidade, setModificadorConfiabilidade] = useState<number>(0);
-  const [modificadorConfiancaDiretoria, setModificadorConfiancaDiretoria] = useState<number>(0);
-  const [modificadorMoralFabrica, setModificadorMoralFabrica] = useState<number>(0);
-  const [modificadorCaixaInicial, setModificadorCaixaInicial] = useState<number>(0);
-  const [modificadorDownforce, setModificadorDownforce] = useState<number>(0);
-  const [modificadorTempoManufatura, setModificadorTempoManufatura] = useState<number>(1.0);
-  const [modificadorSetupRapido, setModificadorSetupRapido] = useState<boolean>(false);
+  const [modificadorErroCorrelacao, setModificadorErroCorrelacao] = useState<number>(
+    () => sBoot?.modificadorErroCorrelacao ?? -0.35
+  );
+  const [modificadorSinergiaPiloto, setModificadorSinergiaPiloto] = useState<number>(
+    () => sBoot?.modificadorSinergiaPiloto ?? -15
+  );
+  const [modificadorTempoPeD, setModificadorTempoPeD] = useState<number>(
+    () => sBoot?.modificadorTempoPeD ?? 1.0
+  );
+  const [modificadorConfiabilidade, setModificadorConfiabilidade] = useState<number>(
+    () => sBoot?.modificadorConfiabilidade ?? 0
+  );
+  const [modificadorConfiancaDiretoria, setModificadorConfiancaDiretoria] = useState<number>(
+    () => sBoot?.modificadorConfiancaDiretoria ?? 0
+  );
+  const [modificadorMoralFabrica, setModificadorMoralFabrica] = useState<number>(
+    () => sBoot?.modificadorMoralFabrica ?? 0
+  );
+  const [modificadorCaixaInicial, setModificadorCaixaInicial] = useState<number>(
+    () => sBoot?.modificadorCaixaInicial ?? 0
+  );
+  const [modificadorDownforce, setModificadorDownforce] = useState<number>(
+    () => sBoot?.modificadorDownforce ?? 0
+  );
+  const [modificadorTempoManufatura, setModificadorTempoManufatura] = useState<number>(
+    () => sBoot?.modificadorTempoManufatura ?? 1.0
+  );
+  const [modificadorSetupRapido, setModificadorSetupRapido] = useState<boolean>(
+    () => sBoot?.modificadorSetupRapido ?? false
+  );
 
   // Time Budget & Marketing System (GameState)
-  const [semanasParaTeste, setSemanasParaTeste] = useState<number>(8);
-  const [baseDeFas, setBaseDeFas] = useState<number>(5000000);
-  const [receitaMarketing, setReceitaMarketing] = useState<number>(2000000);
-  const [receitaMerchandising, setReceitaMerchandising] = useState<number>(500000);
-  const [baseDeFasHistory, setBaseDeFasHistory] = useState<BaseDeFasPoint[]>([
-    {
-      round: 0,
-      raceName: 'Pré-Temporada',
-      fans: 5000000,
-      changePercent: 0
-    }
-  ]);
+  const [semanasParaTeste, setSemanasParaTeste] = useState<number>(() => sBoot?.semanasParaTeste ?? 8);
+  const [baseDeFas, setBaseDeFas] = useState<number>(() => sBoot?.baseDeFas ?? 5000000);
+  const [receitaMarketing, setReceitaMarketing] = useState<number>(() => sBoot?.receitaMarketing ?? 2000000);
+  const [receitaMerchandising, setReceitaMerchandising] = useState<number>(() => sBoot?.receitaMerchandising ?? 500000);
+  const [baseDeFasHistory, setBaseDeFasHistory] = useState<BaseDeFasPoint[]>(() =>
+    sBoot?.baseDeFasHistory?.length
+      ? sBoot.baseDeFasHistory
+      : [
+          {
+            round: 0,
+            raceName: 'Pré-Temporada',
+            fans: 5000000,
+            changePercent: 0
+          }
+        ]
+  );
 
   // 3-Year Progression & Non-Linear Evolution State
-  const [atrNextYearAllocationRatio, setAtrNextYearAllocationRatio] = useState<number>(0.40);
-  const [consecutiveNoPointsRaces, setConsecutiveNoPointsRaces] = useState<number>(0);
-  const [usedPhoenixYear1, setUsedPhoenixYear1] = useState<boolean>(false);
-  const [phoenixDiscountH1, setPhoenixDiscountH1] = useState<boolean>(false);
-  const [seasonFinishHistory, setSeasonFinishHistory] = useState<{ season: number; position: number }[]>([]);
-  const [performanceHistory, setPerformanceHistory] = useState<PerformanceHistoryPoint[]>([
-    {
-      round: 0,
-      season: 2026,
-      circuitName: 'Pré-Temporada',
-      playerRating: 81,
-      rivalRatings: {
-        ferrari: 92,
-        redbull: 90,
-        mercedes: 88
-      }
-    }
-  ]);
+  const [atrNextYearAllocationRatio, setAtrNextYearAllocationRatio] = useState<number>(
+    () => sBoot?.atrNextYearAllocationRatio ?? 0.40
+  );
+  const [consecutiveNoPointsRaces, setConsecutiveNoPointsRaces] = useState<number>(
+    () => sBoot?.consecutiveNoPointsRaces ?? 0
+  );
+  const [usedPhoenixYear1, setUsedPhoenixYear1] = useState<boolean>(() => sBoot?.usedPhoenixYear1 ?? false);
+  const [phoenixDiscountH1, setPhoenixDiscountH1] = useState<boolean>(() => sBoot?.phoenixDiscountH1 ?? false);
+  const [seasonFinishHistory, setSeasonFinishHistory] = useState<{ season: number; position: number }[]>(
+    () => sBoot?.seasonFinishHistory || []
+  );
+  const [performanceHistory, setPerformanceHistory] = useState<PerformanceHistoryPoint[]>(() =>
+    sBoot?.performanceHistory?.length
+      ? sBoot.performanceHistory
+      : [
+          {
+            round: 0,
+            season: 2026,
+            circuitName: 'Pré-Temporada',
+            playerRating: 81,
+            rivalRatings: {
+              ferrari: 92,
+              redbull: 90,
+              mercedes: 88
+            }
+          }
+        ]
+  );
 
   // ADUO System State (Additional Development and Upgrade Opportunities)
-  const [aduoWindowActive, setAduoWindowActive] = useState<boolean>(false);
-  const [aduoWeeksRemaining, setAduoWeeksRemaining] = useState<number>(0);
-  const [aduoHomologationQuotas, setAduoHomologationQuotas] = useState<number>(0);
-  const [aduoChassisDelayWeeks, setAduoChassisDelayWeeks] = useState<number>(0);
-  const [aduoLastGapPercent, setAduoLastGapPercent] = useState<number>(0);
-  const [aduoBenchmarkPwr, setAduoBenchmarkPwr] = useState<number>(90);
-  const [aduoPlayerPwr, setAduoPlayerPwr] = useState<number>(82);
-  const [aduoHistory, setAduoHistory] = useState<AduoEvaluationResult[]>([]);
+  const [aduoWindowActive, setAduoWindowActive] = useState<boolean>(() => sBoot?.aduoWindowActive ?? false);
+  const [aduoWeeksRemaining, setAduoWeeksRemaining] = useState<number>(() => sBoot?.aduoWeeksRemaining ?? 0);
+  const [aduoHomologationQuotas, setAduoHomologationQuotas] = useState<number>(
+    () => sBoot?.aduoHomologationQuotas ?? 0
+  );
+  const [aduoChassisDelayWeeks, setAduoChassisDelayWeeks] = useState<number>(
+    () => sBoot?.aduoChassisDelayWeeks ?? 0
+  );
+  const [aduoLastGapPercent, setAduoLastGapPercent] = useState<number>(() => sBoot?.aduoLastGapPercent ?? 0);
+  const [aduoBenchmarkPwr, setAduoBenchmarkPwr] = useState<number>(() => sBoot?.aduoBenchmarkPwr ?? 90);
+  const [aduoPlayerPwr, setAduoPlayerPwr] = useState<number>(() => sBoot?.aduoPlayerPwr ?? 82);
+  const [aduoHistory, setAduoHistory] = useState<AduoEvaluationResult[]>(() => sBoot?.aduoHistory || []);
 
   // Homologação Obrigatória da FIA (Congelamento de Hardware)
-  const [motorHomologado, setMotorHomologado] = useState<boolean>(false);
-  const [semanasRestantesPreTemporada, setSemanasRestantesPreTemporada] = useState<number>(8);
+  const [motorHomologado, setMotorHomologado] = useState<boolean>(() => sBoot?.motorHomologado ?? false);
+  const [semanasRestantesPreTemporada, setSemanasRestantesPreTemporada] = useState<number>(
+    () => sBoot?.semanasRestantesPreTemporada ?? 8
+  );
   const motorHomologadoFIA = motorHomologado;
   const setMotorHomologadoFIA = setMotorHomologado;
 
   // SI Multi-Physics Vehicle Parameters & Simulation State
-  const [vehicleParams, setVehicleParams] = useState<VehicleEngineeringParameters>(DEFAULT_VEHICLE_PARAMS);
-  const [lastSimulationReport, setLastSimulationReport] = useState<SimulationReport | null>(null);
-  const [unlockedPuMaterials, setUnlockedPuMaterials] = useState<string[]>([
-    'fia_iron_ams6487',
-    'lightweight_lithium',
-    'dense_pack',
-  ]);
+  const [vehicleParams, setVehicleParams] = useState<VehicleEngineeringParameters>(() =>
+    sBoot?.vehicleParams ? { ...DEFAULT_VEHICLE_PARAMS, ...sBoot.vehicleParams } : DEFAULT_VEHICLE_PARAMS
+  );
+  const [lastSimulationReport, setLastSimulationReport] = useState<SimulationReport | null>(
+    () => sBoot?.lastSimulationReport ?? null
+  );
+  const [unlockedPuMaterials, setUnlockedPuMaterials] = useState<string[]>(() => {
+    const base =
+      Array.isArray(sBoot?.unlockedPuMaterials) && sBoot.unlockedPuMaterials.length > 0
+        ? [...sBoot.unlockedPuMaterials]
+        : ['fia_iron_ams6487', 'lightweight_lithium', 'dense_pack'];
+    if (sBoot?.vehicleParams?.iceMetallurgyId && !base.includes(sBoot.vehicleParams.iceMetallurgyId)) {
+      base.push(sBoot.vehicleParams.iceMetallurgyId);
+    }
+    if (sBoot?.vehicleParams?.batterySubChemistry && !base.includes(sBoot.vehicleParams.batterySubChemistry)) {
+      base.push(sBoot.vehicleParams.batterySubChemistry);
+    }
+    return base;
+  });
   const [activePuMaterialResearch, setActivePuMaterialResearch] = useState<{
     projectId: string;
     weeksRemaining: number;
     totalWeeks: number;
-  } | null>(null);
+  } | null>(() => sBoot?.activePuMaterialResearch ?? null);
+  const [trackFeedbackLog, setTrackFeedbackLog] = useState<TrackFeedbackEntry[]>(
+    () => (Array.isArray(sBoot?.trackFeedbackLog) ? sBoot.trackFeedbackLog : [])
+  );
+  const [upgradeTimeline, setUpgradeTimeline] = useState<CarUpgradeMilestone[]>(() =>
+    Array.isArray(sBoot?.upgradeTimeline) && sBoot.upgradeTimeline.length > 0
+      ? sBoot.upgradeTimeline
+      : [{ gpRound: 1, label: 'Homologação Inicial', componentType: 'chassis', level: 1 }]
+  );
+  const [puDevPoints, setPuDevPoints] = useState<number>(() =>
+    typeof sBoot?.puDevPoints === 'number' ? sBoot.puDevPoints : 0
+  );
 
   const updateVehicleParams = (patch: Partial<VehicleEngineeringParameters>) => {
     setVehicleParams(prev => ({ ...prev, ...patch }));
@@ -656,58 +792,78 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Save Game Function
-  const saveGame = (slotId?: string) => {
+  // Save Game Function (accepts optional synchronous overrideState to eliminate async closure races)
+  const buildPersistedCareerState = (overrideState?: Partial<PersistedCareerState>): PersistedCareerState => ({
+    careerInitialized: true,
+    currentWeek,
+    seasonYear,
+    currentCircuitIndex,
+    activeTab,
+    allTeams,
+    drivers,
+    staff,
+    facilities,
+    components,
+    sponsors,
+    financials,
+    principalProfile,
+    vehicleParams,
+    lastSimulationReport,
+    unlockedPuMaterials,
+    activePuMaterialResearch,
+    haasCamaraEventResolved,
+    pendingSeasonEventCard,
+    pendingMidSeasonDilemma,
+    trackFeedbackLog,
+    upgradeTimeline,
+    puDevPoints,
+    modificadorErroCorrelacao,
+    modificadorSinergiaPiloto,
+    modificadorTempoPeD,
+    modificadorConfiabilidade,
+    modificadorConfiancaDiretoria,
+    modificadorMoralFabrica,
+    modificadorCaixaInicial,
+    modificadorDownforce,
+    modificadorTempoManufatura,
+    modificadorSetupRapido,
+    semanasParaTeste,
+    baseDeFas,
+    receitaMarketing,
+    receitaMerchandising,
+    baseDeFasHistory,
+    atrNextYearAllocationRatio,
+    consecutiveNoPointsRaces,
+    usedPhoenixYear1,
+    phoenixDiscountH1,
+    seasonFinishHistory,
+    performanceHistory,
+    aduoWindowActive,
+    aduoWeeksRemaining,
+    aduoHomologationQuotas,
+    aduoChassisDelayWeeks,
+    aduoLastGapPercent,
+    aduoBenchmarkPwr,
+    aduoPlayerPwr,
+    aduoHistory,
+    motorHomologado,
+    semanasRestantesPreTemporada,
+    carSetup,
+    setupWindow,
+    fpRunsDone,
+    selectedAffiliateInFP1,
+    qualifyingResults,
+    notifications,
+    ...(overrideState || {}),
+  });
+
+  const saveGame = (slotId?: string, overrideState?: Record<string, unknown>) => {
     try {
-      const playerT = allTeams.find(t => t.isPlayer) || allTeams[0];
-      const payload = {
-        id: slotId || `slot_${Date.now()}`,
-        name: `Carreira ${playerT.shortName} - S${seasonYear} Wk${currentWeek}`,
-        timestamp: new Date().toLocaleString(language === 'pt' ? 'pt-BR' : 'en-US'),
-        teamName: playerT.name,
-        teamColor: playerT.color,
-        seasonYear,
-        week: currentWeek,
-        bankBalance: financials.bankBalance,
-        state: {
-          currentWeek,
-          seasonYear,
-          currentCircuitIndex,
-          allTeams,
-          drivers,
-          staff,
-          facilities,
-          components,
-          sponsors,
-          financials,
-          principalProfile,
-          vehicleParams,
-          lastSimulationReport,
-          unlockedPuMaterials,
-          activePuMaterialResearch,
-          haasCamaraEventResolved,
-          pendingSeasonEventCard,
-          pendingMidSeasonDilemma
-        }
-      };
-
-      // Always save to recent
-      localStorage.setItem('f1_apex_recent_save', JSON.stringify(payload));
+      const mergedState = buildPersistedCareerState(overrideState as Partial<PersistedCareerState>);
+      const payload = buildCareerSavePayload(slotId, mergedState, language);
+      const updatedSlots = writeCareerSaveToStorage(payload, readSavedSlotsList());
       setHasRecentSave(true);
-
-      // Save to slot
-      const existingSlots = [...saveSlots];
-      const idx = existingSlots.findIndex(s => s.id === payload.id);
-      if (idx >= 0) {
-        existingSlots[idx] = payload;
-      } else {
-        existingSlots.unshift(payload);
-      }
-
-      localStorage.setItem('f1_apex_save_slots', JSON.stringify(existingSlots.slice(0, 5)));
-      setSaveSlots(existingSlots.slice(0, 5));
-      localStorage.setItem(`f1_apex_slot_${payload.id}`, JSON.stringify(payload));
-
+      setSaveSlots(updatedSlots as unknown as SaveSlotInfo[]);
       playRadioSound();
     } catch (e) {
       console.error('Error saving game:', e);
@@ -715,33 +871,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Load Game Function
-  const loadGameData = (saved: {
-    state: {
-      currentWeek: number;
-      seasonYear: number;
-      currentCircuitIndex: number;
-      allTeams: Team[];
-      drivers: Driver[];
-      staff: StaffMember[];
-      facilities: Facility[];
-      components: ComponentSpec[];
-      sponsors: Sponsor[];
-      financials: TeamFinancials;
-      principalProfile?: { name: string; background: PrincipalBackgroundId };
-      vehicleParams?: VehicleEngineeringParameters;
-      lastSimulationReport?: SimulationReport | null;
-      unlockedPuMaterials?: string[];
-      activePuMaterialResearch?: { projectId: string; weeksRemaining: number; totalWeeks: number } | null;
-      haasCamaraEventResolved?: boolean;
-      pendingSeasonEventCard?: SeasonEventCard | null;
-      pendingMidSeasonDilemma?: MidSeasonDilemma | null;
-    };
-  }) => {
+  const loadGameData = (saved: { state: PersistedCareerState }) => {
     if (!saved?.state) return false;
     const s = saved.state;
+    setCareerInitialized(true);
     setCurrentWeek(s.currentWeek || 1);
     setSeasonYear(s.seasonYear || 2026);
     setCurrentCircuitIndex(s.currentCircuitIndex || 0);
+    if (s.activeTab) setActiveTab(s.activeTab);
     if (s.allTeams && s.drivers) {
       const resolvedGrid = resolveRaceGridDrivers(s.allTeams, s.drivers);
       setAllTeams(resolvedGrid.normalizedTeams);
@@ -777,25 +914,81 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (s.sponsors) setSponsors(s.sponsors);
     if (s.financials) setFinancials(s.financials);
     if (s.principalProfile) setPrincipalProfile(s.principalProfile);
-    setVehicleParams(s.vehicleParams || DEFAULT_VEHICLE_PARAMS);
+
+    const nextVehicleParams = s.vehicleParams
+      ? { ...DEFAULT_VEHICLE_PARAMS, ...s.vehicleParams }
+      : DEFAULT_VEHICLE_PARAMS;
+    setVehicleParams(nextVehicleParams);
     setLastSimulationReport(s.lastSimulationReport ?? null);
     if (Array.isArray(s.unlockedPuMaterials) && s.unlockedPuMaterials.length > 0) {
-      setUnlockedPuMaterials(s.unlockedPuMaterials);
+      const matSet = new Set(s.unlockedPuMaterials);
+      if (nextVehicleParams.iceMetallurgyId) matSet.add(nextVehicleParams.iceMetallurgyId);
+      if (nextVehicleParams.batterySubChemistry) matSet.add(nextVehicleParams.batterySubChemistry);
+      setUnlockedPuMaterials(Array.from(matSet));
     }
     setActivePuMaterialResearch(s.activePuMaterialResearch ?? null);
     setHaasCamaraEventResolved(Boolean(s.haasCamaraEventResolved));
     setPendingSeasonEventCard(s.pendingSeasonEventCard ?? null);
     setPendingMidSeasonDilemma(s.pendingMidSeasonDilemma ?? null);
+    setTrackFeedbackLog(Array.isArray(s.trackFeedbackLog) ? s.trackFeedbackLog : []);
+    setUpgradeTimeline(
+      Array.isArray(s.upgradeTimeline) && s.upgradeTimeline.length > 0
+        ? s.upgradeTimeline
+        : [{ gpRound: 1, label: 'Homologação Inicial', componentType: 'chassis', level: 1 }]
+    );
+    setPuDevPoints(typeof s.puDevPoints === 'number' ? s.puDevPoints : 0);
+
+    if (s.modificadorErroCorrelacao !== undefined) setModificadorErroCorrelacao(s.modificadorErroCorrelacao);
+    if (s.modificadorSinergiaPiloto !== undefined) setModificadorSinergiaPiloto(s.modificadorSinergiaPiloto);
+    if (s.modificadorTempoPeD !== undefined) setModificadorTempoPeD(s.modificadorTempoPeD);
+    if (s.modificadorConfiabilidade !== undefined) setModificadorConfiabilidade(s.modificadorConfiabilidade);
+    if (s.modificadorConfiancaDiretoria !== undefined) setModificadorConfiancaDiretoria(s.modificadorConfiancaDiretoria);
+    if (s.modificadorMoralFabrica !== undefined) setModificadorMoralFabrica(s.modificadorMoralFabrica);
+    if (s.modificadorCaixaInicial !== undefined) setModificadorCaixaInicial(s.modificadorCaixaInicial);
+    if (s.modificadorDownforce !== undefined) setModificadorDownforce(s.modificadorDownforce);
+    if (s.modificadorTempoManufatura !== undefined) setModificadorTempoManufatura(s.modificadorTempoManufatura);
+    if (s.modificadorSetupRapido !== undefined) setModificadorSetupRapido(s.modificadorSetupRapido);
+
+    if (s.semanasParaTeste !== undefined) setSemanasParaTeste(s.semanasParaTeste);
+    if (s.baseDeFas !== undefined) setBaseDeFas(s.baseDeFas);
+    if (s.receitaMarketing !== undefined) setReceitaMarketing(s.receitaMarketing);
+    if (s.receitaMerchandising !== undefined) setReceitaMerchandising(s.receitaMerchandising);
+    if (Array.isArray(s.baseDeFasHistory)) setBaseDeFasHistory(s.baseDeFasHistory);
+
+    if (s.atrNextYearAllocationRatio !== undefined) setAtrNextYearAllocationRatio(s.atrNextYearAllocationRatio);
+    if (s.consecutiveNoPointsRaces !== undefined) setConsecutiveNoPointsRaces(s.consecutiveNoPointsRaces);
+    if (s.usedPhoenixYear1 !== undefined) setUsedPhoenixYear1(s.usedPhoenixYear1);
+    if (s.phoenixDiscountH1 !== undefined) setPhoenixDiscountH1(s.phoenixDiscountH1);
+    if (Array.isArray(s.seasonFinishHistory)) setSeasonFinishHistory(s.seasonFinishHistory);
+    if (Array.isArray(s.performanceHistory)) setPerformanceHistory(s.performanceHistory);
+
+    if (s.aduoWindowActive !== undefined) setAduoWindowActive(s.aduoWindowActive);
+    if (s.aduoWeeksRemaining !== undefined) setAduoWeeksRemaining(s.aduoWeeksRemaining);
+    if (s.aduoHomologationQuotas !== undefined) setAduoHomologationQuotas(s.aduoHomologationQuotas);
+    if (s.aduoChassisDelayWeeks !== undefined) setAduoChassisDelayWeeks(s.aduoChassisDelayWeeks);
+    if (s.aduoLastGapPercent !== undefined) setAduoLastGapPercent(s.aduoLastGapPercent);
+    if (s.aduoBenchmarkPwr !== undefined) setAduoBenchmarkPwr(s.aduoBenchmarkPwr);
+    if (s.aduoPlayerPwr !== undefined) setAduoPlayerPwr(s.aduoPlayerPwr);
+    if (Array.isArray(s.aduoHistory)) setAduoHistory(s.aduoHistory);
+    if (s.motorHomologado !== undefined) setMotorHomologado(s.motorHomologado);
+    if (s.semanasRestantesPreTemporada !== undefined) setSemanasRestantesPreTemporada(s.semanasRestantesPreTemporada);
+
+    if (s.carSetup) setCarSetup(s.carSetup);
+    if (s.setupWindow) setSetupWindow(s.setupWindow);
+    if (s.fpRunsDone !== undefined) setFpRunsDone(s.fpRunsDone);
+    if (s.selectedAffiliateInFP1 !== undefined) setSelectedAffiliateInFP1(s.selectedAffiliateInFP1);
+    if (Array.isArray(s.qualifyingResults)) setQualifyingResults(s.qualifyingResults);
+    if (Array.isArray(s.notifications) && s.notifications.length > 0) setNotifications(s.notifications);
 
     setShowStartScreen(false);
-    setActiveTab('overview');
+    setActiveTab(s.activeTab || 'overview');
     playRadioSound();
     return true;
   };
 
   const loadRecentSave = () => {
     try {
-      const raw = localStorage.getItem('f1_apex_recent_save');
+      const raw = localStorage.getItem(CAREER_RECENT_SAVE_KEY);
       if (!raw) return false;
       return loadGameData(JSON.parse(raw));
     } catch {
@@ -821,22 +1014,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       seasonYear,
       week: currentWeek,
       statePayload: {
-        state: {
-          currentWeek,
-          seasonYear,
-          currentCircuitIndex,
-          allTeams,
-          drivers,
-          staff,
-          facilities,
-          components,
-          sponsors,
-          financials,
-          principalProfile,
-          vehicleParams,
-          lastSimulationReport
-        }
-      }
+        state: buildPersistedCareerState(),
+      },
     };
   };
 
@@ -926,6 +1105,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStaff(prev => prev.map(s => ({ ...s, trust: s.trust ?? 75 })));
     }
 
+    setCareerInitialized(true);
     setCurrentWeek(1);
     setSeasonYear(2026);
     setCurrentCircuitIndex(0);
@@ -1033,11 +1213,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setHaasCamaraEventResolved(false);
     setPendingSeasonEventCard(null);
     setPendingMidSeasonDilemma(null);
+    setTrackFeedbackLog([]);
+    setUpgradeTimeline([{ gpRound: 1, label: 'Homologação Inicial', componentType: 'chassis', level: 1 }]);
+    setPuDevPoints(0);
 
     // 6. Limpar o localStorage/sessionStorage para garantir que nenhum dado antigo fique salvo
+    setCareerInitialized(false);
     const currentLang = localStorage.getItem('f1_apex_lang') || language;
     try {
+      localStorage.removeItem(CAREER_RECENT_SAVE_KEY);
+      localStorage.removeItem(CAREER_SAVE_SLOTS_KEY);
       localStorage.clear();
+      sessionStorage.removeItem(CAREER_ACTIVE_SCREEN_KEY);
       sessionStorage.clear();
       if (currentLang) {
         localStorage.setItem('f1_apex_lang', currentLang);
@@ -1150,6 +1337,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             thirdPartyErsSupplier: data.thirdPartyErsSupplier ?? null,
             homologatedPeakPowerHp: data.homologatedPeakPowerHp,
             color: data.teamColor,
+            secondaryColor: data.teamSecondaryColor || team.secondaryColor,
             location: data.location || team.location,
             isPlayer: true,
             role: 'owner' as const,
@@ -1220,9 +1408,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       data,
       mods.sinergiaPiloto
     );
+    const isPreseasonMissedEarly = Boolean(
+      data.preseasonMissed || (!data.abandonedToZero && (data.semanasParaTeste ?? 8) < 0)
+    );
+    const driverPreseasonFatigue = isPreseasonMissedEarly ? -8 : 0;
+    const finalDrivers: Driver[] = syncedRoster.drivers.map(d => ({
+      ...d,
+      mentality: Math.max(20, Math.min(100, (d.mentality ?? 75) + driverPreseasonFatigue)),
+      trust: d.trust ?? 75
+    }));
     setAllTeams(syncedRoster.teams);
-    setDrivers(syncedRoster.drivers.map(d => ({ ...d, trust: d.trust ?? 75 })));
-    setStaff(prev => prev.map(s => ({ ...s, trust: s.trust ?? 75 })));
+    setDrivers(finalDrivers);
 
     // Apply Background Caixa Inicial & Project Ambition (Phase 3) & Engine/HQ trade-offs
     const baseProjectBudget =
@@ -1282,14 +1478,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       startingBank -= 1500000; // Multa logística e frete aéreo emergencial por atraso de cronograma
     }
 
-    setFinancials({
+    const finalFinancials: TeamFinancials = {
       bankBalance: startingBank,
       costCapLimit: 135000000,
       costCapSpent: startingCostCapSpent,
       atrWindTunnelHoursAvailable: data.careerPath === 'custom_team' ? 420 : 360,
       atrCfdMegaAllocations: data.careerPath === 'custom_team' ? 340 : 300,
       atrPeriodWeeksLeft: 8
-    });
+    };
+    setFinancials(finalFinancials);
 
     // Initialize SI Vehicle Engineering Parameters from Onboarding decisions (prefer full M01-M12 draft if provided)
     const fallbackVehicleParams: VehicleEngineeringParameters = {
@@ -1335,9 +1532,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       iceCompressionRatio: data.engineModifications?.redesignChamber ? 15.95 : 15.65
     };
     const dnaSpec = getSupplierDnaSpec(data.engineSupplier);
-    setUnlockedPuMaterials(dnaSpec.starterUnlockedMaterials);
-    setActivePuMaterialResearch(null);
-
     const initialVehicleParams: VehicleEngineeringParameters = data.vehicleParams
       ? {
           ...DEFAULT_VEHICLE_PARAMS,
@@ -1350,6 +1544,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           iceMetallurgyId: dnaSpec.defaultIceMetallurgy,
           batterySubChemistry: dnaSpec.defaultBatterySubChem,
         };
+    const initialUnlockedMats = Array.from(
+      new Set([
+        ...dnaSpec.starterUnlockedMaterials,
+        ...(initialVehicleParams.iceMetallurgyId ? [initialVehicleParams.iceMetallurgyId] : []),
+        ...(initialVehicleParams.batterySubChemistry ? [initialVehicleParams.batterySubChemistry] : []),
+      ])
+    );
+    setUnlockedPuMaterials(initialUnlockedMats);
+    setActivePuMaterialResearch(null);
     setVehicleParams(initialVehicleParams);
     setLastSimulationReport(null);
     const solvedInitialPhysics = solveVehiclePhysics(initialVehicleParams, {
@@ -1357,95 +1560,104 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       aeroDownforceOffset: mods.downforce
     });
 
+    const customPuLabel = (data.customEngineName || data.engineSupplier || 'Works').trim();
+    const resolvedGearboxName =
+      data.gearboxConfig?.material === 'titanium'
+        ? 'Titânio 8-Marchas'
+        : data.gearboxConfig?.material === 'aluminum'
+        ? 'Alumínio 8-Marchas'
+        : 'CFRP Estrutural 8-Marchas';
+
     // Apply Car Philosophy, Background bonuses and Emergency Engine penalties to initial components
-    setComponents(prev =>
-      prev.map(c => {
-        let dfDelta = 0;
-        let dragMod = 1.0;
-        let weightDelta = 0;
-        let relDelta = 0;
+    const finalComponents: ComponentSpec[] = components.map(c => {
+      let dfDelta = 0;
+      let dragMod = 1.0;
+      let weightDelta = 0;
+      let relDelta = 0;
 
-        if (data.philosophy === 'high_downforce' && (c.type === 'wings' || c.type === 'floor')) {
-          dfDelta = 8;
-          dragMod = 1.04;
-        } else if (data.philosophy === 'low_drag' && (c.type === 'wings' || c.type === 'chassis')) {
-          dragMod = 0.94;
-        } else if ((data.philosophy === 'tire_preservation' || data.philosophy === 'mechanical_grip') && c.type === 'suspension') {
-          dfDelta = 3;
-        } else if (data.philosophy === 'aero_efficiency' && (c.type === 'wings' || c.type === 'floor')) {
-          dfDelta = 4;
-          dragMod = 0.97;
-        } else if (data.philosophy === 'stable_platform' && (c.type === 'suspension' || c.type === 'floor')) {
-          dfDelta = 3;
+      if (data.philosophy === 'high_downforce' && (c.type === 'wings' || c.type === 'floor')) {
+        dfDelta = 8;
+        dragMod = 1.04;
+      } else if (data.philosophy === 'low_drag' && (c.type === 'wings' || c.type === 'chassis')) {
+        dragMod = 0.94;
+      } else if ((data.philosophy === 'tire_preservation' || data.philosophy === 'mechanical_grip') && c.type === 'suspension') {
+        dfDelta = 3;
+      } else if (data.philosophy === 'aero_efficiency' && (c.type === 'wings' || c.type === 'floor')) {
+        dfDelta = 4;
+        dragMod = 0.97;
+      } else if (data.philosophy === 'stable_platform' && (c.type === 'suspension' || c.type === 'floor')) {
+        dfDelta = 3;
+      }
+
+      if (c.type === 'floor' || c.type === 'wings') {
+        dfDelta += mods.downforce;
+        if (data.silentSabotageAeroPct && data.silentSabotageAeroPct < 0) {
+          dfDelta += Math.round(c.downforce * (data.silentSabotageAeroPct / 100));
         }
-
-        if (c.type === 'floor' || c.type === 'wings') {
-          dfDelta += mods.downforce;
-          if (data.silentSabotageAeroPct && data.silentSabotageAeroPct < 0) {
-            dfDelta += Math.round(c.downforce * (data.silentSabotageAeroPct / 100));
-          }
-          const puCoolingPenalty =
-            data.puCoolingAeroPenaltyPct ?? (data.thirdPartyErsSupplier ? 3.0 : 0);
-          if (puCoolingPenalty > 0) {
-            dfDelta -= Math.round(c.downforce * (puCoolingPenalty / 100) * 10) / 10;
-            dragMod *= 1 + puCoolingPenalty * 0.008;
-          }
+        const puCoolingPenalty =
+          data.puCoolingAeroPenaltyPct ?? (data.thirdPartyErsSupplier ? 3.0 : 0);
+        if (puCoolingPenalty > 0) {
+          dfDelta -= Math.round(c.downforce * (puCoolingPenalty / 100) * 10) / 10;
+          dragMod *= 1 + puCoolingPenalty * 0.008;
         }
+      }
 
-        // Penalidades específicas por fornecedor cliente de emergência:
-        if (emergencySupplier === 'Mercedes') {
-          // Mercedes: -3 de eficiência de arrasto (DRG) por sidepods abertos (+5% arrasto)
-          if (c.type === 'chassis' || c.type === 'wings') {
-            dragMod *= 1.05;
-          }
-        } else if (emergencySupplier === 'Ferrari') {
-          // Ferrari: -5 de Downforce (DFm) no assoalho
-          if (c.type === 'floor') {
-            dfDelta -= 5;
-          }
-        } else if (emergencySupplier === 'Honda') {
-          // Honda: 20% de risco de quebra do câmbio na corrida 1 (-15 confiabilidade no câmbio)
-          if (c.type === 'gearbox') {
-            relDelta -= 15;
-          }
-        } else if (emergencySupplier === 'Audi') {
-          // Audi: Perde -5 de Peso (WGT) -> +5kg por reforço estrutural no chassi
-          if (c.type === 'chassis') {
-            weightDelta += 5;
-          }
+      // Penalidades específicas por fornecedor cliente de emergência:
+      if (emergencySupplier === 'Mercedes') {
+        if (c.type === 'chassis' || c.type === 'wings') {
+          dragMod *= 1.05;
         }
-
-        const rawPuPerf = Math.round((solvedInitialPhysics.totalWheelPowerKw / 760) * 86) + partnerPowerBonus;
-        let physicsPerfSync =
-          c.type === 'pu'
-            ? rawPuPerf
-            : c.type === 'floor' || c.type === 'wings'
-            ? solvedInitialPhysics.summary.aeroScore
-            : c.performance;
-
-        let blendedPerf = Math.min(99, Math.max(60, Math.round((c.performance + physicsPerfSync) / 2)));
-        if (c.type === 'pu' && data.careerPath === 'custom_team') {
-          if (data.engineOrigin === 'bought_factory') {
-            const targetMaturity = data.puMaturityScore ?? Math.min(84, Math.max(78, blendedPerf));
-            blendedPerf = Math.min(84, Math.max(78, targetMaturity));
-          } else if (data.engineOrigin === 'phoenix') {
-            const targetMaturity = data.puMaturityScore ?? Math.min(80, Math.max(74, blendedPerf));
-            blendedPerf = Math.min(80, Math.max(74, targetMaturity));
-          }
+      } else if (emergencySupplier === 'Ferrari') {
+        if (c.type === 'floor') {
+          dfDelta -= 5;
         }
+      } else if (emergencySupplier === 'Honda') {
+        if (c.type === 'gearbox') {
+          relDelta -= 15;
+        }
+      } else if (emergencySupplier === 'Audi') {
+        if (c.type === 'chassis') {
+          weightDelta += 5;
+        }
+      }
 
-        return {
-          ...c,
-          performance: blendedPerf,
-          reliability: Math.min(100, Math.max(10, c.reliability + mods.confiabilidade + relDelta)),
-          downforce: Math.round((c.downforce + dfDelta) * 10) / 10,
-          dragCoefficient: Math.round(c.dragCoefficient * dragMod * 1000) / 1000,
-          weightKg: c.weightKg + weightDelta
-        };
-      })
-    );
+      const rawPuPerf = Math.round((solvedInitialPhysics.totalWheelPowerKw / 760) * 86) + partnerPowerBonus;
+      const physicsPerfSync =
+        c.type === 'pu'
+          ? rawPuPerf
+          : c.type === 'floor' || c.type === 'wings'
+          ? solvedInitialPhysics.summary.aeroScore
+          : c.performance;
 
-    // Drivers & Teams já sincronizados acima via syncTeamsAndDriversAfterOnboarding (mantendo 24 titulares únicos)
+      let blendedPerf = Math.min(99, Math.max(60, Math.round((c.performance + physicsPerfSync) / 2)));
+      if (c.type === 'pu' && data.careerPath === 'custom_team') {
+        if (data.engineOrigin === 'bought_factory') {
+          const targetMaturity = data.puMaturityScore ?? Math.min(84, Math.max(78, blendedPerf));
+          blendedPerf = Math.min(84, Math.max(78, targetMaturity));
+        } else if (data.engineOrigin === 'phoenix') {
+          const targetMaturity = data.puMaturityScore ?? Math.min(80, Math.max(74, blendedPerf));
+          blendedPerf = Math.min(80, Math.max(74, targetMaturity));
+        }
+      }
+
+      const resolvedName =
+        c.type === 'pu'
+          ? `${customPuLabel} 2026 PU`
+          : c.type === 'gearbox'
+          ? resolvedGearboxName
+          : c.name;
+
+      return {
+        ...c,
+        name: resolvedName,
+        performance: blendedPerf,
+        reliability: Math.min(100, Math.max(10, c.reliability + mods.confiabilidade + relDelta)),
+        downforce: Math.round((c.downforce + dfDelta) * 10) / 10,
+        dragCoefficient: Math.round(c.dragCoefficient * dragMod * 1000) / 1000,
+        weightKg: c.weightKg + weightDelta
+      };
+    });
+    setComponents(finalComponents);
 
     // GDD v9.0.0 Sec. 9-10: Initialize 15 common facilities (+16th Works PU Factory if manufacturer)
     // Apply Phase 3 Board Project Bet (Bold = Level 2 Aero/Factory; Grounded = Level 1 with wear)
@@ -1488,23 +1700,33 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data.raceEngineer2Id
       ].filter(Boolean)
     );
-    setStaff(prev =>
-      prev.map(s => {
-        const isHired = hiredStaffIds.has(s.id);
-        const baseMentality = isHired ? 92 : s.mentality;
-        const factoryMod = mods.moralFabrica || 0;
-        const isTechnicalBoard =
-          s.id === data.headAeroId || s.id === data.headPUId || s.id === data.sportingDirectorId;
-        const boardCascadeMod = isTechnicalBoard ? (data.boardroomConflictMoralePenalty || 0) : 0;
-        const preseasonFatiguePenalty = isPreseasonMissed ? -8 : 0;
-        return {
-          ...s,
-          currentTeam: isHired ? (data.careerPath === 'custom_team' ? 'APEX Grand Prix Team' : data.teamName) : s.currentTeam,
-          mentality: Math.max(20, Math.min(100, baseMentality + factoryMod + boardCascadeMod + preseasonFatiguePenalty)),
-          morale: Math.max(15, Math.min(100, (s.morale ?? baseMentality) + factoryMod + boardCascadeMod + preseasonFatiguePenalty))
-        };
-      })
-    );
+    const defaultSlotStaffIds = new Set([
+      'staff_head_aero',
+      'staff_head_pu',
+      'staff_sporting_dir',
+      'staff_chief_mechanic',
+    ]);
+    const finalStaff: StaffMember[] = staff.map(s => {
+      const isHired = hiredStaffIds.has(s.id);
+      const baseMentality = isHired ? 92 : s.mentality;
+      const factoryMod = mods.moralFabrica || 0;
+      const isTechnicalBoard =
+        s.id === data.headAeroId || s.id === data.headPUId || s.id === data.sportingDirectorId;
+      const boardCascadeMod = isTechnicalBoard ? (data.boardroomConflictMoralePenalty || 0) : 0;
+      const preseasonFatiguePenalty = isPreseasonMissed ? -8 : 0;
+      return {
+        ...s,
+        trust: s.trust ?? 75,
+        currentTeam: isHired
+          ? data.teamName
+          : defaultSlotStaffIds.has(s.id)
+          ? 'Disponível / Mercado'
+          : s.currentTeam,
+        mentality: Math.max(20, Math.min(100, baseMentality + factoryMod + boardCascadeMod + preseasonFatiguePenalty)),
+        morale: Math.max(15, Math.min(100, (s.morale ?? baseMentality) + factoryMod + boardCascadeMod + preseasonFatiguePenalty))
+      };
+    });
+    setStaff(finalStaff);
 
     const startingWeek = data.abandonedToZero
       ? 5
@@ -1589,37 +1811,123 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     ]);
 
+    const initialTimeline: CarUpgradeMilestone[] = [
+      { gpRound: 1, label: `${data.chassisName || 'Chassi'} Spec-A`, componentType: 'chassis', level: 1 }
+    ];
+    const initialPuDevPoints = isManufacturer ? 2 : 0;
+    const initialSetupConfidence = isPreseasonMissed || data.abandonedToZero ? 0 : 45;
+    const nextSetupWindow = {
+      ...setupWindow,
+      confidence: initialSetupConfidence,
+    };
+    const nextBaseDeFasHistory: BaseDeFasPoint[] = [
+      {
+        round: 0,
+        raceName: 'Pré-Temporada',
+        fans: finalFans,
+        changePercent: 0,
+      },
+    ];
+    const ratifiedNotifications = [
+      ...preseasonNotifs,
+      ...emergencyNotifs,
+      ...cascadingNotifs,
+      {
+        id: `notif_ratified_${Date.now()}`,
+        title: 'FIA 2026 WORLD CHAMPIONSHIP HOMOLOGATION',
+        message: `${data.teamName} devidamente homologada sob comando de ${data.principalName} (${data.userRole === 'owner' ? 'Dono Construtor' : 'Team Principal'}). Sede: ${data.location || 'Silverstone, Reino Unido'}. Unidade de Potência: ${data.engineSupplier} (${data.engineOrigin.toUpperCase()}). Filosofia do carro: ${data.philosophy.toUpperCase()}.${delayMsg}`,
+        date: `Semana ${startingWeek}`,
+        type: 'info' as const,
+      },
+    ];
+
+    setNotifications(ratifiedNotifications);
+    setUpgradeTimeline(initialTimeline);
+    setTrackFeedbackLog([]);
+    setPuDevPoints(initialPuDevPoints);
+    setCareerInitialized(true);
+
     setShowOnboarding(false);
     setShowStartScreen(false);
     setActiveTab('overview');
     playRadioSound();
 
-    setTimeout(() => {
-      saveGame('slot_autosave');
-    }, 600);
+    // Synchronous save with freshly computed roster, staff, chassis & vehicleParams so reloads NEVER revert to defaults
+    saveGame('slot_autosave', {
+      careerInitialized: true,
+      currentWeek: startingWeek,
+      seasonYear: 2026,
+      currentCircuitIndex: startingCircuitIndex,
+      activeTab: 'overview',
+      allTeams: syncedRoster.teams,
+      drivers: finalDrivers,
+      staff: finalStaff,
+      facilities: initializedFacilities,
+      components: finalComponents,
+      sponsors,
+      financials: finalFinancials,
+      principalProfile: { name: data.principalName, background: data.principalBackground },
+      vehicleParams: initialVehicleParams,
+      lastSimulationReport: null,
+      unlockedPuMaterials: initialUnlockedMats,
+      activePuMaterialResearch: null,
+      haasCamaraEventResolved: false,
+      pendingSeasonEventCard: null,
+      pendingMidSeasonDilemma: null,
+      trackFeedbackLog: [],
+      upgradeTimeline: initialTimeline,
+      puDevPoints: initialPuDevPoints,
+      modificadorErroCorrelacao: mods.erroCorrelacao + (emergencySupplier ? (data.customCorrelationErrorMod !== undefined ? data.customCorrelationErrorMod : 0.15) : 0),
+      modificadorSinergiaPiloto: mods.sinergiaPiloto,
+      modificadorTempoPeD: data.rdTimePenaltyMultiplier && data.rdTimePenaltyMultiplier !== 1
+        ? Number((mods.tempoPeD * data.rdTimePenaltyMultiplier).toFixed(2))
+        : mods.tempoPeD,
+      modificadorConfiabilidade: mods.confiabilidade,
+      modificadorConfiancaDiretoria: mods.confiancaDiretoria,
+      modificadorMoralFabrica: mods.moralFabrica,
+      modificadorCaixaInicial: mods.caixaInicial,
+      modificadorDownforce: mods.downforce,
+      modificadorTempoManufatura: mods.tempoManufatura,
+      modificadorSetupRapido: mods.setupRapido,
+      semanasParaTeste: data.semanasParaTeste ?? semanasParaTeste,
+      baseDeFas: finalFans,
+      receitaMarketing: finalMarketing,
+      receitaMerchandising: finalMerchandising,
+      baseDeFasHistory: nextBaseDeFasHistory,
+      setupWindow: nextSetupWindow,
+      notifications: ratifiedNotifications,
+    });
   };
 
-  const [carSetup, setCarSetup] = useState<CarSetup>({
-    frontWingAngle: 28,
-    rearWingAngle: 32,
-    suspensionStiffness: 6,
-    camberAngle: -2.8,
-    tirePressurePsi: 22.5,
-    gearRatioBias: 50
-  });
+  const [carSetup, setCarSetup] = useState<CarSetup>(() =>
+    sBoot?.carSetup || {
+      frontWingAngle: 28,
+      rearWingAngle: 32,
+      suspensionStiffness: 6,
+      camberAngle: -2.8,
+      tirePressurePsi: 22.5,
+      gearRatioBias: 50
+    }
+  );
 
-  const [setupWindow, setSetupWindow] = useState<SetupWindow>({
-    idealFrontWing: 26,
-    idealRearWing: 30,
-    idealStiffness: 6,
-    idealPressure: 22.8,
-    confidence: 45
-  });
+  const [setupWindow, setSetupWindow] = useState<SetupWindow>(() =>
+    sBoot?.setupWindow || {
+      idealFrontWing: 26,
+      idealRearWing: 30,
+      idealStiffness: 6,
+      idealPressure: 22.8,
+      confidence: 45
+    }
+  );
 
-  const [selectedAffiliateInFP1, setSelectedAffiliateInFP1] = useState(false);
+  const [selectedAffiliateInFP1, setSelectedAffiliateInFP1] = useState<boolean>(
+    () => sBoot?.selectedAffiliateInFP1 ?? false
+  );
   const [weekendSession, setWeekendSession] = useState<WeekendSession>('setup_fp');
-  const [fpRunsDone, setFpRunsDone] = useState(0);
-  const [qualifyingResults, setQualifyingResults] = useState<{ driverId: string; lapTimeSec: number; position: number }[]>([]);
+  const [fpRunsDone, setFpRunsDone] = useState<number>(() => sBoot?.fpRunsDone ?? 0);
+  const [qualifyingResults, setQualifyingResults] = useState<{ driverId: string; lapTimeSec: number; position: number }[]>(
+    () => (Array.isArray(sBoot?.qualifyingResults) ? sBoot.qualifyingResults : [])
+  );
 
   // Live Race Simulation State
   const [isRaceLive, setIsRaceLive] = useState(false);
@@ -1641,15 +1949,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const raceFlagRef = useRef<RaceFlagState>({ flag: 'green', expiresAtLap: 0 });
   const resolvedAdviceKeysRef = useRef<Set<string>>(new Set());
 
-  const [notifications, setNotifications] = useState<{ id: string; title: string; message: string; date: string; type: 'info' | 'warning' | 'penalty' }[]>([
-    {
-      id: 'notif_welcome',
-      title: '2026 HYBRID REGULATIONS RATIFIED',
-      message: 'Active aerodynamics (Mode X/Z) and 350kW ERS operational. Cost Cap verified at $135M. Welcome to the pit wall, Team Principal.',
-      date: 'Week 1',
-      type: 'info'
-    }
-  ]);
+  const [notifications, setNotifications] = useState<{ id: string; title: string; message: string; date: string; type: 'info' | 'warning' | 'penalty' }[]>(() =>
+    Array.isArray(sBoot?.notifications) && sBoot.notifications.length > 0
+      ? sBoot.notifications
+      : [
+          {
+            id: 'notif_welcome',
+            title: '2026 HYBRID REGULATIONS RATIFIED',
+            message: 'Active aerodynamics (Mode X/Z) and 350kW ERS operational. Cost Cap verified at $135M. Welcome to the pit wall, Team Principal.',
+            date: 'Week 1',
+            type: 'info'
+          }
+        ]
+  );
 
   const [pendingRegulationChange, setPendingRegulationChange] = useState<{
     title: string;
@@ -1658,13 +1970,80 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     targetSeason: number;
     options: { label: string; cost: number; performanceRetained: number }[];
   } | null>(null);
-  const [haasCamaraEventResolved, setHaasCamaraEventResolved] = useState<boolean>(false);
+  const [haasCamaraEventResolved, setHaasCamaraEventResolved] = useState<boolean>(
+    () => Boolean(sBoot?.haasCamaraEventResolved)
+  );
   const [pendingHaasCamaraEvent, setPendingHaasCamaraEvent] = useState<{
     round: number;
     gpName: string;
   } | null>(null);
-  const [pendingSeasonEventCard, setPendingSeasonEventCard] = useState<SeasonEventCard | null>(null);
-  const [pendingMidSeasonDilemma, setPendingMidSeasonDilemma] = useState<MidSeasonDilemma | null>(null);
+  const [pendingSeasonEventCard, setPendingSeasonEventCard] = useState<SeasonEventCard | null>(
+    () => sBoot?.pendingSeasonEventCard ?? null
+  );
+  const [pendingMidSeasonDilemma, setPendingMidSeasonDilemma] = useState<MidSeasonDilemma | null>(
+    () => sBoot?.pendingMidSeasonDilemma ?? null
+  );
+
+  // Automatic silent persistence in localStorage whenever any active career state changes
+  useEffect(() => {
+    if (!careerInitialized || showOnboarding) return;
+    const payload = buildCareerSavePayload('slot_autosave', buildPersistedCareerState(), language);
+    const updated = writeCareerSaveToStorage(payload, readSavedSlotsList());
+    setHasRecentSave(true);
+    setSaveSlots(updated as unknown as SaveSlotInfo[]);
+  }, [
+    careerInitialized,
+    showOnboarding,
+    currentWeek,
+    seasonYear,
+    currentCircuitIndex,
+    activeTab,
+    allTeams,
+    drivers,
+    staff,
+    facilities,
+    components,
+    sponsors,
+    financials,
+    principalProfile,
+    vehicleParams,
+    lastSimulationReport,
+    unlockedPuMaterials,
+    activePuMaterialResearch,
+    carSetup,
+    setupWindow,
+    fpRunsDone,
+    selectedAffiliateInFP1,
+    qualifyingResults,
+    baseDeFas,
+    receitaMarketing,
+    receitaMerchandising,
+    baseDeFasHistory,
+    semanasParaTeste,
+    motorHomologado,
+    semanasRestantesPreTemporada,
+    aduoWindowActive,
+    aduoWeeksRemaining,
+    aduoHomologationQuotas,
+    aduoChassisDelayWeeks,
+    aduoLastGapPercent,
+    aduoBenchmarkPwr,
+    aduoPlayerPwr,
+    aduoHistory,
+    performanceHistory,
+    seasonFinishHistory,
+    atrNextYearAllocationRatio,
+    consecutiveNoPointsRaces,
+    usedPhoenixYear1,
+    phoenixDiscountH1,
+    upgradeTimeline,
+    trackFeedbackLog,
+    puDevPoints,
+    pendingSeasonEventCard,
+    pendingMidSeasonDilemma,
+    haasCamaraEventResolved,
+    notifications,
+  ]);
 
   const rdFacilityCapacity = useMemo(() => computeRdFacilityCapacity(facilities), [facilities]);
 
@@ -2105,6 +2484,52 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       success: true,
       message: `Pesquisa iniciada (${scaledWeeks} semanas).`,
     };
+  };
+
+  // Investir Pontos de Desenvolvimento de PU (Bancada M08 Works)
+  const investPuDevPoints = (target: 'power' | 'reliability'): boolean => {
+    if (puDevPoints < 1) {
+      addNotification('SEM PONTOS DE DESENVOLVIMENTO', 'Complete voltas com a PU em corrida ou sessões de bancada para acumular Pontos de PU.', 'warning');
+      return false;
+    }
+    const puComp = components.find(c => c.type === 'pu');
+    if (!puComp) return false;
+    const ceiling = playerTeam?.puDevelopmentCeilingPct ?? 95;
+
+    if (target === 'power' && puComp.performance >= ceiling) {
+      addNotification('TETO DA ARQUITETURA ATINGIDO', `A Unidade de Potência já atingiu o teto de projeto atual (${ceiling}/100).`, 'warning');
+      return false;
+    }
+
+    setPuDevPoints(prev => Math.max(0, prev - 1));
+    setComponents(prev =>
+      prev.map(c => {
+        if (c.type !== 'pu') return c;
+        if (target === 'power') {
+          const nextPerf = Math.min(ceiling, c.performance + 2);
+          return { ...c, performance: nextPerf, level: Math.min(c.maxLevel || 10, c.level + 1) };
+        }
+        return { ...c, reliability: Math.min(99, c.reliability + 3) };
+      })
+    );
+    setUpgradeTimeline(prev => [
+      ...prev,
+      {
+        gpRound: currentCircuitIndex + 1,
+        label: target === 'power' ? 'Calibração ICE/MGU-K (+2 PWR)' : 'Reforço Metalúrgico PU (+3 Conf.)',
+        componentType: 'pu',
+        level: Math.min(10, puComp.level + (target === 'power' ? 1 : 0))
+      }
+    ]);
+    addNotification(
+      'PONTO DE PU INVESTIDO',
+      target === 'power'
+        ? `Calibração de potência aplicada (+2 PWR até o teto ${ceiling}/100).`
+        : 'Tolerância térmica e resistência de pistões elevadas (+3% Confiabilidade).',
+      'info'
+    );
+    playRadioSound();
+    return true;
   };
 
   // Multi-Physics Engineering Simulation (CFD + FEA + Thermal + Regulatory + 7 Specialists)
@@ -2755,6 +3180,30 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
     setFpRunsDone(nextRunNumber);
 
+    const leadDriver = activeDrivers[0];
+    if (leadDriver) {
+      const fbQuote = evalRes.driverRadioQuote || evalRes.pitRadioSummary;
+      const hint =
+        evalRes.pitRadioSummary ||
+        `Janela de acerto atingiu ${Math.min(100, setupWindow.confidence + gain)}% (Feedback piloto ${Math.round(leadDriver.attributes?.feedback ?? 75)}).`;
+      setTrackFeedbackLog(prev => [
+        {
+          id: `tf_${Date.now()}_${nextRunNumber}`,
+          round: currentCircuitIndex + 1,
+          circuitName: currentCircuit.city || currentCircuit.name,
+          session: nextRunNumber === 1 ? 'TL1' : nextRunNumber === 2 ? 'TL2' : 'TL3',
+          driverId: leadDriver.id,
+          driverName: leadDriver.name,
+          feedbackRating: Math.round(leadDriver.attributes?.feedback ?? 75),
+          confidencePct: Math.min(100, setupWindow.confidence + gain),
+          quote: fbQuote,
+          setupHint: hint,
+          createdAtWeek: currentWeek
+        },
+        ...prev.slice(0, 29)
+      ]);
+    }
+
     return { feedback: evalRes.driverRadioQuote || evalRes.pitRadioSummary, confidenceGain: gain };
   };
 
@@ -2780,6 +3229,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let totalGain = 0;
     let simConfidence = setupWindow.confidence;
     let lastFeedback = '';
+    const newEntries: TrackFeedbackEntry[] = [];
+    const leadDriver = activeDrivers[0];
 
     for (let runNum = fpRunsDone + 1; runNum <= 2; runNum++) {
       const evalRes = evaluatePracticeSetup({
@@ -2794,11 +3245,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         coolingDemandIndex01: currentTrackPhysics.coolingDemandIndex01,
         airDensityKgM3: currentTrackPhysics.airDensityKgM3,
         modeXFractionPct: currentTrackPhysics.modeXFractionPct,
-        leadDriverName: activeDrivers[0]?.name || 'Piloto #1',
+        leadDriverName: leadDriver?.name || 'Piloto #1',
       });
       totalGain += evalRes.recommendedConfidenceGain;
       simConfidence = Math.min(100, simConfidence + evalRes.recommendedConfidenceGain);
       lastFeedback = evalRes.driverRadioQuote || evalRes.pitRadioSummary;
+      if (leadDriver) {
+        newEntries.unshift({
+          id: `tf_${Date.now()}_fp_${runNum}`,
+          round: currentCircuitIndex + 1,
+          circuitName: currentCircuit.city || currentCircuit.name,
+          session: runNum === 1 ? 'TL1' : 'TL2',
+          driverId: leadDriver.id,
+          driverName: leadDriver.name,
+          feedbackRating: Math.round(leadDriver.attributes?.feedback ?? 75),
+          confidencePct: simConfidence,
+          quote: lastFeedback,
+          setupHint: evalRes.pitRadioSummary,
+          createdAtWeek: currentWeek
+        });
+      }
     }
 
     setSetupWindow(prev => ({
@@ -2806,6 +3272,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       confidence: Math.min(100, prev.confidence + totalGain)
     }));
     setFpRunsDone(2);
+    if (newEntries.length > 0) {
+      setTrackFeedbackLog(prev => [...newEntries, ...prev].slice(0, 30));
+    }
 
     return { feedback: lastFeedback, confidenceGain: totalGain };
   };
@@ -3074,6 +3543,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     while (guard < 5000) {
       guard += 1;
+      const computedTrackTempC =
+        trackWeather === 'heavy_rain'
+          ? 23
+          : trackWeather === 'light_rain'
+          ? 26
+          : trackWeather === 'overcast'
+          ? 34
+          : Math.round(38 + currentTrackPhysics.coolingDemandIndex01 * 15);
       const res = stepRaceSimulationTick({
         cars: simCars,
         drivers,
@@ -3095,7 +3572,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         playerFatigueLifeRaces: vehiclePhysics.fatigueLifeRaces,
         playerTireWearRateMultiplier: vehiclePhysics.tireWearRateMultiplier,
         playerAvgReliability: avgReliability,
-        flagState: simFlag
+        flagState: simFlag,
+        circuitId: currentCircuit.id,
+        trackTempC: computedTrackTempC
       });
       simCars = res.cars;
       simFlag = res.nextFlagState.flag === 'red' ? { flag: 'green', expiresAtLap: 0 } : res.nextFlagState;
@@ -3135,12 +3614,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     aeroMode?: AeroMode;
     fuelMixMode?: FuelMixMode;
   }) => {
+    const wet = isWetWeather(trackWeather);
+    let safePace = tactics.paceMode;
+    if (wet && (safePace === 'attack' || safePace === 'push' || safePace === 'conserve')) {
+      safePace = 'balanced';
+      addNotification(
+        'TRAVA CLIMÁTICA DE SEGURANÇA (CHUVA)',
+        'Com pista molhada, os modos extremos (Ataque / Economia) são bloqueados para Normal pela direção de pista.',
+        'warning'
+      );
+    }
     setLiveCars(prev =>
       prev.map(c => {
         if (c.driverId !== driverId || c.status === 'retired' || c.isDisqualified) return c;
         return {
           ...c,
-          ...(tactics.paceMode ? { paceMode: tactics.paceMode } : {}),
+          ...(safePace ? { paceMode: safePace } : {}),
           ...(tactics.engineMode ? { engineMode: tactics.engineMode } : {}),
           ...(tactics.aeroMode ? { aeroMode: tactics.aeroMode } : {}),
           ...(tactics.fuelMixMode ? { fuelMixMode: tactics.fuelMixMode } : {})
@@ -3151,9 +3640,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const orderPitStop = (driverId: string, newCompound: TireCompound) => {
     const activeChiefMech =
-      staff.find(s => s.role === 'chief_mechanic' && (s.currentTeam === playerTeam.name || s.currentTeam === 'APEX Grand Prix Team')) ||
+      (playerTeam.chiefMechanic
+        ? staff.find(s => s.name === playerTeam.chiefMechanic && (s.role === 'chief_mechanic' || s.role === 'head_mechanics'))
+        : undefined) ||
+      staff.find(
+        s =>
+          (s.role === 'chief_mechanic' || s.role === 'head_mechanics') &&
+          (s.currentTeam === playerTeam.name || s.currentTeam === 'APEX Grand Prix Team')
+      ) ||
       staff.find(s => s.role === 'chief_mechanic' && s.id === 'staff_chief_mechanic') ||
-      staff.find(s => s.role === 'chief_mechanic');
+      staff.find(s => s.role === 'chief_mechanic' || s.role === 'head_mechanics');
 
     const pitOps = evaluatePitAndGarageOperations({
       chiefMechanicRating: activeChiefMech?.rating ?? 76,
@@ -3232,6 +3728,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
 
+      const computedTrackTempC =
+        trackWeather === 'heavy_rain'
+          ? 23
+          : trackWeather === 'light_rain'
+          ? 26
+          : trackWeather === 'overcast'
+          ? 34
+          : Math.round(38 + currentTrackPhysics.coolingDemandIndex01 * 15);
       const result = stepRaceSimulationTick({
         cars: liveCarsRef.current,
         drivers,
@@ -3253,7 +3757,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         playerFatigueLifeRaces: vehiclePhysics.fatigueLifeRaces,
         playerTireWearRateMultiplier: vehiclePhysics.tireWearRateMultiplier,
         playerAvgReliability: avgReliability,
-        flagState: raceFlagRef.current
+        flagState: raceFlagRef.current,
+        circuitId: currentCircuit.id,
+        trackTempC: computedTrackTempC
       });
 
       liveCarsRef.current = result.cars;
@@ -3567,6 +4073,88 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
 
+    // RPG PROGRESSION: Driver & Staff XP + Central da Equipe Level Cap + Simulator Multiplier
+    const teamCentralLevel = facilities.find(f => f.id === 'fac_team_hq')?.level || 1;
+    const simulatorLevel = facilities.find(f => f.id === 'fac_simulator')?.level || 1;
+    const playerReserveId = playerTeam.affiliateDriverId;
+    const constructorPos = Math.max(1, [...allTeams].sort((a, b) => b.points - a.points).findIndex(t => t.isPlayer) + 1);
+
+    setDrivers(prev =>
+      prev.map(d => {
+        const isStarter = Boolean(playerTeam.drivers?.includes(d.id));
+        const isReserve = d.id === playerReserveId || (d.teamId === playerTeam.id && Boolean(d.isAffiliate));
+        if (!isStarter && !isReserve) return d;
+        const carRes = liveCars.find(c => c.driverId === d.id);
+        const trackTimePoints = isStarter
+          ? (carRes?.status === 'retired' || carRes?.isDisqualified ? 8 : (carRes?.position ?? 16) <= 10 ? 22 : 14)
+          : (selectedAffiliateInFP1 ? 16 : 6);
+        const { xpGain } = computeDriverXpGain({
+          driver: d,
+          trackTimePoints,
+          simFacilityLevel: simulatorLevel,
+          teamCentralLevel,
+        });
+        return applyDriverXpAndEvolution(d, xpGain, {
+          simFacilityLevel: simulatorLevel,
+          applyMilestoneAttributes: (carRes?.position ?? 20) <= 10,
+        }).updatedDriver;
+      })
+    );
+
+    const hiredBoardNames = new Set(
+      [playerTeam.headOfAero, playerTeam.headOfPowerUnit, playerTeam.sportingDirector, playerTeam.chiefMechanic].filter(Boolean)
+    );
+    setStaff(prev =>
+      prev.map(s => {
+        const belongsToTeam =
+          s.currentTeam === playerTeam.name ||
+          s.currentTeam === 'APEX Grand Prix Team' ||
+          hiredBoardNames.has(s.name);
+        if (!belongsToTeam) return s;
+        const { xpGain } = computeStaffXpGain({
+          staffMember: s,
+          teamCentralLevel,
+          constructorPosition: constructorPos,
+          bankBalance: financials.bankBalance,
+          costCapSpent: financials.costCapSpent,
+          costCapLimit: financials.costCapLimit,
+          principalBackground: principalProfile.background,
+        });
+        return applyStaffXpAndEvolution(s, xpGain, teamCentralLevel).updatedMember;
+      })
+    );
+
+    // Log post-race Track Feedback from Lead Driver
+    const leadCar = playerCars[0];
+    const leadDriverObj = drivers.find(d => d.id === leadCar?.driverId) || activePlayerDrivers[0];
+    if (leadDriverObj) {
+      const fbScore = Math.round(leadDriverObj.attributes?.feedback ?? 75);
+      const raceFbQuote =
+        bestPlayerFinish <= 10
+          ? `Concluímos em P${bestPlayerFinish} no ${currentCircuit.city}. ${vehiclePhysics.porpoisingRiskPct > 55 ? 'Assoalho ainda quica no fim da reta; vale subir +1mm no ride height.' : 'Equilíbrio sólido nos stints longos, boa tração de saída.'}`
+          : `Ficamos em P${bestPlayerFinish} no ${currentCircuit.city}. ${vehiclePhysics.thermalMarginC < 5 ? 'Motor pediu arrefecimento extra e entrou em limitação térmica.' : 'Faltou carga aerodinâmica nas curvas de média velocidade.'}`;
+      setTrackFeedbackLog(prev => [
+        {
+          id: `tf_race_${Date.now()}`,
+          round: currentCircuitIndex + 1,
+          circuitName: currentCircuit.city || currentCircuit.name,
+          session: 'CORRIDA',
+          driverId: leadDriverObj.id,
+          driverName: leadDriverObj.name,
+          feedbackRating: fbScore,
+          confidencePct: setupWindow.confidence,
+          quote: raceFbQuote,
+          setupHint: fbScore >= 85 ? 'Diagnóstico de alta precisão (Piloto Experiente)' : 'Leitura de correlação básica de pós-corrida',
+          createdAtWeek: currentWeek
+        },
+        ...prev.slice(0, 29)
+      ]);
+    }
+
+    if ((playerTeam.isManufacturer || playerTeam.engineOrigin === 'bought_factory' || playerTeam.engineOrigin === 'phoenix') && mechDnfsThisRace === 0 && bestPlayerFinish <= 14) {
+      setPuDevPoints(prev => prev + 1);
+    }
+
     // Check Season Rollover (Temporada completa de 24 GPs)
     const TOTAL_ROUNDS = seasonCircuits.length;
     const isSeasonEnd = currentCircuitIndex + 1 >= TOTAL_ROUNDS;
@@ -3876,12 +4464,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
               dragCoefficient: Math.round((c.dragCoefficient + 0.003) * 1000) / 1000
             };
           } else {
-            addNotification('COMPONENT MANUFACTURED', `${c.name} has finished production and is installed on the car! (Nível ${Math.min(c.maxLevel || 10, c.level + 1)})`, 'info');
+            const nextCompLevel = Math.min(c.maxLevel || 10, c.level + 1);
+            addNotification('COMPONENT MANUFACTURED', `${c.name} has finished production and is installed on the car! (Nível ${nextCompLevel})`, 'info');
+            setUpgradeTimeline(tl => [
+              ...tl,
+              {
+                gpRound: currentCircuitIndex + 1,
+                label: c.name,
+                componentType: c.type,
+                level: nextCompLevel
+              }
+            ]);
             return {
               ...c,
               inDevelopment: false,
               developmentWeeksLeft: 0,
-              level: Math.min(c.maxLevel || 10, c.level + 1)
+              level: nextCompLevel
             };
           }
         }
@@ -4179,6 +4777,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <GameContext.Provider
       value={{
+        careerInitialized,
         showStartScreen,
         setShowStartScreen,
         showOnboarding,
@@ -4339,7 +4938,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendingSeasonEventCard,
         resolveSeasonEventCard,
         pendingMidSeasonDilemma,
-        resolveMidSeasonDilemma
+        resolveMidSeasonDilemma,
+        trackFeedbackLog,
+        upgradeTimeline,
+        puDevPoints,
+        investPuDevPoints
       }}
     >
       {children}

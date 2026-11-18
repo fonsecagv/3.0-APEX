@@ -2,13 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import type { ComponentPackage3D, PackagingAnalysisOutputs } from '../../engine/modules/m03Packaging';
 import type { AeroMode, Driver, Team, TireCompound } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { LIVERY_2026_CATALOG, resolveTeamLivery2026, type Livery2026Spec } from '../../data/f12026Liveries';
-import { buildF1Car2026, type BuiltF1Car, type CarVisualMode } from '../three/f1CarBuilder';
-import { loadOrBuildF1Car, type CarModelMetadata, type LoadedF1CarInstance } from '../three/f1ModelLoader';
-import { ChevronDown, ChevronUp, Eye, Layers, Maximize2, Minimize2, RotateCw, Sparkles, Wind, X } from 'lucide-react';
+import { type BuiltF1Car, type CarVisualMode } from '../three/f1CarBuilder';
+import { loadOrBuildF1Car, type CarModelMetadata } from '../three/f1ModelLoader';
+import { createCycloramaFloorTexture } from '../three/f1Textures';
+import { ChevronDown, ChevronUp, Layers, Maximize2, Minimize2, RotateCw, Sparkles, Wind, X } from 'lucide-react';
 
 interface Packaging3DViewportProps {
   packaging: PackagingAnalysisOutputs;
@@ -22,6 +24,7 @@ interface Packaging3DViewportProps {
   onSelectTeamId?: (teamId: string) => void;
   heightClass?: string;
   defaultAutoSpin?: boolean;
+  suspended?: boolean;
 }
 
 const SUBSYSTEM_COLORS: Record<ComponentPackage3D['subsystem'], number> = {
@@ -85,6 +88,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   onSelectTeamId,
   heightClass = 'h-[470px]',
   defaultAutoSpin = false,
+  suspended = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -92,6 +96,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null);
   const carRef = useRef<BuiltF1Car | null>(null);
   const cadGroupRef = useRef<THREE.Group | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
   const pickGroupRef = useRef<THREE.Group | null>(null);
   const pickableMeshesRef = useRef<THREE.Mesh[]>([]);
   const requestRenderRef = useRef<() => void>(() => {});
@@ -119,6 +124,13 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
   const [driverIndex, setDriverIndex] = useState<0 | 1>(0);
   const [autoSpin, setAutoSpin] = useState<boolean>(defaultAutoSpin);
   const [dockExpanded, setDockExpanded] = useState<boolean>(false);
+  const [hudMinimized, setHudMinimized] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (defaultSelectedTeamId) {
+      setInternalTeamId(defaultSelectedTeamId);
+    }
+  }, [defaultSelectedTeamId]);
 
   const selectedTeamId = selectedTeamIdOverride ?? internalTeamId;
   const selectTeam = (id: string) => {
@@ -151,23 +163,34 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     return matched.length >= 2 ? matched : undefined;
   }, [drivers, playerTeam]);
 
+  const effectiveSidepodConcept: 'downwash' | 'conventional' | 'zeropod' = useMemo(() => {
+    const undercut = vehicleParams?.sidepodUndercutPct ?? 58;
+    return undercut >= 55 ? 'downwash' : undercut <= 25 ? 'zeropod' : 'conventional';
+  }, [vehicleParams?.sidepodUndercutPct]);
+
   // Build active 2026 livery spec from either player's car or official 2026 grid team
   const activeLivery: Livery2026Spec = useMemo(() => {
-    if (selectedTeamId === 'player_car' || (playerTeam?.id && selectedTeamId === playerTeam.id)) {
-      return resolveTeamLivery2026(playerTeam || { id: 'apex', isPlayer: true }, undefined, playerTeamDrivers);
+    const isSelectingPlayer =
+      selectedTeamId === 'player_car' ||
+      Boolean(playerTeam?.id && selectedTeamId === playerTeam.id);
+
+    if (isSelectingPlayer) {
+      return resolveTeamLivery2026(
+        playerTeam || { id: 'apex', isPlayer: true },
+        undefined,
+        playerTeamDrivers,
+        effectiveSidepodConcept
+      );
     }
     const preset = LIVERY_2026_CATALOG.find((c) => c.teamId === selectedTeamId);
     if (preset) return preset;
     const matchedTeam = allTeams?.find((t) => t.id === selectedTeamId);
-    return resolveTeamLivery2026(matchedTeam || null);
-  }, [selectedTeamId, playerTeam, allTeams, playerTeamDrivers]);
+    return resolveTeamLivery2026(matchedTeam || null, undefined, undefined, effectiveSidepodConcept);
+  }, [selectedTeamId, playerTeam, allTeams, playerTeamDrivers, effectiveSidepodConcept]);
 
   const activeDriver = activeLivery.drivers[driverIndex] || activeLivery.drivers[0];
 
   const effectiveCarParams = useMemo(() => {
-    const undercut = vehicleParams?.sidepodUndercutPct ?? 58;
-    const derivedConcept: 'downwash' | 'conventional' | 'zeropod' =
-      undercut >= 55 ? 'downwash' : undercut <= 25 ? 'zeropod' : 'conventional';
     const isModeX = aeroMode === 'mode_x';
     return {
       wheelbaseM: packaging.wheelbaseM,
@@ -183,14 +206,14 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
         : (vehicleParams?.rearWingFlapCornerDeg ?? 26),
       wingSpanM: (vehicleParams?.wingSpanMm ?? 1800) * 0.001,
       diffuserAngleDeg: vehicleParams?.diffuserAngleDeg ?? 10.5,
-      sidepodConcept: derivedConcept,
+      sidepodConcept: effectiveSidepodConcept,
       sidepodInletAreaM2: (vehicleParams?.sidepodInletAreaCm2 ?? 320) * 0.0001,
       suspensionFront: vehicleParams?.frontSuspensionType ?? 'pushrod',
       suspensionRear: vehicleParams?.rearSuspensionType ?? 'pullrod',
       aeroMode,
       tireCompound,
     };
-  }, [packaging.wheelbaseM, packaging.frontTrackM, packaging.rearTrackM, vehicleParams, aeroMode, tireCompound]);
+  }, [packaging.wheelbaseM, packaging.frontTrackM, packaging.rearTrackM, vehicleParams, aeroMode, tireCompound, effectiveSidepodConcept]);
 
   const applyCameraPreset = (preset: CameraViewPreset) => {
     setViewPreset(preset);
@@ -201,10 +224,10 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     requestRenderRef.current();
   };
 
-  // Initialize persistent WebGL scene, lighting, controls, and RoomEnvironment once
+  // Initialize persistent WebGL scene, cyclorama lighting, controls, and RoomEnvironment once
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || suspended) return;
 
     let probeSoftwareGl = false;
     try {
@@ -214,6 +237,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
         const dbg = glProbe.getExtension('WEBGL_debug_renderer_info');
         const unmasked = dbg ? String(glProbe.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
         probeSoftwareGl = /SwiftShader|llvmpipe|Mesa|ANGLE.*Basic/i.test(unmasked);
+        glProbe.getExtension('WEBGL_lose_context')?.loseContext();
       }
     } catch {
       probeSoftwareGl = false;
@@ -237,8 +261,9 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     const height = Math.max(300, container.clientHeight);
     renderer.setPixelRatio(probeSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
+    renderer.toneMappingExposure = 1.16;
     renderer.shadowMap.enabled = !probeSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
@@ -257,8 +282,8 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0c0d13);
-    scene.fog = new THREE.FogExp2(0x0c0d13, 0.058);
+    scene.background = new THREE.Color(0x07080c);
+    scene.fog = new THREE.FogExp2(0x07080c, 0.056);
     sceneRef.current = scene;
 
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -267,7 +292,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     scene.environment = envTarget.texture;
     roomEnv.dispose();
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.05, 50);
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.05, 55);
     camera.position.copy(cameraGoalRef.current.pos);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -284,12 +309,12 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
 
     const envDisposables: Array<{ dispose: () => void }> = [];
 
-    // 3-Point Studio Lighting + Overhead Showroom Soft-Fill
-    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x15161e, 0.55);
+    // 3-Point Warm/Cool Studio Lighting + Twin Automotive Overhead Softboxes
+    const hemiLight = new THREE.HemisphereLight(0xe0ecff, 0x121319, 0.62);
     scene.add(hemiLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff7ed, 1.9);
-    keyLight.position.set(4.5, 6.4, 3.8);
+    const keyLight = new THREE.DirectionalLight(0xfff6eb, 2.05);
+    keyLight.position.set(4.8, 6.8, 4.0);
     if (!probeSoftwareGl) {
       keyLight.castShadow = true;
       keyLight.shadow.mapSize.set(1024, 1024);
@@ -300,25 +325,39 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       keyLight.shadow.camera.top = 3.4;
       keyLight.shadow.camera.bottom = -3.4;
       keyLight.shadow.bias = -0.0005;
+      keyLight.shadow.normalBias = 0.02;
     }
     scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.0);
-    rimLight.position.set(-4.5, 2.8, -3.5);
+    const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.95);
+    rimLight.position.set(-4.6, 3.0, -3.6);
     scene.add(rimLight);
 
     if (!probeSoftwareGl) {
-      const overheadFill = new THREE.DirectionalLight(0xe0f2fe, 0.78);
-      overheadFill.position.set(-0.2, 5.4, -1.6);
-      scene.add(overheadFill);
+      RectAreaLightUniformsLib.init();
+      const topSoftbox = new THREE.RectAreaLight(0xf8fafc, 2.9, 5.4, 1.3);
+      topSoftbox.position.set(0.0, 3.4, 0.9);
+      topSoftbox.lookAt(0, 0.35, 0);
+      scene.add(topSoftbox);
+
+      const rearSoftbox = new THREE.RectAreaLight(0xe2e8f0, 2.1, 4.4, 1.1);
+      rearSoftbox.position.set(-0.6, 2.9, -1.7);
+      rearSoftbox.lookAt(0, 0.35, 0);
+      scene.add(rearSoftbox);
     }
 
-    const studioFloorGeo = new THREE.CircleGeometry(7.2, 64);
+    // Infinite smooth dark studio cyclorama floor (no harsh turntable rim in Showroom mode)
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    const cycloramaTex = createCycloramaFloorTexture(maxAniso);
+    if (cycloramaTex) envDisposables.push(cycloramaTex);
+
+    const studioFloorGeo = new THREE.CircleGeometry(20, 72);
     studioFloorGeo.rotateX(-Math.PI / 2);
     const studioFloorMat = new THREE.MeshStandardMaterial({
-      color: 0x10121a,
-      roughness: 0.76,
-      metalness: 0.14,
+      color: 0xffffff,
+      map: cycloramaTex ?? undefined,
+      roughness: 0.78,
+      metalness: 0.10,
     });
     const studioFloor = new THREE.Mesh(studioFloorGeo, studioFloorMat);
     studioFloor.position.y = -0.029;
@@ -327,17 +366,23 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     envDisposables.push(studioFloorGeo, studioFloorMat);
 
     const grid = new THREE.GridHelper(9, 36, 0x262c3d, 0x151923);
-    grid.position.y = -0.028;
+    grid.position.y = -0.024;
+    grid.visible = visualMode === 'xray_cad';
     scene.add(grid);
+    gridRef.current = grid;
 
     const cadGroup = new THREE.Group();
     scene.add(cadGroup);
     cadGroupRef.current = cadGroup;
 
-    // Dedicated always-visible invisible pick proxy group so clicking works in BOTH Showroom 2026 & Raio-X M03
+    // Dedicated always-visible invisible pick proxy group
     const pickGroup = new THREE.Group();
     scene.add(pickGroup);
     pickGroupRef.current = pickGroup;
+
+    if (!probeSoftwareGl) {
+      renderer.compile(scene, camera);
+    }
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -360,7 +405,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     };
     const handlePointerUp = (ev: PointerEvent) => {
       const dist = Math.hypot(ev.clientX - downX, ev.clientY - downY);
-      if (dist > 6) return; // Ignore orbit camera drags
+      if (dist > 6) return;
       const hits = castAtPointer(ev.clientX, ev.clientY);
       if (hits.length > 0) {
         const hitId = hits[0].object.userData?.pkgId;
@@ -380,12 +425,43 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
 
     let rafId = 0;
+    let timerId: number | null = null;
+    let disposed = false;
     let currentExplode = explodeTargetRef.current;
     let prevTime = performance.now();
     let needsRender = true;
 
+    const afterDraw = (done: () => void) => {
+      if (!probeSoftwareGl) {
+        done();
+        return;
+      }
+      const glCtx = renderer.getContext();
+      if (typeof WebGL2RenderingContext !== 'undefined' && glCtx instanceof WebGL2RenderingContext) {
+        const sync = glCtx.fenceSync(glCtx.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        glCtx.flush();
+        const checkSync = () => {
+          if (disposed) {
+            if (sync) glCtx.deleteSync(sync);
+            return;
+          }
+          const status = sync ? glCtx.clientWaitSync(sync, 0, 0) : glCtx.ALREADY_SIGNALED;
+          if (status === glCtx.TIMEOUT_EXPIRED) {
+            timerId = window.setTimeout(checkSync, 24);
+          } else {
+            if (sync) glCtx.deleteSync(sync);
+            timerId = window.setTimeout(done, 65);
+          }
+        };
+        timerId = window.setTimeout(checkSync, 65);
+      } else {
+        timerId = window.setTimeout(done, 85);
+      }
+    };
+
     const tick = (now: number) => {
       rafId = 0;
+      if (disposed) return;
       const dt = Math.min(0.05, Math.max(0.001, (now - prevTime) / 1000));
       prevTime = now;
 
@@ -424,7 +500,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       }
 
       const dampingMoved = controls.update();
-      if ((dampingMoved || (autoSpinRef.current && !probeSoftwareGl)) && !probeSoftwareGl) {
+      if (dampingMoved || (autoSpinRef.current && !probeSoftwareGl)) {
         keepRunning = true;
       }
 
@@ -433,14 +509,18 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       if (keepRunning || needsRender) {
         needsRender = false;
         if (keepRunning) {
-          rafId = requestAnimationFrame(tick);
+          afterDraw(() => {
+            if (!disposed && !rafId) {
+              rafId = requestAnimationFrame(tick);
+            }
+          });
         }
       }
     };
 
     const requestRender = () => {
       needsRender = true;
-      if (!rafId) {
+      if (!rafId && !disposed) {
         prevTime = performance.now();
         rafId = requestAnimationFrame(tick);
       }
@@ -477,7 +557,9 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     requestRender();
 
     return () => {
+      disposed = true;
       if (rafId) cancelAnimationFrame(rafId);
+      if (timerId !== null) window.clearTimeout(timerId);
       ro.disconnect();
       controls.removeEventListener('start', handleControlStart);
       controls.removeEventListener('change', handleControlChange);
@@ -493,13 +575,15 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       rendererRef.current = null;
       controlsRef.current = null;
       cadGroupRef.current = null;
+      gridRef.current = null;
       pickGroupRef.current = null;
       for (const d of envDisposables) d.dispose();
+      renderer.forceContextLoss();
       renderer.dispose();
     };
-  }, []);
+  }, [suspended]);
 
-  // Fast swap/rebuild of 2026 F1 Car Mesh via GLTF loader or procedural engine
+  // Rebuild 2026 F1 Car Mesh via GLTF loader or procedural engine
   useEffect(() => {
     const scene = sceneRef.current;
     const renderer = rendererRef.current;
@@ -535,7 +619,7 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     };
   }, [activeLivery, effectiveCarParams, driverIndex]);
 
-  // Fast rebuild of M03 X-Ray CAD Overlay + Invisible Raycast Proxies when packaging or selected package changes
+  // Rebuild M03 X-Ray CAD Overlay + Invisible Raycast Proxies when packaging or selection changes
   useEffect(() => {
     const cadGroup = cadGroupRef.current;
     const pickGroup = pickGroupRef.current;
@@ -585,7 +669,6 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
       boxMesh.position.copy(boxPos);
       cadGroup.add(boxMesh);
 
-      // Always-active invisible proxy collider for raycasting across both Showroom & X-Ray modes
       const pickMesh = new THREE.Mesh(boxGeo, sharedPickMat);
       pickMesh.position.copy(boxPos);
       pickMesh.userData = { pkgId: pkg.id };
@@ -659,6 +742,9 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     if (cadGroupRef.current) {
       cadGroupRef.current.visible = visualMode === 'xray_cad';
     }
+    if (gridRef.current) {
+      gridRef.current.visible = visualMode === 'xray_cad';
+    }
     requestRenderRef.current();
   }, [visualMode]);
 
@@ -679,11 +765,15 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
     <div
       className={
         isFullscreen
-          ? 'fixed inset-0 z-50 w-screen h-screen bg-[#0c0d13] overflow-hidden select-none'
-          : `relative w-full ${heightClass} bg-[#0c0d13] border border-white/10 overflow-hidden select-none`
+          ? 'fixed inset-0 z-50 w-screen h-screen bg-[#07080c] overflow-hidden select-none'
+          : `relative w-full ${heightClass} bg-[#07080c] border border-white/10 overflow-hidden select-none`
       }
     >
-      {webglUnavailable ? (
+      {suspended ? (
+        <div className="w-full h-full flex items-center justify-center bg-[#07080c] text-[11px] font-f1-mono text-zinc-500">
+          Showroom principal em exibição cerimonial...
+        </div>
+      ) : webglUnavailable ? (
         <div className="w-full h-full flex flex-col items-center justify-center p-4">
           <div className="text-[11px] font-f1-mono text-amber-300 mb-2">
             WebGL indisponível neste dispositivo — Projeção Ortográfica 2D (Plano X-Z SAE/ISO)
@@ -715,302 +805,320 @@ export const Packaging3DViewport: React.FC<Packaging3DViewportProps> = ({
         <div ref={containerRef} className="w-full h-full" />
       )}
 
-      {/* Top-Left Camera Presets & Visual Mode Switcher (Solid surfaces, zero backdrop-blur) */}
-      <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5 bg-[#101017]/94 border border-white/15 px-2.5 py-1.5 max-w-[calc(100%-1.5rem)]">
-        {(Object.keys(CAMERA_PRESETS) as CameraViewPreset[]).map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            onClick={() => applyCameraPreset(preset)}
-            className={`px-2 py-0.5 text-[10px] font-f1-mono uppercase cursor-pointer border transition-colors ${
-              viewPreset === preset
-                ? 'bg-[#E10600] border-[#E10600] text-white font-bold'
-                : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
-            }`}
-          >
-            {CAMERA_PRESETS[preset].label}
-          </button>
-        ))}
-
-        <div className="flex items-center gap-1 pl-2 border-l border-white/15">
-          <button
-            type="button"
-            onClick={() => setVisualMode('showroom')}
-            className={`px-2 py-0.5 text-[10px] font-f1-mono uppercase cursor-pointer border flex items-center gap-1 ${
-              visualMode === 'showroom'
-                ? 'bg-cyan-600 border-cyan-400 text-white font-bold'
-                : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>Showroom 2026</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setVisualMode('xray_cad')}
-            className={`px-2 py-0.5 text-[10px] font-f1-mono uppercase cursor-pointer border flex items-center gap-1 ${
-              visualMode === 'xray_cad'
-                ? 'bg-amber-600 border-amber-400 text-white font-bold'
-                : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3 h-3" />
-            <span>Raio-X M03</span>
-          </button>
+      {/* Top Overlay: Clean Unobstructed Showroom Branding (Left) + Driver/Mode Header (Right) */}
+      <div className="absolute top-3 left-4 right-4 z-10 flex items-start justify-between gap-4 pointer-events-none">
+        {/* Top-Left Formula Showroom Chassis Showcase Title */}
+        <div className="space-y-0.5 max-w-md">
+          <span className="text-[10px] font-f1-mono text-zinc-400 uppercase tracking-[0.22em] block">
+            F1 SHOWROOM · 2026
+          </span>
+          <h2 className="font-f1-wide font-black italic text-lg sm:text-2xl text-white uppercase tracking-wide leading-tight drop-shadow">
+            {activeLivery.teamName} · <span style={{ color: activeLivery.primaryHex === '#14161B' || activeLivery.primaryHex === '#0B1936' || activeLivery.primaryHex === '#13161D' ? activeLivery.accentHex : activeLivery.primaryHex }}>{activeLivery.carModelName}</span>
+          </h2>
+          <div className="flex items-center gap-2 text-[10px] font-f1-mono text-zinc-400">
+            <span className="uppercase font-bold" style={{ color: activeLivery.accentHex }}>
+              {activeLivery.shortName}
+            </span>
+            <span>·</span>
+            <span className="truncate">{activeLivery.engineBadge}</span>
+          </div>
         </div>
-      </div>
 
-      {/* Top-Right Chassis, Driver & T-Cam Telemetry Strip */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        {carMetadata && (
-          <div className="hidden sm:flex items-center gap-1.5 bg-[#101017]/94 border border-white/15 px-2 py-1 text-[9px] font-f1-mono">
-            <span
-              className={`px-1.5 py-0.2 uppercase font-bold border ${
-                carMetadata.source === 'team_glb'
-                  ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
-                  : carMetadata.source === 'base_glb'
-                  ? 'bg-cyan-950/80 border-cyan-500/60 text-cyan-300'
-                  : 'bg-zinc-800 border-white/20 text-zinc-300'
-              }`}
+        {/* Top-Right Active Driver Number + Mode & Fullscreen Buttons */}
+        <div className="pointer-events-auto flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 bg-[#101017]/95 border border-white/15 px-2.5 py-1 text-[10px] font-f1-mono">
+              <span className="font-f1-wide font-black italic text-sm text-white tabular-nums">
+                {activeDriver.number}
+              </span>
+              <span className="text-zinc-200 font-bold">{activeDriver.name}</span>
+              <span
+                className="w-2.5 h-2.5 border border-white/40 shrink-0"
+                title={`FIA T-Cam: ${driverIndex === 0 ? 'Preta (Carro 1)' : 'Amarela (Carro 2)'}`}
+                style={{ backgroundColor: activeDriver.tCamHex }}
+              />
+            </div>
+
+            <div className="flex items-center border border-white/15 bg-[#101017]/95 p-0.5 gap-0.5">
+              <button
+                type="button"
+                onClick={() => setVisualMode('showroom')}
+                className={`px-2 py-1 text-[10px] font-f1-mono uppercase cursor-pointer flex items-center gap-1 transition-colors ${
+                  visualMode === 'showroom'
+                    ? 'bg-cyan-600 text-white font-bold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Showroom</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisualMode('xray_cad')}
+                className={`px-2 py-1 text-[10px] font-f1-mono uppercase cursor-pointer flex items-center gap-1 transition-colors ${
+                  visualMode === 'xray_cad'
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                <Layers className="w-3 h-3" />
+                <span>Raio-X M03</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsFullscreen((prev) => !prev)}
+              title={isFullscreen ? 'Sair do Modo Showroom Tela Cheia' : 'Expandir Showroom Tela Cheia'}
+              className="bg-[#101017]/95 hover:bg-[#202230] border border-white/15 hover:border-cyan-400 p-1.5 text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-f1-mono uppercase"
             >
-              {carMetadata.source === 'team_glb'
-                ? '3D GLB Oficial'
-                : carMetadata.source === 'base_glb'
-                ? 'GLB Base 2026'
-                : 'CAD Paramétrico'}
-            </span>
-            <span className="text-zinc-400">
-              {(carMetadata.triangleCount / 1000).toFixed(1)}k tris
-            </span>
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />}
+            </button>
           </div>
-        )}
 
-        <div className="hidden lg:flex items-center gap-2 bg-[#101017]/94 border border-white/15 px-3 py-1.5 text-[10px] font-f1-mono">
-          <span
-            className="w-2.5 h-2.5 border border-white/30 shrink-0"
-            style={{ backgroundColor: activeLivery.primaryHex }}
-          />
-          <span className="font-f1-wide font-bold text-white uppercase">{activeLivery.carModelName}</span>
-          <span className="text-zinc-500">·</span>
-          <span className="text-white font-bold tabular-nums">#{activeDriver.number} {activeDriver.shortCode}</span>
-          <span
-            className="w-2.5 h-2.5 border border-white/40 shrink-0"
-            title={`FIA T-Cam: ${driverIndex === 0 ? 'Preta (Carro 1)' : 'Amarela (Carro 2)'}`}
-            style={{ backgroundColor: activeDriver.tCamHex }}
-          />
-          <span className="text-zinc-500">·</span>
-          <span className="text-zinc-300">{activeLivery.engineBadge}</span>
+          {carMetadata && !hudMinimized && (
+            <div className="hidden md:flex items-center gap-2 text-[9px] font-f1-mono text-zinc-500">
+              <span>{carMetadata.modelName}</span>
+              <span>·</span>
+              <span className="tabular-nums">{(carMetadata.triangleCount / 1000).toFixed(1)}k tris</span>
+            </div>
+          )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsFullscreen((prev) => !prev)}
-          title={isFullscreen ? 'Sair do Modo Showroom Tela Cheia' : 'Expandir Showroom Tela Cheia (F1 Showroom 3D)'}
-          className="bg-[#101017]/94 hover:bg-[#202230] border border-white/15 hover:border-cyan-400 p-2 text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-[10px] font-f1-mono uppercase"
-        >
-          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />}
-          <span className="hidden sm:inline font-bold">{isFullscreen ? 'Minimizar' : 'Showroom 3D'}</span>
-        </button>
       </div>
 
-      {/* Bottom Collapsible Inspector & Formula Dream 2026 Showroom Dock */}
-      <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-col gap-2 pointer-events-none">
-        {selectedPackage && (() => {
-          const massPct = (selectedPackage.massKg / Math.max(1, packaging.totalMassKg)) * 100;
-          const deltaXMm = Math.round((selectedPackage.xCgM - packaging.cgM.x) * 1000);
-          const deltaZMm = Math.round((selectedPackage.zCgM - packaging.cgM.z) * 1000);
-          const info = SUBSYSTEM_TRADE_OFFS[selectedPackage.subsystem];
-          return (
-            <div className="pointer-events-auto self-start w-full max-w-md bg-[#101017]/95 border border-[#E10600]/60 px-3.5 py-2.5 text-[11px] font-f1-mono shadow-xl space-y-2">
-              <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-1.5">
-                <div>
-                  <span className="text-[9px] text-[#E10600] font-bold uppercase tracking-wider block">
-                    {info.tag}
-                  </span>
-                  <span className="font-f1-wide font-black text-xs text-white uppercase">
-                    {selectedPackage.name}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPkgId(null)}
-                  title="Fechar inspeção"
-                  className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+      {/* Selected M03 Package Popup */}
+      {selectedPackage && (() => {
+        const massPct = (selectedPackage.massKg / Math.max(1, packaging.totalMassKg)) * 100;
+        const deltaXMm = Math.round((selectedPackage.xCgM - packaging.cgM.x) * 1000);
+        const deltaZMm = Math.round((selectedPackage.zCgM - packaging.cgM.z) * 1000);
+        const info = SUBSYSTEM_TRADE_OFFS[selectedPackage.subsystem];
+        return (
+          <div className="absolute bottom-20 left-4 z-20 w-full max-w-md bg-[#101017]/95 border border-[#E10600]/60 px-3.5 py-2.5 text-[11px] font-f1-mono shadow-xl space-y-2">
+            <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-1.5">
+              <div>
+                <span className="text-[9px] text-[#E10600] font-bold uppercase tracking-wider block">
+                  {info.tag}
+                </span>
+                <span className="font-f1-wide font-black text-xs text-white uppercase">
+                  {selectedPackage.name}
+                </span>
               </div>
-              <div className="grid grid-cols-3 gap-2 tabular-nums bg-[#171822] p-2 border border-white/5">
-                <div>
-                  <span className="text-[9px] text-zinc-400 block uppercase">Massa</span>
-                  <span className="text-amber-300 font-bold">{selectedPackage.massKg.toFixed(1)} kg</span>
-                </div>
-                <div>
-                  <span className="text-[9px] text-zinc-400 block uppercase">% Total</span>
-                  <span className="text-cyan-300 font-bold">{massPct.toFixed(1)}%</span>
-                </div>
-                <div>
-                  <span className="text-[9px] text-zinc-400 block uppercase">Impacto CG</span>
-                  <span className="text-white font-bold">
-                    {deltaXMm <= 0 ? `${Math.abs(deltaXMm)}mm Diant.` : `${deltaXMm}mm Tras.`} · {deltaZMm >= 0 ? `+${deltaZMm}` : deltaZMm}mm Z
-                  </span>
-                </div>
-              </div>
-              <p className="text-[10px] text-zinc-300 leading-snug">{info.impact}</p>
-            </div>
-          );
-        })()}
-
-        <div className="pointer-events-auto bg-[#101017]/94 border border-white/15 px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-f1-mono">
-            <div className="flex items-center gap-2 min-w-0">
-              <Eye className="w-3.5 h-3.5 text-[#E10600] shrink-0" />
-              <span className="text-white font-bold truncate">
-                {activeLivery.teamName} ({activeLivery.carModelName})
-              </span>
-              <span className="hidden md:inline text-zinc-400 truncate">
-                · #{activeDriver.number} {activeDriver.name}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* Driver 1 vs Driver 2 Switcher (mirrors Formula Dream driver=0 / driver=1) */}
-              <div className="flex items-center border border-white/15 bg-[#171822]">
-                {activeLivery.drivers.map((drv, idx) => {
-                  const slot = idx as 0 | 1;
-                  const active = driverIndex === slot;
-                  return (
-                    <button
-                      key={`${activeLivery.teamId}_${slot}`}
-                      type="button"
-                      onClick={() => setDriverIndex(slot)}
-                      title={`${drv.name} · T-Cam ${slot === 0 ? 'Preta' : 'Amarela'}`}
-                      className={`px-2 py-0.5 uppercase cursor-pointer flex items-center gap-1.5 transition-colors ${
-                        active
-                          ? 'bg-[#E10600] text-white font-bold'
-                          : 'text-zinc-300 hover:text-white'
-                      }`}
-                    >
-                      <span
-                        className="w-2 h-2 border border-white/40 shrink-0"
-                        style={{ backgroundColor: drv.tCamHex }}
-                      />
-                      <span className="tabular-nums">#{drv.number} {drv.shortCode}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
               <button
                 type="button"
-                onClick={() => setAeroMode((prev) => (prev === 'mode_z' ? 'mode_x' : 'mode_z'))}
-                className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
-                  aeroMode === 'mode_x'
-                    ? 'bg-cyan-700 border-cyan-400 text-white font-bold'
-                    : 'bg-[#171822] border-white/15 text-zinc-200'
-                }`}
+                onClick={() => setSelectedPkgId(null)}
+                title="Fechar inspeção"
+                className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
               >
-                <Wind className="w-3 h-3" />
-                <span>{aeroMode === 'mode_x' ? 'Modo X (Reta)' : 'Modo Z (Curva)'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAutoSpin((v) => !v)}
-                className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
-                  autoSpin
-                    ? 'bg-emerald-700 border-emerald-400 text-white font-bold'
-                    : 'bg-[#171822] border-white/15 text-zinc-200 hover:text-white'
-                }`}
-              >
-                <RotateCw className="w-3 h-3" />
-                <span>360°</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDockExpanded((v) => !v)}
-                className="px-2 py-0.5 bg-[#171822] hover:bg-[#232534] border border-white/15 text-zinc-200 uppercase cursor-pointer flex items-center gap-1"
-              >
-                <span>{dockExpanded ? 'Ocultar Grid 2026' : 'Grid 2026 & Pneus'}</span>
-                {dockExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                <X className="w-4 h-4" />
               </button>
             </div>
+            <div className="grid grid-cols-3 gap-2 tabular-nums bg-[#171822] p-2 border border-white/5">
+              <div>
+                <span className="text-[9px] text-zinc-400 block uppercase">Massa</span>
+                <span className="text-amber-300 font-bold">{selectedPackage.massKg.toFixed(1)} kg</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-zinc-400 block uppercase">% Total</span>
+                <span className="text-cyan-300 font-bold">{massPct.toFixed(1)}%</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-zinc-400 block uppercase">Impacto CG</span>
+                <span className="text-white font-bold">
+                  {deltaXMm <= 0 ? `${Math.abs(deltaXMm)}mm Diant.` : `${deltaXMm}mm Tras.`} · {deltaZMm >= 0 ? `+${deltaZMm}` : deltaZMm}mm Z
+                </span>
+              </div>
+            </div>
+            <p className="text-[10px] text-zinc-300 leading-snug">{info.impact}</p>
           </div>
+        );
+      })()}
 
-          {dockExpanded && (
-            <div className="mt-2.5 pt-2.5 border-t border-white/10 space-y-2.5 text-[10px] font-f1-mono">
-              <div className="flex flex-wrap gap-1">
-                <button
-                  type="button"
-                  onClick={() => selectTeam('player_car')}
-                  className={`px-2 py-1 border uppercase cursor-pointer ${
-                    selectedTeamId === 'player_car' || (playerTeam?.id && selectedTeamId === playerTeam.id)
-                      ? 'bg-[#E10600] border-[#E10600] text-white font-bold'
-                      : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
-                  }`}
-                >
-                  Meu Carro ({playerTeam?.shortName || 'APX'})
-                </button>
-                {LIVERY_2026_CATALOG.map((spec) => (
+      {/* Bottom Edge: Driver Switcher (Left) + Collapsible Center Control Dock */}
+      <div className="absolute bottom-3 left-4 right-4 z-10 flex flex-col gap-1.5 pointer-events-none">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          {/* Bottom-Left Driver 1 / Driver 2 Switcher */}
+          <div className="pointer-events-auto flex items-center gap-1.5">
+            <div className="flex items-center border border-white/15 bg-[#101017]/95 p-0.5 gap-1">
+              {activeLivery.drivers.map((drv, idx) => {
+                const slot = idx as 0 | 1;
+                const active = driverIndex === slot;
+                return (
                   <button
-                    key={spec.teamId}
+                    key={`${activeLivery.teamId}_${slot}`}
                     type="button"
-                    onClick={() => selectTeam(spec.teamId)}
-                    className={`px-2 py-1 border uppercase cursor-pointer flex items-center gap-1.5 ${
-                      selectedTeamId === spec.teamId
-                        ? 'bg-[#252636] border-white text-white font-bold'
-                        : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
+                    onClick={() => setDriverIndex(slot)}
+                    title={`${drv.name} · T-Cam ${slot === 0 ? 'Preta' : 'Amarela'}`}
+                    className={`px-2 py-1 text-[10px] font-f1-mono uppercase cursor-pointer flex items-center gap-1.5 transition-colors border ${
+                      active
+                        ? 'bg-[#1b1d27] border-white/60 text-white font-bold'
+                        : 'border-transparent text-zinc-400 hover:text-white'
                     }`}
                   >
                     <span
-                      className="w-2 h-2 border border-white/30"
-                      style={{ backgroundColor: spec.primaryHex }}
+                      className="w-2 h-2 border border-white/40 shrink-0"
+                      style={{ backgroundColor: drv.tCamHex }}
                     />
-                    <span>{spec.carModelName}</span>
+                    <span className="tabular-nums font-bold">{drv.number}</span>
+                    <span>{drv.shortCode}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="hidden lg:inline text-[9px] font-f1-mono text-zinc-500">
+              Arraste para orbitar · Scroll para zoom
+            </span>
+          </div>
+
+          {/* Bottom-Right HUD Collapse Toggle */}
+          <button
+            type="button"
+            onClick={() => setHudMinimized((prev) => !prev)}
+            className="pointer-events-auto px-2.5 py-1 bg-[#101017]/95 border border-white/15 text-[10px] font-f1-mono text-zinc-300 hover:text-white uppercase cursor-pointer flex items-center gap-1"
+          >
+            <span>{hudMinimized ? 'Mostrar Controles' : 'Ocultar Dock'}</span>
+            {hudMinimized ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        </div>
+
+        {/* Collapsible Compact Engineering & Showroom Control Dock */}
+        {!hudMinimized && (
+          <div className="pointer-events-auto bg-[#101017]/94 border border-white/15 px-3 py-2 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-f1-mono">
+              <div className="flex flex-wrap items-center gap-1">
+                {(Object.keys(CAMERA_PRESETS) as CameraViewPreset[]).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => applyCameraPreset(preset)}
+                    className={`px-2 py-0.5 uppercase cursor-pointer border transition-colors ${
+                      viewPreset === preset
+                        ? 'bg-[#E10600] border-[#E10600] text-white font-bold'
+                        : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {CAMERA_PRESETS[preset].label}
                   </button>
                 ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-1">
-                  <span className="text-zinc-400 mr-1">PNEU 18&quot;:</span>
-                  {TIRE_OPTIONS.map((tOpt) => (
-                    <button
-                      key={tOpt.id}
-                      type="button"
-                      onClick={() => setTireCompound(tOpt.id)}
-                      className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
-                        tireCompound === tOpt.id
-                          ? 'bg-[#252636] border-white text-white font-bold'
-                          : 'bg-[#171822] border-white/10 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tOpt.dot }} />
-                      <span>{tOpt.label}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAeroMode((prev) => (prev === 'mode_z' ? 'mode_x' : 'mode_z'))}
+                  className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
+                    aeroMode === 'mode_x'
+                      ? 'bg-cyan-700 border-cyan-400 text-white font-bold'
+                      : 'bg-[#171822] border-white/15 text-zinc-200'
+                  }`}
+                >
+                  <Wind className="w-3 h-3" />
+                  <span>{aeroMode === 'mode_x' ? 'Modo X (Reta)' : 'Modo Z (Curva)'}</span>
+                </button>
 
-                <div className="flex items-center gap-2 min-w-[200px]">
-                  <span className="text-zinc-400 whitespace-nowrap">EXPLODIR CAD:</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={explodePct}
-                    onChange={(e) => setExplodePct(Number(e.target.value))}
-                    className="w-full accent-[#E10600] h-1.5 bg-zinc-700 cursor-pointer"
-                  />
-                  <span className="text-white font-bold tabular-nums w-8 text-right">{explodePct}%</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setAutoSpin((v) => !v)}
+                  className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
+                    autoSpin
+                      ? 'bg-emerald-700 border-emerald-400 text-white font-bold'
+                      : 'bg-[#171822] border-white/15 text-zinc-200 hover:text-white'
+                  }`}
+                >
+                  <RotateCw className="w-3 h-3" />
+                  <span>360°</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDockExpanded((v) => !v)}
+                  className="px-2 py-0.5 bg-[#171822] hover:bg-[#232534] border border-white/15 text-zinc-200 uppercase cursor-pointer flex items-center gap-1"
+                >
+                  <span>{dockExpanded ? 'Fechar Grid 2026' : 'Grid 2026 & Pneus'}</span>
+                  {dockExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                </button>
               </div>
-
-              <div className="text-zinc-400">{activeLivery.visualNotes}</div>
             </div>
-          )}
-        </div>
+
+            {dockExpanded && (
+              <div className="pt-2 border-t border-white/10 space-y-2 text-[10px] font-f1-mono">
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => selectTeam('player_car')}
+                    className={`px-2 py-1 border uppercase cursor-pointer ${
+                      selectedTeamId === 'player_car' || (playerTeam?.id && selectedTeamId === playerTeam.id)
+                        ? 'bg-[#E10600] border-[#E10600] text-white font-bold'
+                        : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {playerTeam?.carModelName || 'APEX-26'} ({playerTeam?.shortName || 'Meu Carro'})
+                  </button>
+                  {LIVERY_2026_CATALOG.map((spec) => {
+                    const isPlayerMatched = Boolean(playerTeam?.id && playerTeam.id === spec.teamId);
+                    const displayChassis = isPlayerMatched
+                      ? (playerTeam?.carModelName || spec.carModelName)
+                      : spec.carModelName;
+                    return (
+                      <button
+                        key={spec.teamId}
+                        type="button"
+                        onClick={() => selectTeam(spec.teamId)}
+                        className={`px-2 py-1 border uppercase cursor-pointer flex items-center gap-1.5 ${
+                          selectedTeamId === spec.teamId
+                            ? 'bg-[#252636] border-white text-white font-bold'
+                            : 'bg-[#171822] border-white/10 text-zinc-300 hover:text-white'
+                        }`}
+                      >
+                        <span
+                          className="w-2 h-2 border border-white/30"
+                          style={{ backgroundColor: spec.primaryHex }}
+                        />
+                        <span>{displayChassis}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-400 mr-1">PNEU 18&quot;:</span>
+                    {TIRE_OPTIONS.map((tOpt) => (
+                      <button
+                        key={tOpt.id}
+                        type="button"
+                        onClick={() => setTireCompound(tOpt.id)}
+                        className={`px-2 py-0.5 border uppercase cursor-pointer flex items-center gap-1 ${
+                          tireCompound === tOpt.id
+                            ? 'bg-[#252636] border-white text-white font-bold'
+                            : 'bg-[#171822] border-white/10 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tOpt.dot }} />
+                        <span>{tOpt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-[200px]">
+                    <span className="text-zinc-400 whitespace-nowrap">EXPLODIR CAD:</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={explodePct}
+                      onChange={(e) => setExplodePct(Number(e.target.value))}
+                      className="w-full accent-[#E10600] h-1.5 bg-zinc-700 cursor-pointer"
+                    />
+                    <span className="text-white font-bold tabular-nums w-8 text-right">{explodePct}%</span>
+                  </div>
+                </div>
+
+                <div className="text-zinc-400">{activeLivery.visualNotes}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

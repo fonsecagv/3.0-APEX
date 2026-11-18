@@ -1419,7 +1419,7 @@ export function stepRaceSimulationTick(input: RaceTickInput): RaceTickOutput {
       fuelRemainingKg: Math.round(newFuelRemaining * 100) / 100,
       socPercent: Math.round(newSoc),
       hasDerating,
-      tireWearPercent: Math.round(newWear * 10) / 10,
+      tireWearPercent: Math.round(newWear * 1000) / 1000,
       tireTempC: nextTireTempC,
       inPitLane: inPit,
       pitDurationSec: pitDurationLeft,

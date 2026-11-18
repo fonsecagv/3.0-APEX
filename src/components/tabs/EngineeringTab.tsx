@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { F1TabBucket } from '../brand/F1Logo';
 import { ParameterPhysicsCard } from '../common/ParameterPhysicsCard';
@@ -92,7 +92,11 @@ export const EngineeringTab: React.FC = () => {
     activePuMaterialResearch,
     startPuMaterialResearch,
     motorHomologadoFIA,
-    rdFacilityCapacity
+    rdFacilityCapacity,
+    trackFeedbackLog,
+    upgradeTimeline,
+    puDevPoints,
+    investPuDevPoints
   } = useGame();
 
   // Selected CAD Component type
@@ -101,6 +105,12 @@ export const EngineeringTab: React.FC = () => {
   // Simulation panel sub-tab & dirty tracker
   const [engineeringViewMode, setEngineeringViewMode] = useState<'cad' | 'showroom3d' | 'workbench'>('cad');
   const [showroomTeamId, setShowroomTeamId] = useState<string>(playerTeam?.id || 'player_car');
+
+  useEffect(() => {
+    if (playerTeam?.id && (showroomTeamId === 'player_car' || showroomTeamId === 'apex')) {
+      setShowroomTeamId(playerTeam.id);
+    }
+  }, [playerTeam?.id]);
   const [simSubTab, setSimSubTab] = useState<SimSubTab>('correlation');
   const [lastSimulatedSnapshot, setLastSimulatedSnapshot] = useState<string>('');
   const [showBriefingModal, setShowBriefingModal] = useState<boolean>(false);
@@ -108,6 +118,7 @@ export const EngineeringTab: React.FC = () => {
   const [catalogDisciplineFilter, setCatalogDisciplineFilter] = useState<string>('ALL');
   const [showPuCellChem, setShowPuCellChem] = useState<boolean>(false);
   const [showPuBomDrawer, setShowPuBomDrawer] = useState<boolean>(false);
+  const [showFeedbackInbox, setShowFeedbackInbox] = useState<boolean>(false);
   const [researchFeedback, setResearchFeedback] = useState<string | null>(null);
 
   // Wind Tunnel / Multi-Physics testing state
@@ -349,7 +360,7 @@ export const EngineeringTab: React.FC = () => {
 
     const newSpec: ComponentSpec = {
       id: `comp_${selectedType}_${Date.now()}`,
-      name: `Apex Mk-${(currentComp?.level || 1) + 1} 2026 ${selectedType.toUpperCase()}`,
+      name: `${playerTeam?.shortName || 'APX'} Mk-${(currentComp?.level || 1) + 1} 2026 ${selectedType.toUpperCase()}`,
       type: selectedType,
       level: currentComp?.level || 1,
       maxLevel: 10,
@@ -513,7 +524,7 @@ export const EngineeringTab: React.FC = () => {
                         style={{ backgroundColor: playerTeam?.color || '#E10600' }}
                       />
                       <span className="font-f1-wide font-bold text-white uppercase truncate">
-                        {playerTeam?.carModelName || 'APEX-26'} (Meu Carro)
+                        {playerTeam?.carModelName || 'APEX-26'} · Meu Carro
                       </span>
                     </div>
                     <span className="text-[10px] text-[#E10600] font-bold shrink-0">
@@ -527,7 +538,14 @@ export const EngineeringTab: React.FC = () => {
                   </div>
                 </button>
                 {LIVERY_2026_CATALOG.map((car) => {
+                  const isPlayerTeam = Boolean(playerTeam?.id && playerTeam.id === car.teamId);
                   const isActive = showroomTeamId === car.teamId;
+                  const displayChassis = isPlayerTeam
+                    ? (playerTeam?.carModelName || car.carModelName)
+                    : car.carModelName;
+                  const displayColor = isPlayerTeam
+                    ? (playerTeam?.color || car.primaryHex)
+                    : car.primaryHex;
                   return (
                     <button
                       key={car.teamId}
@@ -543,13 +561,15 @@ export const EngineeringTab: React.FC = () => {
                         <div className="flex items-center gap-2 min-w-0">
                           <span
                             className="w-3 h-3 border border-white/30 shrink-0"
-                            style={{ backgroundColor: car.primaryHex }}
+                            style={{ backgroundColor: displayColor }}
                           />
                           <span className="font-f1-wide font-bold text-white uppercase truncate">
-                            {car.carModelName}
+                            {displayChassis}
                           </span>
                         </div>
-                        <span className="text-[10px] text-zinc-400 shrink-0">{car.shortName}</span>
+                        <span className="text-[10px] text-zinc-400 shrink-0">
+                          {isPlayerTeam ? `${playerTeam?.shortName || car.shortName} · VOCÊ` : car.shortName}
+                        </span>
                       </div>
                       <div className="text-zinc-200 font-bold">{car.driversSummary}</div>
                       <div className="text-[10px] text-cyan-300">{car.engineBadge}</div>
@@ -738,7 +758,7 @@ export const EngineeringTab: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-f1-mono text-zinc-400">STEP 0{item.step}</span>
                 {isDeveloping ? (
-                  <span className="text-[9px] font-f1-mono bg-[#E10600] text-white px-1 font-bold animate-pulse">
+                  <span className="text-[9px] font-f1-mono bg-[#E10600] text-white px-1 font-bold">
                     DEV ({comp?.developmentWeeksLeft}w)
                   </span>
                 ) : (
@@ -774,7 +794,7 @@ export const EngineeringTab: React.FC = () => {
             <div className="space-y-4">
               {/* ⚠️ ALERTA DE ESTOL AERODINÂMICO & BOTTOMING OUT (IF-M04-M05) */}
               {isAeroStallRisk && (
-                <div className="bg-red-950/80 border-2 border-red-500 p-4 space-y-2 f1-container-roof animate-pulse shadow-[0_0_25px_rgba(239,68,68,0.25)]">
+                <div className="bg-red-950/80 border-2 border-red-500 p-4 space-y-2 f1-container-roof shadow-[0_0_25px_rgba(239,68,68,0.25)]">
                   <div className="flex items-center justify-between gap-2 border-b border-red-500/30 pb-2">
                     <div className="flex items-center gap-2 text-red-400 font-f1-wide font-black text-xs uppercase tracking-wider">
                       <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
@@ -835,49 +855,82 @@ export const EngineeringTab: React.FC = () => {
               )}
 
               {/* Painel de Potencial de Evolução do Motor */}
-              {selectedType === 'pu' && (
-                <div className="bg-[#171722] border border-white/10 p-3.5 space-y-2.5 f1-container-roof">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              {selectedType === 'pu' && (() => {
+                const puComp = components.find(c => c.type === 'pu');
+                const puPot = Math.round(puComp?.performance ?? 82);
+                const puRel = Math.round(puComp?.reliability ?? 85);
+                const puCeiling = Math.round(playerTeam?.puDevelopmentCeilingPct ?? 92);
+                const puLabel = playerTeam?.engineCustomName || playerTeam?.engineSupplier || 'Works 2026';
+
+                return (
+                <div className="bg-[#171722] border border-white/10 p-3.5 space-y-3 f1-container-roof">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                     <span className="text-xs font-f1-wide font-bold text-white uppercase flex items-center gap-1.5">
                       <Activity className="w-3.5 h-3.5 text-cyan-400" />
                       PAINEL DE POTENCIAL DE EVOLUÇÃO DO MOTOR (PU)
                     </span>
-                    <span className="text-[10px] font-f1-mono text-cyan-400 font-bold">
-                      HOMOLOGAÇÃO FIA 2026
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-f1-mono px-2 py-0.5 bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold tabular-nums">
+                        PONTOS DE DESENVOLVIMENTO: {puDevPoints}
+                      </span>
+                      <span className="text-[10px] font-f1-mono text-cyan-400 font-bold">
+                        {puLabel.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-f1-mono">
                     <div className="space-y-1">
                       <div className="flex justify-between text-[11px]">
-                        <span className="text-zinc-400">Potencial Atual:</span>
-                        <span className="text-emerald-400 font-bold tabular-nums">82 / 100</span>
+                        <span className="text-zinc-400">Potencial Atual ({puRel}% Conf.):</span>
+                        <span className="text-emerald-400 font-bold tabular-nums">{puPot} / 100</span>
                       </div>
                       <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
-                        <div className="bg-emerald-400 h-full" style={{ width: '82%' }} />
+                        <div className="bg-emerald-400 h-full" style={{ width: `${Math.min(100, puPot)}%` }} />
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex justify-between text-[11px]">
                         <span className="text-zinc-400">Teto FIA / Arquitetura:</span>
-                        <span className="text-amber-400 font-bold tabular-nums">92 / 100 (Limite Cosworth)</span>
+                        <span className="text-amber-400 font-bold tabular-nums">{puCeiling} / 100</span>
                       </div>
                       <div className="w-full bg-black/60 h-2 border border-white/10 overflow-hidden">
-                        <div className="bg-amber-400 h-full" style={{ width: '92%' }} />
+                        <div className="bg-amber-400 h-full" style={{ width: `${Math.min(100, puCeiling)}%` }} />
                       </div>
                     </div>
                   </div>
 
-                  <p className="text-[11px] font-f1-mono text-zinc-400 italic">
-                    "Chefe, nosso bloco Cosworth está no limite mecânico (teto 92%). Conseguimos extrair +2 CV na câmara de combustão, mas o ERS exige cuidado para não comprometer a refrigeração." — {chiefFeedback.chiefName}
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <p className="text-[11px] font-f1-mono text-zinc-400 italic flex-1 min-w-[220px]">
+                      "Chefe, nossa arquitetura {puLabel} opera a {puPot}/100 (teto {puCeiling}/100). Conclua GPs limpos para acumular Pontos de Desenvolvimento e evoluir potência ou confiabilidade." — {chiefFeedback.chiefName}
+                    </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={puDevPoints < 1 || puPot >= puCeiling}
+                        onClick={() => investPuDevPoints('power')}
+                        className="px-2.5 py-1 bg-[#E10600] hover:bg-[#c20500] disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-f1-mono text-[10px] font-bold uppercase cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        +2 Potência (1 Pt)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={puDevPoints < 1 || puRel >= 99}
+                        onClick={() => investPuDevPoints('reliability')}
+                        className="px-2.5 py-1 bg-cyan-700 hover:bg-cyan-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-f1-mono text-[10px] font-bold uppercase cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        +3% Conf. (1 Pt)
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
+                );
+              })()}
 
-              {/* 🏎️ FEEDBACK DE PISTA & TELEMETRIA DO PILOTO */}
+              {/* 🏎️ FEEDBACK DE PISTA & TELEMETRIA DO PILOTO + CAIXA HISTÓRICA */}
               {leadDriver && (
-                <div className="bg-[#15151E] border border-cyan-500/40 p-3.5 space-y-2 f1-container-roof">
+                <div className="bg-[#15151E] border border-cyan-500/40 p-3.5 space-y-2.5 f1-container-roof">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
                     <div className="flex items-center gap-2.5">
                       <PersonAvatar
@@ -896,7 +949,7 @@ export const EngineeringTab: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="bg-black/60 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-f1-mono">
                         <span className="text-zinc-400">Precisão Técnica: </span>
                         <span className="text-cyan-400 font-bold tabular-nums">
@@ -917,12 +970,47 @@ export const EngineeringTab: React.FC = () => {
                       }`}>
                         {effectiveFeedback >= 85 ? 'PRECISÃO CIRÚRGICA' : effectiveFeedback >= 75 ? 'PRECISO' : 'INTERMEDIÁRIO'}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowFeedbackInbox(prev => !prev)}
+                        className="text-[10px] font-f1-mono px-2 py-0.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/15 text-zinc-300 hover:text-white cursor-pointer"
+                      >
+                        Caixa ({trackFeedbackLog.length})
+                      </button>
                     </div>
                   </div>
 
                   <p className="text-xs font-f1-mono text-cyan-200 leading-relaxed italic bg-cyan-950/20 p-2.5 border-l-2 border-cyan-400">
                     "{driverTracksideQuote}"
                   </p>
+
+                  {showFeedbackInbox && (
+                    <div className="bg-[#1C1C26] border border-white/10 p-2.5 space-y-2 max-h-48 overflow-y-auto text-[10px] font-f1-mono">
+                      <span className="text-cyan-400 font-bold uppercase block">
+                        Feedback de Pista (Caixa) · Relatos de TL1/TL2 e Corrida
+                      </span>
+                      {trackFeedbackLog.length === 0 ? (
+                        <div className="text-zinc-400">
+                          Nenhum relatório gravado ainda. Complete voltas de Treino Livre (TL1/TL2) ou GPs para registrar leituras dos pilotos.
+                        </div>
+                      ) : (
+                        trackFeedbackLog.slice(0, 8).map(entry => (
+                          <div key={entry.id} className="bg-[#15151E] border border-white/5 p-2 space-y-0.5">
+                            <div className="flex justify-between text-zinc-400">
+                              <span className="text-white font-bold">
+                                R{entry.round} · {entry.circuitName} ({entry.session})
+                              </span>
+                              <span className="text-cyan-300">
+                                {entry.driverName} · Conf. {entry.confidencePct}%
+                              </span>
+                            </div>
+                            <div className="text-zinc-200 italic">"{entry.quote}"</div>
+                            {entry.setupHint && <div className="text-amber-300">{entry.setupHint}</div>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {/* ============================================================= */}
@@ -945,8 +1033,12 @@ export const EngineeringTab: React.FC = () => {
                   <div className="bg-[#15151E] p-3 border border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] font-f1-mono">
                     <div>
                       <span className="text-zinc-400">DNA Técnico: </span>
-                      <span className="text-amber-400 font-bold">{dnaSpec.puDesignation}</span>
-                      <span className="text-zinc-500 ml-2">({dnaSpec.aduoTierLabel})</span>
+                      <span className="text-amber-400 font-bold">
+                        {playerTeam?.engineCustomName || dnaSpec.puDesignation}
+                      </span>
+                      <span className="text-zinc-500 ml-2">
+                        ({playerTeam?.engineOrigin === 'bought_factory' ? 'Fábrica Adquirida (Ano 1)' : dnaSpec.aduoTierLabel})
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -1314,14 +1406,14 @@ export const EngineeringTab: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {PU_MATERIAL_RESEARCH_PROJECTS.map(proj => {
                           const unlocked = unlockedSet.has(proj.targetMaterialId);
                           const isActive = activePuMaterialResearch?.projectId === proj.id;
                           return (
                             <div
                               key={proj.id}
-                              className={`p-2.5 border text-[10px] font-f1-mono flex flex-col justify-between gap-2 ${
+                              className={`p-3.5 border text-[10px] font-f1-mono flex flex-col justify-between gap-3 ${
                                 unlocked
                                   ? 'border-emerald-500/40 bg-emerald-950/20'
                                   : isActive
@@ -1329,17 +1421,18 @@ export const EngineeringTab: React.FC = () => {
                                   : 'border-white/10 bg-[#1C1C26]'
                               }`}
                             >
-                              <div className="space-y-1">
-                                <div className="font-bold text-white leading-tight">{proj.title}</div>
-                                <div className="text-zinc-400">{proj.description}</div>
-                                <div className="text-zinc-300">
+                              <div className="space-y-1.5">
+                                <div className="font-bold text-white leading-snug">{proj.title}</div>
+                                <div className="text-zinc-400 leading-relaxed">{proj.description}</div>
+                                <div className="text-zinc-300 pt-0.5 tabular-nums">
                                   ${(proj.costUsd / 1e6).toFixed(1)}M · {proj.durationWeeks} sem · P&D Nv.{proj.minFacilityLevel}+
                                 </div>
                               </div>
+                              <div className="mt-auto pt-1">
                               {unlocked ? (
-                                <span className="text-emerald-400 font-bold uppercase">✓ Desbloqueado</span>
+                                <span className="text-emerald-400 font-bold uppercase block">✓ Desbloqueado</span>
                               ) : isActive ? (
-                                <span className="text-amber-300 font-bold uppercase">
+                                <span className="text-amber-300 font-bold uppercase block">
                                   Pesquisando ({activePuMaterialResearch.weeksRemaining} sem)
                                 </span>
                               ) : (
@@ -1350,11 +1443,12 @@ export const EngineeringTab: React.FC = () => {
                                     const res = startPuMaterialResearch(proj.id);
                                     setResearchFeedback(res.message);
                                   }}
-                                  className="px-2 py-1 bg-[#E10600] hover:bg-[#c20500] disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-bold uppercase cursor-pointer disabled:cursor-not-allowed"
+                                  className="w-full px-2.5 py-1.5 bg-[#E10600] hover:bg-[#c20500] disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-bold uppercase cursor-pointer disabled:cursor-not-allowed"
                                 >
                                   Iniciar Pesquisa
                                 </button>
                               )}
+                              </div>
                             </div>
                           );
                         })}
@@ -3031,6 +3125,7 @@ export const EngineeringTab: React.FC = () => {
                 )
               }
               leadDriverFeedback={leadDriver?.attributes?.feedback}
+              upgradeTimeline={upgradeTimeline}
             />
           </F1TabBucket>
         </div>

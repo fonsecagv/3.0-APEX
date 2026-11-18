@@ -17,6 +17,7 @@ const AVATAR_BY_ROLE: Record<EngineeringAvatarRole, string> = {
   head_pu: chiefPuPortrait,
   chief_mechanic: chiefMechPortrait,
   sporting_director: chiefMechPortrait,
+  race_engineer: chiefMechPortrait,
   driver: driverSimPortrait,
 };
 

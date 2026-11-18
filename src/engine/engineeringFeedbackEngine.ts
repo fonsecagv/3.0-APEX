@@ -17,6 +17,7 @@ export type EngineeringAvatarRole =
   | 'head_pu'
   | 'chief_mechanic'
   | 'sporting_director'
+  | 'race_engineer'
   | 'driver';
 
 export interface ChiefCadFeedback {
@@ -97,16 +98,23 @@ export function resolveActiveChiefForCadType(
     avatarRole = 'head_aero';
   }
 
+  const matchesChiefRole = (staffRole: StaffMember['role'], target: StaffMember['role']) => {
+    if (staffRole === target) return true;
+    if (target === 'chief_mechanic' && staffRole === 'head_mechanics') return true;
+    if (target === 'sporting_director' && staffRole === 'head_management') return true;
+    return false;
+  };
+
   // 1. Explicit check if playerChiefName matches any staff member
   const explicitMatch = playerChiefName && playerChiefName !== 'Pendente'
-    ? staff.find((s) => s.role === targetRole && s.name.toLowerCase() === playerChiefName.toLowerCase())
+    ? staff.find((s) => matchesChiefRole(s.role, targetRole) && s.name.toLowerCase() === playerChiefName.toLowerCase())
     : undefined;
 
   // 2. Check teamMatch
   const teamMatch = teamName
     ? staff.find(
         (s) =>
-          s.role === targetRole &&
+          matchesChiefRole(s.role, targetRole) &&
           (s.currentTeam === teamName ||
             s.currentTeam === 'APEX Grand Prix Team' ||
             s.currentTeam === 'Apex Grand Prix Team')
@@ -120,13 +128,18 @@ export function resolveActiveChiefForCadType(
 
   const starterMatch = staff.find(
     (s) =>
-      s.role === targetRole &&
+      matchesChiefRole(s.role, targetRole) &&
       (s.id.startsWith('staff_head') ||
         s.id === 'staff_sporting_dir' ||
         s.id === 'staff_chief_mechanic')
   );
 
-  const member = explicitMatch || teamMatch || gabrielMatch || starterMatch || staff.find((s) => s.role === targetRole);
+  const member =
+    explicitMatch ||
+    teamMatch ||
+    gabrielMatch ||
+    starterMatch ||
+    staff.find((s) => matchesChiefRole(s.role, targetRole));
 
   return {
     member,

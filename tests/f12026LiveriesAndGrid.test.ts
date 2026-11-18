@@ -100,4 +100,33 @@ describe('Grid Oficial F1 2026 & Catálogo de Pinturas 3D', () => {
     expect(customSpec.drivers[1].number).toBe(88);
     expect(customSpec.drivers[1].tCamHex).toBe('#EAB308');
   });
+
+  it('preserva o nome do chassi renomeado pelo jogador mesmo em equipe oficial e diferencia perfis 3D por equipe', () => {
+    const takeoverSpec = resolveTeamLivery2026({
+      id: 'ferrari',
+      name: 'Scuderia Ferrari HP',
+      shortName: 'FER',
+      carModelName: 'SF-26 EVO',
+      color: '#E10600',
+      secondaryColor: '#FFFFFF',
+      isPlayer: true,
+      engineSupplier: 'Ferrari',
+    });
+    expect(takeoverSpec.carModelName).toBe('SF-26 EVO');
+    expect(takeoverSpec.teamId).toBe('ferrari');
+
+    const byId = new Map(LIVERY_2026_CATALOG.map((c) => [c.teamId, c]));
+    expect(byId.get('audi')?.aeroGeometry.wishboneHex).toBe('#E5E7EB');
+    expect(byId.get('ferrari')?.aeroGeometry.haloHex).toBe('#F5F5F5');
+    expect(byId.get('cadillac')?.secondaryHex).toBe('#F3F4F6');
+    expect(byId.get('cadillac')?.aeroGeometry.haloHex).toBe('#F3F4F6');
+
+    // Diversidade real de geometria e acabamentos entre equipes do grid
+    const signatures = new Set(
+      LIVERY_2026_CATALOG.map((c) =>
+        `${c.aeroGeometry.noseStyle}|${c.aeroGeometry.airboxShape}|${c.aeroGeometry.sidepodProfile}|${c.aeroGeometry.finProfile}|${c.aeroGeometry.wheelCoverStyle}`
+      )
+    );
+    expect(signatures.size).toBeGreaterThanOrEqual(8);
+  });
 });

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { F1TabBucket } from '../brand/F1Logo';
+import { getFacilityRpgSummary } from '../../engine/rpgProgressionEngine';
 import {
   Building2,
   Wind,
@@ -311,6 +312,25 @@ export const FacilitiesTab: React.FC = () => {
                   </div>
                 )}
 
+                {(() => {
+                  const rpgSummary = getFacilityRpgSummary(fac.id, fac.level);
+                  if (!rpgSummary) return null;
+                  return (
+                    <div
+                      className={`p-2.5 border text-[11px] font-f1-mono leading-relaxed ${
+                        fac.id === 'fac_scouting'
+                          ? 'bg-zinc-900/70 border-white/10 text-zinc-300'
+                          : 'bg-cyan-950/25 border-cyan-500/35 text-cyan-200'
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold uppercase tracking-wider block mb-0.5 text-cyan-400">
+                        {fac.id === 'fac_scouting' ? 'ESCOPO DE MERCADO' : 'IMPACTO DE PROGRESSÃO (RPG)'}
+                      </span>
+                      {rpgSummary}
+                    </div>
+                  );
+                })()}
+
                 {/* GDD Sec. 10 Metrics (Capacidade, Qualidade, Produtividade, Tecnologia, Conservação) */}
                 <div className="grid grid-cols-2 gap-1.5 bg-[#15151E] p-2.5 border border-white/5 text-[10px] font-f1-mono tabular-nums">
                   <div className="flex justify-between">
@@ -368,7 +388,7 @@ export const FacilitiesTab: React.FC = () => {
                           lvl <= fac.level
                             ? 'bg-[#E10600]'
                             : lvl === fac.level + 1 && isUpgrading
-                            ? 'bg-amber-400 animate-pulse'
+                            ? 'bg-amber-400'
                             : 'bg-white/10'
                         }`}
                       />

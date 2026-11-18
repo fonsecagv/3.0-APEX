@@ -44,15 +44,18 @@ interface LoftStation {
   halfWidthM: number;
   topRoundness: number;
   bottomFlatness: number;
+  /** Optional subtle upper shoulder concave sculpting for waterslide sidepods */
+  waterslideDip?: number;
 }
 
 /**
- * Generates a closed, smoothly shaded multi-station lofted BufferGeometry in Three.js coordinates.
+ * Generates a closed, smoothly shaded multi-station lofted BufferGeometry with guaranteed
+ * outward normals and zero UV folding seams.
  */
 function buildLoftedHull(
   stations: LoftStation[],
   wheelbaseM: number,
-  radialSegments = 36
+  radialSegments = 40
 ): THREE.BufferGeometry {
   const xCenter = wheelbaseM / 2;
   const ringCount = radialSegments + 1;
@@ -67,12 +70,13 @@ function buildLoftedHull(
     const st = stations[s];
     const threeX = st.xM - xCenter;
     const zMid = (st.zBottomM + st.zTopM) * 0.5;
-    const zHalf = Math.max(0.008, (st.zTopM - st.zBottomM) * 0.5);
+    const zHalf = Math.max(0.004, (st.zTopM - st.zBottomM) * 0.5);
     const u = (st.xM - xMin) / xSpan;
 
     for (let r = 0; r < ringCount; r += 1) {
       const frac = r / radialSegments;
-      const theta = frac * Math.PI * 2;
+      // Start at bottom keel (-PI/2) so frac=0.25 is +Z, frac=0.50 is +Y crown, frac=0.75 is -Z
+      const theta = -Math.PI / 2 + frac * Math.PI * 2;
       const cosT = Math.cos(theta);
       const sinT = Math.sin(theta);
 
@@ -80,6 +84,9 @@ function buildLoftedHull(
       let yOffset: number;
       if (sinT >= 0) {
         yOffset = Math.pow(absSin, 1 / Math.max(0.4, st.topRoundness)) * zHalf;
+        if (st.waterslideDip && absSin > 0.35 && Math.abs(cosT) < 0.72) {
+          yOffset -= st.waterslideDip * (1 - Math.abs(cosT) / 0.72) * 0.045;
+        }
       } else {
         const flatPow = 1 - st.bottomFlatness * 0.55;
         yOffset = -Math.pow(absSin, Math.max(0.28, flatPow)) * zHalf;
@@ -90,7 +97,8 @@ function buildLoftedHull(
       const threeY = zMid + yOffset;
 
       positions.push(threeX, threeY, threeZ);
-      uvs.push(u, Math.abs(sinT * 0.5 + 0.5));
+      // v=0.5 aligns cleanly to dead-center top spine (+Y); keel seam stays at dark carbon v=0 / v=1
+      uvs.push(u, 1 - frac);
     }
   }
 
@@ -101,8 +109,9 @@ function buildLoftedHull(
       const c = (s + 1) * ringCount + (r + 1);
       const d = s * ringCount + (r + 1);
 
-      indices.push(a, d, b);
-      indices.push(b, d, c);
+      // Outward CCW winding: (b - a) along +X cross (d - a) along +theta points outward!
+      indices.push(a, b, d);
+      indices.push(b, c, d);
     }
   }
 
@@ -115,8 +124,107 @@ function buildLoftedHull(
 }
 
 /**
+ * Generates an asymmetric contoured sidepod shell whose inward edge stays tucked
+ * cleanly inside the monocoque wall (never crossing z=0 into the opposite sidepod!)
+ * and whose outer UVs map cleanly front->back (u) and bottom->top (v).
+ */
+function buildSidepodHull(
+  stations: LoftStation[],
+  wheelbaseM: number,
+  sideSign: -1 | 1,
+  innerTuckM: number,
+  outerCenterOffsetM: number,
+  radialSegments = 34
+): THREE.BufferGeometry {
+  const xCenter = wheelbaseM / 2;
+  const ringCount = radialSegments + 1;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  const xMin = stations[0].xM;
+  const xSpan = Math.max(0.01, stations[stations.length - 1].xM - xMin);
+
+  for (let s = 0; s < stations.length; s += 1) {
+    const st = stations[s];
+    const threeX = st.xM - xCenter;
+    const zMid = (st.zBottomM + st.zTopM) * 0.5;
+    const zHalf = Math.max(0.006, (st.zTopM - st.zBottomM) * 0.5);
+    const u = (st.xM - xMin) / xSpan;
+
+    for (let r = 0; r < ringCount; r += 1) {
+      const frac = r / radialSegments;
+      const theta = -Math.PI / 2 + frac * Math.PI * 2;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+
+      const absSin = Math.abs(sinT);
+      let yOffset: number;
+      if (sinT >= 0) {
+        yOffset = Math.pow(absSin, 1 / Math.max(0.4, st.topRoundness)) * zHalf;
+        if (st.waterslideDip && Math.abs(cosT) < 0.75) {
+          yOffset -= st.waterslideDip * (1 - Math.abs(cosT) / 0.75) * 0.042;
+        }
+      } else {
+        const flatPow = 1 - st.bottomFlatness * 0.55;
+        yOffset = -Math.pow(absSin, Math.max(0.28, flatPow)) * zHalf;
+      }
+
+      const zWidthScale = sinT >= 0 ? Math.pow(Math.abs(cosT), 0.84) : Math.pow(Math.abs(cosT), 0.70);
+      const rawZ = outerCenterOffsetM + Math.sign(cosT) * zWidthScale * st.halfWidthM;
+      // Clamp inward surface strictly inside chassis half-width so left & right pods never cross/clip
+      const clampedZ = sideSign > 0 ? Math.max(innerTuckM, rawZ) : Math.min(-innerTuckM, rawZ);
+      const threeY = zMid + yOffset;
+
+      positions.push(threeX, threeY, clampedZ);
+      const vNorm = THREE.MathUtils.clamp(0.5 + (yOffset / Math.max(0.01, zHalf)) * 0.5, 0, 1);
+      uvs.push(u, vNorm);
+    }
+  }
+
+  for (let s = 0; s < stations.length - 1; s += 1) {
+    for (let r = 0; r < radialSegments; r += 1) {
+      const a = s * ringCount + r;
+      const b = (s + 1) * ringCount + r;
+      const c = (s + 1) * ringCount + (r + 1);
+      const d = s * ringCount + (r + 1);
+      indices.push(a, b, d);
+      indices.push(b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Maps ExtrudeGeometry raw world-unit UVs into clean normalized [0..1] planar coordinates
+ * so shark-fin numbers and wing endplate badges render without tiling or stretching.
+ */
+function normalizePlanarUVs(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const pos = geo.getAttribute('position');
+  if (!bb || !pos) return geo;
+
+  const spanX = Math.max(0.001, bb.max.x - bb.min.x);
+  const spanY = Math.max(0.001, bb.max.y - bb.min.y);
+  const uvArr = new Float32Array(pos.count * 2);
+
+  for (let i = 0; i < pos.count; i += 1) {
+    uvArr[i * 2] = (pos.getX(i) - bb.min.x) / spanX;
+    uvArr[i * 2 + 1] = (pos.getY(i) - bb.min.y) / spanY;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+  return geo;
+}
+
+/**
  * Generates a swept, gull-wing curved 2026 F1 multi-station airfoil element.
- * Produces authentic Formula-style outer sweep and center spoon arch.
  */
 function buildSweptWingElement(
   chordCenterM: number,
@@ -135,12 +243,11 @@ function buildSweptWingElement(
   const ringCols = profileSegments + 1;
 
   for (let s = 0; s <= spanSegments; s += 1) {
-    const t = s / spanSegments; // 0 .. 1 across Z
-    const spanFrac = t * 2 - 1; // -1 .. +1
+    const t = s / spanSegments;
+    const spanFrac = t * 2 - 1;
     const absFrac = Math.abs(spanFrac);
     const threeZ = spanFrac * (spanM * 0.5);
 
-    // Smooth parabolic sweep back towards tips + subtle gull-wing spoon arch in center
     const xSweep = sweepBackM * Math.pow(absFrac, 1.45);
     const yArch = -archDropCenterM * (1 - Math.pow(absFrac, 1.8));
     const localChord = THREE.MathUtils.lerp(chordCenterM, chordTipM, Math.pow(absFrac, 1.2));
@@ -148,7 +255,7 @@ function buildSweptWingElement(
 
     for (let p = 0; p <= profileSegments; p += 1) {
       const theta = (p / profileSegments) * Math.PI * 2;
-      const chordFrac = 0.5 - 0.5 * Math.cos(theta); // 0 = leading edge, 1 = trailing edge
+      const chordFrac = 0.5 - 0.5 * Math.cos(theta);
       const signY = Math.sin(theta) >= 0 ? 1 : -1;
 
       const localX = xSweep + (chordFrac - 0.5) * localChord;
@@ -184,9 +291,6 @@ function buildSweptWingElement(
   return geo;
 }
 
-/**
- * Generates an extruded straight airfoil/wing element spanning along Z centered at 0.
- */
 function buildWingElement(
   chordM: number,
   thicknessM: number,
@@ -218,6 +322,7 @@ export function buildF1Car2026(
   driverIndex: 0 | 1 = 0
 ): BuiltF1Car {
   const activeDriver = livery.drivers[driverIndex] || livery.drivers[0];
+  const aero = livery.aeroGeometry;
   const L = params.wheelbaseM;
   const xCenter = L / 2;
   const toThree = (xM: number, yM: number, zM: number) =>
@@ -240,81 +345,142 @@ export function buildF1Car2026(
   };
 
   const isGloss = livery.finishType === 'gloss';
+  const isSatin = livery.finishType === 'satin_carbon';
   const bodyPaintMaterials: THREE.MeshPhysicalMaterial[] = [];
   const carbonMaterials: THREE.MeshStandardMaterial[] = [];
 
-  const bodyPaintMat = regMat(
-    new THREE.MeshPhysicalMaterial({
-      map: textures.liveryBody,
-      roughness: isGloss ? 0.18 : 0.46,
-      metalness: livery.finishType === 'matte' ? 0.18 : 0.28,
-      clearcoat: isGloss ? 0.95 : 0.24,
-      clearcoatRoughness: isGloss ? 0.10 : 0.44,
-      reflectivity: 0.85,
-    })
-  );
-  bodyPaintMaterials.push(bodyPaintMat);
+  const paintRoughness = isGloss ? 0.14 : isSatin ? 0.32 : 0.48;
+  const paintMetalness = isGloss ? 0.24 : isSatin ? 0.32 : 0.16;
+  const paintClearcoat = isGloss ? 0.96 : isSatin ? 0.42 : 0.14;
+  const paintClearcoatRough = isGloss ? 0.06 : isSatin ? 0.26 : 0.46;
 
-  const noseDecalMat = regMat(
+  // Separate dedicated material zones so chassis/sidepod/wing textures never repeat or bleed across parts
+  const monocoqueMat = regMat(
     new THREE.MeshPhysicalMaterial({
-      map: textures.liveryNose,
-      roughness: isGloss ? 0.18 : 0.45,
-      metalness: 0.2,
-      clearcoat: isGloss ? 0.95 : 0.22,
-      clearcoatRoughness: 0.12,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
+      map: textures.liveryMonocoque,
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
+      reflectivity: 0.9,
     })
   );
-  bodyPaintMaterials.push(noseDecalMat);
+  bodyPaintMaterials.push(monocoqueMat);
+
+  const sidepodMat = regMat(
+    new THREE.MeshPhysicalMaterial({
+      map: textures.liverySidepod,
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
+      reflectivity: 0.9,
+    })
+  );
+  bodyPaintMaterials.push(sidepodMat);
+
+  const sidepodLeftMat = regMat(
+    new THREE.MeshPhysicalMaterial({
+      map: textures.liverySidepodLeft,
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
+      reflectivity: 0.9,
+    })
+  );
+  bodyPaintMaterials.push(sidepodLeftMat);
+
+  const cowlMat = regMat(
+    new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(aero.cowlHex || livery.primaryHex),
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
+    })
+  );
+  bodyPaintMaterials.push(cowlMat);
 
   const finPaintMat = regMat(
     new THREE.MeshPhysicalMaterial({
       map: textures.liveryFin,
-      roughness: isGloss ? 0.22 : 0.46,
-      metalness: 0.2,
-      clearcoat: isGloss ? 0.88 : 0.2,
-      clearcoatRoughness: 0.14,
+      roughness: paintRoughness + 0.04,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
       side: THREE.DoubleSide,
     })
   );
   bodyPaintMaterials.push(finPaintMat);
 
-  const secondaryPaintMat = regMat(
+  const frontWingPrimaryMat = regMat(
     new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(livery.secondaryHex),
-      roughness: isGloss ? 0.22 : 0.45,
-      metalness: 0.28,
-      clearcoat: isGloss ? 0.88 : 0.2,
+      color: new THREE.Color(aero.frontWingPrimaryHex || livery.primaryHex),
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
     })
   );
-  bodyPaintMaterials.push(secondaryPaintMat);
+  bodyPaintMaterials.push(frontWingPrimaryMat);
+
+  const frontWingEndplateMat = regMat(
+    new THREE.MeshPhysicalMaterial({
+      map: textures.liveryFrontWing,
+      roughness: paintRoughness + 0.06,
+      metalness: 0.24,
+      clearcoat: paintClearcoat,
+      side: THREE.DoubleSide,
+    })
+  );
+  bodyPaintMaterials.push(frontWingEndplateMat);
+
+  const rearWingFlapMat = regMat(
+    new THREE.MeshPhysicalMaterial({
+      map: textures.liveryRearWing,
+      roughness: paintRoughness,
+      metalness: paintMetalness,
+      clearcoat: paintClearcoat,
+      clearcoatRoughness: paintClearcoatRough,
+      side: THREE.DoubleSide,
+    })
+  );
+  bodyPaintMaterials.push(rearWingFlapMat);
 
   const accentPaintMat = regMat(
     new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(livery.accentHex),
-      roughness: 0.22,
-      metalness: 0.36,
+      color: new THREE.Color(aero.floorTrimHex || livery.accentHex),
+      roughness: 0.2,
+      metalness: 0.34,
       clearcoat: 0.85,
     })
   );
   bodyPaintMaterials.push(accentPaintMat);
 
-  const rearWingAccentMat = regMat(
+  const haloMat = regMat(
     new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(livery.rearWingAccentHex),
-      roughness: isGloss ? 0.22 : 0.44,
-      metalness: 0.26,
-      clearcoat: 0.85,
-      side: THREE.DoubleSide,
+      color: new THREE.Color(aero.haloHex || '#161820'),
+      roughness: 0.22,
+      metalness: 0.3,
+      clearcoat: 0.72,
     })
   );
-  bodyPaintMaterials.push(rearWingAccentMat);
+  bodyPaintMaterials.push(haloMat);
+
+  const wishboneMat = regMat(
+    new THREE.MeshStandardMaterial({
+      color: new THREE.Color(aero.wishboneHex || '#181A22'),
+      roughness: aero.wishboneHex === '#E5E7EB' ? 0.25 : 0.42,
+      metalness: aero.wishboneHex === '#E5E7EB' ? 0.18 : 0.38,
+    })
+  );
+  carbonMaterials.push(wishboneMat);
 
   const tCamMat = regMat(
     new THREE.MeshStandardMaterial({
       color: new THREE.Color(activeDriver.tCamHex),
-      roughness: 0.25,
+      roughness: 0.24,
       metalness: 0.35,
     })
   );
@@ -324,8 +490,8 @@ export function buildF1Car2026(
       map: textures.carbonAlbedo,
       bumpMap: textures.carbonBump,
       bumpScale: 0.004,
-      roughness: 0.38,
-      metalness: 0.36,
+      roughness: 0.42,
+      metalness: 0.34,
       side: THREE.DoubleSide,
     })
   );
@@ -333,7 +499,7 @@ export function buildF1Car2026(
 
   const titaniumMat = regMat(
     new THREE.MeshStandardMaterial({
-      color: 0x3b4252,
+      color: 0x4b5563,
       roughness: 0.22,
       metalness: 0.88,
     })
@@ -341,8 +507,8 @@ export function buildF1Car2026(
 
   const exhaustMat = regMat(
     new THREE.MeshStandardMaterial({
-      color: 0x9ca3af,
-      roughness: 0.22,
+      color: 0xa1a8b5,
+      roughness: 0.20,
       metalness: 0.92,
     })
   );
@@ -352,8 +518,8 @@ export function buildF1Car2026(
       color: 0x16171d,
       bumpMap: textures.tireTreadBump,
       bumpScale: 0.0035,
-      roughness: 0.82,
-      metalness: 0.05,
+      roughness: 0.84,
+      metalness: 0.04,
     })
   );
 
@@ -387,7 +553,7 @@ export function buildF1Car2026(
   const rwActiveDeg = isModeX ? params.rearWingFlapDeg * 0.28 : params.rearWingFlapDeg;
 
   // ---------------------------------------------------------------------------
-  // 0. SHOWROOM TURNTABLE PODIUM & CONTACT FLOOR SHADOW
+  // 0. CLEAN CONTACT FLOOR SHADOW (NO GLOWING NEON RING OR OVERLAPPING PLINTH)
   // ---------------------------------------------------------------------------
   const plinthGroup = new THREE.Group();
   plinthGroup.name = 'ShowroomTurntablePlinth';
@@ -396,7 +562,7 @@ export function buildF1Car2026(
     new THREE.MeshBasicMaterial({
       map: textures.floorShadow,
       transparent: true,
-      opacity: 0.82,
+      opacity: 0.86,
       depthWrite: false,
     })
   );
@@ -404,106 +570,101 @@ export function buildF1Car2026(
   shadowPlane.rotation.x = -Math.PI / 2;
   shadowPlane.position.set(0.06, 0.002, 0);
   plinthGroup.add(shadowPlane);
-
-  const plinthDiscMat = regMat(
-    new THREE.MeshStandardMaterial({
-      color: 0x13151d,
-      roughness: 0.55,
-      metalness: 0.35,
-    })
-  );
-  const plinthDisc = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(3.05, 3.12, 0.028, 72)), plinthDiscMat);
-  plinthDisc.position.set(0.08, -0.015, 0);
-  plinthDisc.receiveShadow = true;
-  plinthGroup.add(plinthDisc);
-
-  const plinthRimMat = regMat(
-    new THREE.MeshStandardMaterial({
-      color: new THREE.Color(livery.accentHex),
-      emissive: new THREE.Color(livery.accentHex),
-      emissiveIntensity: 0.22,
-      roughness: 0.3,
-      metalness: 0.7,
-    })
-  );
-  const plinthRim = new THREE.Mesh(regGeo(new THREE.TorusGeometry(3.06, 0.011, 10, 84)), plinthRimMat);
-  plinthRim.rotation.x = Math.PI / 2;
-  plinthRim.position.set(0.08, -0.001, 0);
-  plinthGroup.add(plinthRim);
-
   root.add(plinthGroup);
 
   // ---------------------------------------------------------------------------
-  // 1. MONOCOQUE TUB, SCULPTED 2026 NOSECONE & DRIVER NUMBER PLATE
+  // 1. MONOCOQUE TUB & PER-TEAM SCULPTED 2026 NOSECONE (NO FLOATING NOSE PLATE!)
   // ---------------------------------------------------------------------------
   const monocoqueGroup = new THREE.Group();
   monocoqueGroup.name = 'MonocoqueAndNose';
+
+  const noseTipWidth =
+    aero.noseStyle === 'slim_needle'
+      ? 0.045
+      : aero.noseStyle === 'broad_spoon'
+      ? 0.088
+      : aero.noseStyle === 'wedge_chisel'
+      ? 0.068
+      : 0.058;
+  const noseTipZBottom = aero.noseStyle === 'slim_needle' ? 0.155 : 0.172;
+  const airboxPeakZ = aero.airboxShape === 'oval_wide' ? 0.93 : aero.airboxShape === 'triangle' ? 0.96 : 0.945;
+
   const monoStations: LoftStation[] = [
-    { xM: -1.16, zBottomM: 0.175, zTopM: 0.225, halfWidthM: 0.062, topRoundness: 1.0, bottomFlatness: 0.2 },
-    { xM: -0.96, zBottomM: 0.16, zTopM: 0.265, halfWidthM: 0.112, topRoundness: 1.0, bottomFlatness: 0.3 },
-    { xM: -0.62, zBottomM: 0.145, zTopM: 0.34, halfWidthM: 0.165, topRoundness: 0.92, bottomFlatness: 0.5 },
-    { xM: -0.22, zBottomM: 0.125, zTopM: 0.455, halfWidthM: 0.215, topRoundness: 0.82, bottomFlatness: 0.72 },
-    { xM: 0.18, zBottomM: 0.09, zTopM: 0.54, halfWidthM: 0.258, topRoundness: 0.75, bottomFlatness: 0.88 },
-    { xM: 0.58, zBottomM: 0.08, zTopM: 0.555, halfWidthM: 0.278, topRoundness: 0.72, bottomFlatness: 0.92 },
-    { xM: 1.15, zBottomM: 0.08, zTopM: 0.59, halfWidthM: 0.265, topRoundness: 0.85, bottomFlatness: 0.92 },
-    { xM: 1.55, zBottomM: 0.09, zTopM: 0.945, halfWidthM: 0.212, topRoundness: 1.25, bottomFlatness: 0.8 },
-    { xM: 2.25, zBottomM: 0.10, zTopM: 0.84, halfWidthM: 0.178, topRoundness: 1.32, bottomFlatness: 0.78 },
-    { xM: 2.95, zBottomM: 0.14, zTopM: 0.57, halfWidthM: 0.11, topRoundness: 1.25, bottomFlatness: 0.55 },
-    { xM: L + 0.24, zBottomM: 0.22, zTopM: 0.39, halfWidthM: 0.064, topRoundness: 1.05, bottomFlatness: 0.3 },
+    { xM: -1.16, zBottomM: noseTipZBottom, zTopM: noseTipZBottom + 0.052, halfWidthM: noseTipWidth, topRoundness: 0.95, bottomFlatness: 0.25 },
+    { xM: -0.96, zBottomM: 0.155, zTopM: 0.258, halfWidthM: noseTipWidth + 0.05, topRoundness: 0.95, bottomFlatness: 0.35 },
+    { xM: -0.62, zBottomM: 0.14, zTopM: 0.335, halfWidthM: 0.162, topRoundness: 0.9, bottomFlatness: 0.55 },
+    { xM: -0.22, zBottomM: 0.12, zTopM: 0.452, halfWidthM: 0.214, topRoundness: 0.82, bottomFlatness: 0.72 },
+    { xM: 0.18, zBottomM: 0.085, zTopM: 0.535, halfWidthM: 0.255, topRoundness: 0.75, bottomFlatness: 0.88 },
+    { xM: 0.58, zBottomM: 0.08, zTopM: 0.55, halfWidthM: 0.275, topRoundness: 0.72, bottomFlatness: 0.92 },
+    { xM: 1.15, zBottomM: 0.08, zTopM: 0.585, halfWidthM: 0.262, topRoundness: 0.85, bottomFlatness: 0.92 },
+    { xM: 1.55, zBottomM: 0.09, zTopM: airboxPeakZ, halfWidthM: aero.airboxShape === 'oval_wide' ? 0.226 : 0.206, topRoundness: 1.25, bottomFlatness: 0.8 },
+    { xM: 2.25, zBottomM: 0.10, zTopM: 0.835, halfWidthM: 0.175, topRoundness: 1.32, bottomFlatness: 0.78 },
+    { xM: 2.95, zBottomM: 0.14, zTopM: 0.56, halfWidthM: 0.108, topRoundness: 1.25, bottomFlatness: 0.55 },
+    { xM: L + 0.24, zBottomM: 0.22, zTopM: 0.385, halfWidthM: 0.06, topRoundness: 1.05, bottomFlatness: 0.3 },
   ];
-  const monoMesh = new THREE.Mesh(regGeo(buildLoftedHull(monoStations, L, 36)), bodyPaintMat);
+  const monoMesh = new THREE.Mesh(regGeo(buildLoftedHull(monoStations, L, 40)), monocoqueMat);
   monoMesh.castShadow = true;
   monoMesh.receiveShadow = true;
   monocoqueGroup.add(monoMesh);
 
-  // Driver Racing Number + Team Crest Contoured Nose Plate
-  const nosePlateGeo = regGeo(new THREE.PlaneGeometry(0.24, 0.68, 4, 8));
-  nosePlateGeo.rotateX(-Math.PI / 2);
-  nosePlateGeo.rotateY(-Math.PI / 2);
-  const nosePlate = new THREE.Mesh(nosePlateGeo, noseDecalMat);
-  nosePlate.position.copy(toThree(-0.48, 0, 0.392));
-  nosePlate.rotation.z = THREE.MathUtils.degToRad(15.5);
-  monocoqueGroup.add(nosePlate);
-
-  // Nose Pitot Sensor Probe & Front Wing Camera Pods
+  // Nose Pitot Sensor Probe
   const pitotStem = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.004, 0.005, 0.12, 8)), titaniumMat);
   pitotStem.rotation.z = THREE.MathUtils.degToRad(18);
-  pitotStem.position.copy(toThree(-0.18, 0, 0.52));
+  pitotStem.position.copy(toThree(-0.18, 0, 0.515));
   monocoqueGroup.add(pitotStem);
 
-  // Cockpit carbon surround + padded side headrest bolsters
-  const cockpitRecess = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.76, 0.12, 0.34)), carbonMat);
-  cockpitRecess.position.copy(toThree(1.02, 0, 0.54));
+  // Cockpit carbon recess & headrest bolsters
+  const cockpitRecess = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.76, 0.11, 0.33)), carbonMat);
+  cockpitRecess.position.copy(toThree(1.02, 0, 0.53));
   monocoqueGroup.add(cockpitRecess);
 
   for (const side of [-1, 1] as const) {
-    const bolster = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.56, 0.085, 0.055)), carbonMat);
-    bolster.position.copy(toThree(1.04, side * 0.20, 0.58));
+    const bolster = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.54, 0.08, 0.05)), cowlMat);
+    bolster.position.copy(toThree(1.04, side * 0.20, 0.575));
     monocoqueGroup.add(bolster);
   }
 
-  // Overhead Roll-Hoop Airbox Intake Cavity
-  const airboxIntakeGeo = regGeo(new THREE.CylinderGeometry(0.088, 0.098, 0.17, 18));
-  airboxIntakeGeo.rotateZ(Math.PI / 2);
-  const airboxIntake = new THREE.Mesh(airboxIntakeGeo, carbonMat);
-  airboxIntake.position.copy(toThree(1.50, 0, 0.85));
+  // Distinct Per-Team Roll-Hoop Airbox Intake Shape
+  let airboxGeo: THREE.BufferGeometry;
+  if (aero.airboxShape === 'triangle') {
+    const triShape = new THREE.Shape();
+    triShape.moveTo(-0.08, -0.06);
+    triShape.lineTo(0.08, -0.06);
+    triShape.lineTo(0, 0.09);
+    triShape.closePath();
+    airboxGeo = regGeo(new THREE.ExtrudeGeometry(triShape, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.008 }));
+    airboxGeo.rotateY(Math.PI / 2);
+    airboxGeo.translate(-0.08, 0, 0);
+  } else if (aero.airboxShape === 'oval_wide') {
+    airboxGeo = regGeo(new THREE.CylinderGeometry(0.092, 0.104, 0.16, 20));
+    airboxGeo.rotateZ(Math.PI / 2);
+    airboxGeo.scale(1, 0.85, 1.32);
+  } else if (aero.airboxShape === 'circular') {
+    airboxGeo = regGeo(new THREE.CylinderGeometry(0.088, 0.094, 0.16, 20));
+    airboxGeo.rotateZ(Math.PI / 2);
+  } else {
+    airboxGeo = regGeo(new THREE.CylinderGeometry(0.084, 0.098, 0.17, 18));
+    airboxGeo.rotateZ(Math.PI / 2);
+  }
+  const airboxIntake = new THREE.Mesh(airboxGeo, carbonMat);
+  airboxIntake.position.copy(toThree(1.48, 0, 0.845));
   monocoqueGroup.add(airboxIntake);
 
   // Official FIA T-Cam (Black = Driver 1, Neon Yellow = Driver 2)
-  const tCamPost = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.05, 0.08, 0.025)), carbonMat);
+  const tCamPost = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.05, 0.08, 0.024)), carbonMat);
   tCamPost.position.copy(toThree(1.55, 0, 0.99));
   const tCamBar = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.065, 0.024, 0.25)), tCamMat);
   tCamBar.position.copy(toThree(1.55, 0, 1.03));
   monocoqueGroup.add(tCamPost, tCamBar);
 
   // Stainless Central Exhaust Tailpipe + Twin Wastegates
-  const tailpipe = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.052, 0.056, 0.24, 20)), exhaustMat);
+  const tailpipe = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.05, 0.054, 0.24, 20)), exhaustMat);
   tailpipe.rotation.z = Math.PI / 2;
   tailpipe.position.copy(toThree(L + 0.34, 0, 0.36));
   monocoqueGroup.add(tailpipe);
 
   for (const side of [-1, 1] as const) {
-    const wastegate = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.02, 0.022, 0.19, 14)), exhaustMat);
+    const wastegate = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.019, 0.021, 0.19, 14)), exhaustMat);
     wastegate.rotation.z = Math.PI / 2;
     wastegate.position.copy(toThree(L + 0.32, side * 0.072, 0.345));
     monocoqueGroup.add(wastegate);
@@ -512,66 +673,97 @@ export function buildF1Car2026(
   root.add(monocoqueGroup);
 
   // ---------------------------------------------------------------------------
-  // 2. DEEP-UNDERCUT COKE-BOTTLE SIDEPODS & SHARK-FIN ENGINE COVER
+  // 2. SCULPTED COKE-BOTTLE SIDEPODS (NON-OVERLAPPING INNER TUCK) & SHARK FIN
   // ---------------------------------------------------------------------------
   const engineCoverGroup = new THREE.Group();
   engineCoverGroup.name = 'SidepodsAndEngineCover';
 
-  const inletScale = Math.max(0.84, Math.min(1.22, params.sidepodInletAreaM2 / 0.032));
-  const conceptScale =
-    params.sidepodConcept === 'zeropod' ? 0.72 : params.sidepodConcept === 'downwash' ? 1.04 : 1.0;
-  const maxPodHalfW = Math.min(0.67, 0.55 * conceptScale * Math.sqrt(inletScale));
-  const podDropZ = params.sidepodConcept === 'downwash' ? 0.295 : 0.405;
+  const inletScale = Math.max(0.84, Math.min(1.20, params.sidepodInletAreaM2 / 0.032));
+  const profileWidthFactor =
+    aero.sidepodProfile === 'compact_inwash'
+      ? 0.78
+      : aero.sidepodProfile === 'box_shoulder'
+      ? 1.05
+      : aero.sidepodProfile === 'waterslide_gully'
+      ? 1.01
+      : 0.98;
+  const conceptScale = params.sidepodConcept === 'zeropod' ? 0.74 : profileWidthFactor;
+  const maxPodHalfW = Math.min(0.46, 0.38 * conceptScale * Math.sqrt(inletScale));
+  const podDropZ = aero.sidepodProfile === 'downwash_ramp' ? 0.285 : aero.sidepodProfile === 'box_shoulder' ? 0.385 : 0.335;
+  const gullyDip = aero.sidepodProfile === 'waterslide_gully' ? 0.75 : 0;
 
   for (const side of [-1, 1] as const) {
     const podStations: LoftStation[] = [
-      { xM: 1.36, zBottomM: 0.24, zTopM: 0.51, halfWidthM: maxPodHalfW * 0.50, topRoundness: 0.7, bottomFlatness: 0.35 },
-      { xM: 1.56, zBottomM: 0.17, zTopM: 0.525, halfWidthM: maxPodHalfW * 0.80, topRoundness: 0.76, bottomFlatness: 0.55 },
-      { xM: 1.92, zBottomM: 0.115, zTopM: 0.48, halfWidthM: maxPodHalfW * 0.73, topRoundness: 0.82, bottomFlatness: 0.85 },
-      { xM: 2.38, zBottomM: 0.10, zTopM: podDropZ, halfWidthM: maxPodHalfW * 0.51, topRoundness: 0.92, bottomFlatness: 0.85 },
-      { xM: 2.88, zBottomM: 0.11, zTopM: 0.26, halfWidthM: maxPodHalfW * 0.23, topRoundness: 1.0, bottomFlatness: 0.75 },
+      { xM: 1.36, zBottomM: 0.24, zTopM: 0.505, halfWidthM: maxPodHalfW * 0.56, topRoundness: aero.sidepodProfile === 'box_shoulder' ? 0.55 : 0.74, bottomFlatness: 0.38 },
+      { xM: 1.58, zBottomM: 0.165, zTopM: 0.518, halfWidthM: maxPodHalfW * 0.88, topRoundness: 0.76, bottomFlatness: 0.58, waterslideDip: gullyDip },
+      { xM: 1.94, zBottomM: 0.112, zTopM: 0.468, halfWidthM: maxPodHalfW * 0.80, topRoundness: 0.82, bottomFlatness: 0.86, waterslideDip: gullyDip },
+      { xM: 2.38, zBottomM: 0.10, zTopM: podDropZ, halfWidthM: maxPodHalfW * 0.54, topRoundness: 0.92, bottomFlatness: 0.85 },
+      { xM: 2.86, zBottomM: 0.11, zTopM: 0.255, halfWidthM: maxPodHalfW * 0.22, topRoundness: 1.0, bottomFlatness: 0.75 },
     ];
-    const podGeo = regGeo(buildLoftedHull(podStations, L, 32));
-    podGeo.translate(0, 0, side * (0.205 + maxPodHalfW * 0.35));
-    const podMesh = new THREE.Mesh(podGeo, bodyPaintMat);
+    // Keep inner boundary strictly at side * 0.16m inside the monocoque wall (zero crossover past z=0!)
+    const podOuterCenterZ = side * (0.265 + maxPodHalfW * 0.55);
+    const podGeo = regGeo(buildSidepodHull(podStations, L, side, 0.16, podOuterCenterZ, 34));
+    const podMesh = new THREE.Mesh(podGeo, side < 0 ? sidepodLeftMat : sidepodMat);
     podMesh.castShadow = true;
     podMesh.receiveShadow = true;
     engineCoverGroup.add(podMesh);
 
-    // Overbite Sidepod Intake Scoop + Carbon Radiator Lip
+    // Overbite Sidepod Intake Scoop + Carbon Radiator Mouth cleanly seated at pod leading face
     const overbite = new THREE.Mesh(
-      regGeo(new THREE.BoxGeometry(0.16, 0.025, maxPodHalfW * 0.78)),
-      bodyPaintMat
+      regGeo(new THREE.BoxGeometry(0.15, 0.022, maxPodHalfW * 0.92)),
+      cowlMat
     );
-    overbite.position.copy(toThree(1.33, side * (0.21 + maxPodHalfW * 0.33), 0.505));
-    overbite.rotation.y = side * 0.18;
+    overbite.position.copy(toThree(1.33, side * (0.29 + maxPodHalfW * 0.45), 0.50));
+    overbite.rotation.y = side * 0.16;
     engineCoverGroup.add(overbite);
 
     const inletMouth = new THREE.Mesh(
-      regGeo(new THREE.BoxGeometry(0.11, 0.165, maxPodHalfW * 0.75)),
+      regGeo(new THREE.BoxGeometry(0.09, 0.155, maxPodHalfW * 0.86)),
       carbonMat
     );
-    inletMouth.position.copy(toThree(1.37, side * (0.215 + maxPodHalfW * 0.33), 0.39));
-    inletMouth.rotation.y = side * 0.20;
+    inletMouth.position.copy(toThree(1.375, side * (0.29 + maxPodHalfW * 0.44), 0.39));
+    inletMouth.rotation.y = side * 0.18;
     engineCoverGroup.add(inletMouth);
   }
 
-  // Shark Fin Dorsal Blade with Active Driver Number & ShortCode
+  // Per-Team Shark Fin Dorsal Blade with normalized UVs [0..1]
   const finShape = new THREE.Shape();
-  finShape.moveTo(0, 0);
-  finShape.lineTo(1.36, -0.21);
-  finShape.lineTo(1.36, -0.52);
-  finShape.lineTo(0, -0.35);
+  if (aero.finProfile === 'tall_notched') {
+    finShape.moveTo(0, 0);
+    finShape.lineTo(1.32, -0.10);
+    finShape.lineTo(1.34, -0.50);
+    finShape.lineTo(0, -0.35);
+  } else if (aero.finProfile === 'stepped_vane') {
+    finShape.moveTo(0, 0);
+    finShape.lineTo(0.85, -0.12);
+    finShape.lineTo(0.95, -0.22);
+    finShape.lineTo(1.36, -0.26);
+    finShape.lineTo(1.36, -0.52);
+    finShape.lineTo(0, -0.35);
+  } else if (aero.finProfile === 'compact_blade') {
+    finShape.moveTo(0, 0);
+    finShape.lineTo(1.18, -0.24);
+    finShape.lineTo(1.18, -0.49);
+    finShape.lineTo(0, -0.34);
+  } else {
+    finShape.moveTo(0, 0);
+    finShape.lineTo(1.36, -0.21);
+    finShape.lineTo(1.36, -0.52);
+    finShape.lineTo(0, -0.35);
+  }
   finShape.closePath();
+
   const finGeo = regGeo(
-    new THREE.ExtrudeGeometry(finShape, {
-      depth: 0.014,
-      bevelEnabled: false,
-    })
+    normalizePlanarUVs(
+      new THREE.ExtrudeGeometry(finShape, {
+        depth: 0.014,
+        bevelEnabled: false,
+      })
+    )
   );
   finGeo.translate(0, 0, -0.007);
   const finMesh = new THREE.Mesh(finGeo, finPaintMat);
-  finMesh.position.copy(toThree(1.62, 0, 0.94));
+  finMesh.position.copy(toThree(1.62, 0, 0.935));
   finMesh.castShadow = true;
   engineCoverGroup.add(finMesh);
 
@@ -579,7 +771,7 @@ export function buildF1Car2026(
   registerExplode(engineCoverGroup, 0, 0.54, 0);
 
   // ---------------------------------------------------------------------------
-  // 3. TITANIUM HALO, DRIVER HELMET (PER-PILOT) & AERO MIRRORS
+  // 3. TEAM-PAINTED HALO, DRIVER HELMET (PER-PILOT) & AERO MIRRORS
   // ---------------------------------------------------------------------------
   const haloGroup = new THREE.Group();
   haloGroup.name = 'HaloAndDriver';
@@ -593,7 +785,7 @@ export function buildF1Car2026(
     toThree(1.02, 0.245, 0.69),
     toThree(1.32, 0.225, 0.56),
   ]);
-  const haloTube = new THREE.Mesh(regGeo(new THREE.TubeGeometry(haloCurve, 36, 0.024, 14, false)), carbonMat);
+  const haloTube = new THREE.Mesh(regGeo(new THREE.TubeGeometry(haloCurve, 36, 0.024, 14, false)), haloMat);
   haloTube.castShadow = true;
   haloGroup.add(haloTube);
 
@@ -604,11 +796,10 @@ export function buildF1Car2026(
   ]);
   const haloPostMesh = new THREE.Mesh(
     regGeo(new THREE.TubeGeometry(haloFrontPost, 12, 0.02, 12, false)),
-    carbonMat
+    haloMat
   );
   haloGroup.add(haloPostMesh);
 
-  // Driver Helmet using activeDriver's authentic 2026 colors + visor + rear aero spoiler
   const helmetMat = regMat(
     new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(activeDriver.helmetPrimaryHex),
@@ -651,11 +842,10 @@ export function buildF1Car2026(
   visor.position.copy(toThree(1.09, 0, 0.585));
   haloGroup.add(visor);
 
-  // Sculpted Wing Mirrors with Dual Bridge Winglets
   for (const side of [-1, 1] as const) {
     const stalk = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.035, 0.075, 0.13)), carbonMat);
     stalk.position.copy(toThree(0.92, side * 0.36, 0.565));
-    const housing = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.085, 0.044, 0.14)), secondaryPaintMat);
+    const housing = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.085, 0.044, 0.14)), cowlMat);
     housing.position.copy(toThree(0.92, side * 0.44, 0.598));
     const mirrorTopVane = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.055, 0.009, 0.17)), carbonMat);
     mirrorTopVane.position.copy(toThree(0.92, side * 0.44, 0.63));
@@ -666,14 +856,13 @@ export function buildF1Car2026(
   registerExplode(haloGroup, 0, 0.40, 0);
 
   // ---------------------------------------------------------------------------
-  // 4. 2026 SWEPT ACTIVE-AERO FRONT WING (1.80m FIA NARROWED SPAN + FLAPS)
+  // 4. 2026 SWEPT ACTIVE-AERO FRONT WING (CLEAN ELEMENT MATERIALS + ENDPLATE UVs)
   // ---------------------------------------------------------------------------
   const frontWingGroup = new THREE.Group();
   frontWingGroup.name = 'FrontWing2026';
 
   const fwSpan = Math.max(1.70, Math.min(1.90, params.wingSpanM ?? 1.80));
 
-  // Swept Gull-Wing Mainplane
   const fwMainGeo = regGeo(buildSweptWingElement(0.24, 0.18, 0.022, fwSpan, 0.16, 0.025, 0.016));
   const fwMainMesh = new THREE.Mesh(fwMainGeo, carbonMat);
   fwMainMesh.position.copy(toThree(-1.04, 0, 0.115));
@@ -681,7 +870,6 @@ export function buildF1Car2026(
   fwMainMesh.castShadow = true;
   frontWingGroup.add(fwMainMesh);
 
-  // 3 Swept Active Multi-Element Flaps
   for (let f = 0; f < 3; f += 1) {
     const flapPitchDeg = 7 + fwActiveDeg * (0.44 + f * 0.18);
     const chordCenter = 0.12 - f * 0.014;
@@ -689,7 +877,7 @@ export function buildF1Car2026(
     const flapGeo = regGeo(
       buildSweptWingElement(chordCenter, chordTip, 0.013, fwSpan - 0.05, 0.15 - f * 0.015, 0.018, 0.011)
     );
-    const flapMat = f === 2 ? secondaryPaintMat : f === 1 ? bodyPaintMat : carbonMat;
+    const flapMat = f === 2 ? frontWingPrimaryMat : f === 1 ? cowlMat : carbonMat;
     const flapMesh = new THREE.Mesh(flapGeo, flapMat);
     flapMesh.position.copy(toThree(-0.90 + f * 0.092, 0, 0.135 + f * 0.025));
     flapMesh.rotation.z = THREE.MathUtils.degToRad(flapPitchDeg);
@@ -697,7 +885,6 @@ export function buildF1Car2026(
     frontWingGroup.add(flapMesh);
   }
 
-  // Sculpted 2026 Front Wing Endplates + Footplates + Diveplanes
   const fwEndShape = new THREE.Shape();
   fwEndShape.moveTo(-0.26, 0);
   fwEndShape.lineTo(0.32, 0);
@@ -705,17 +892,19 @@ export function buildF1Car2026(
   fwEndShape.quadraticCurveTo(0.06, 0.28, -0.18, 0.14);
   fwEndShape.closePath();
   const fwEndGeo = regGeo(
-    new THREE.ExtrudeGeometry(fwEndShape, {
-      depth: 0.016,
-      bevelEnabled: true,
-      bevelThickness: 0.003,
-      bevelSize: 0.003,
-    })
+    normalizePlanarUVs(
+      new THREE.ExtrudeGeometry(fwEndShape, {
+        depth: 0.016,
+        bevelEnabled: true,
+        bevelThickness: 0.003,
+        bevelSize: 0.003,
+      })
+    )
   );
   fwEndGeo.translate(0, 0, -0.008);
 
   for (const side of [-1, 1] as const) {
-    const endplate = new THREE.Mesh(fwEndGeo, bodyPaintMat);
+    const endplate = new THREE.Mesh(fwEndGeo, frontWingEndplateMat);
     endplate.position.copy(toThree(-0.74, side * (fwSpan * 0.5), 0.075));
     endplate.rotation.y = side * 0.08;
     endplate.castShadow = true;
@@ -762,12 +951,12 @@ export function buildF1Car2026(
   floorGroup.add(floorMesh);
 
   for (const side of [-1, 1] as const) {
-    const bargeboard = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.50, 0.25, 0.014)), carbonMat);
+    const bargeboard = new THREE.Mesh(regGeo(new THREE.BoxGeometry(0.50, 0.24, 0.014)), carbonMat);
     bargeboard.position.copy(toThree(1.05, side * 0.74, 0.185));
     bargeboard.rotation.y = side * -0.14;
     floorGroup.add(bargeboard);
 
-    const edgeStrake = new THREE.Mesh(regGeo(new THREE.BoxGeometry(1.38, 0.030, 0.052)), accentPaintMat);
+    const edgeStrake = new THREE.Mesh(regGeo(new THREE.BoxGeometry(1.38, 0.024, 0.044)), accentPaintMat);
     edgeStrake.position.copy(toThree(1.85, side * 0.785, 0.082));
     floorGroup.add(edgeStrake);
   }
@@ -802,7 +991,7 @@ export function buildF1Car2026(
   registerExplode(floorGroup, 0, -0.26, 0);
 
   // ---------------------------------------------------------------------------
-  // 6. 2026 ACTIVE-AERO REAR WING (SWAN-NECK + BEAM WING + DRS/MODE X FLAP)
+  // 6. 2026 ACTIVE-AERO REAR WING (DEDICATED FLAP TEXTURE + CLEAN ENDPLATE UVs)
   // ---------------------------------------------------------------------------
   const rearWingGroup = new THREE.Group();
   rearWingGroup.name = 'RearWing2026';
@@ -828,7 +1017,7 @@ export function buildF1Car2026(
 
   const rwFlap = new THREE.Mesh(
     regGeo(buildSweptWingElement(0.17, 0.15, 0.018, rwSpan - 0.04, 0.02, 0.012, 0.015)),
-    rearWingAccentMat
+    rearWingFlapMat
   );
   rwFlap.position.copy(toThree(L + 0.49, 0, 0.895));
   rwFlap.rotation.z = THREE.MathUtils.degToRad(8 + rwActiveDeg * 0.95);
@@ -842,17 +1031,19 @@ export function buildF1Car2026(
   rwEndShape.lineTo(-0.18, 0.14);
   rwEndShape.quadraticCurveTo(-0.26, -0.05, -0.22, -0.34);
   const rwEndGeo = regGeo(
-    new THREE.ExtrudeGeometry(rwEndShape, {
-      depth: 0.016,
-      bevelEnabled: true,
-      bevelThickness: 0.003,
-      bevelSize: 0.003,
-    })
+    normalizePlanarUVs(
+      new THREE.ExtrudeGeometry(rwEndShape, {
+        depth: 0.016,
+        bevelEnabled: true,
+        bevelThickness: 0.003,
+        bevelSize: 0.003,
+      })
+    )
   );
   rwEndGeo.translate(0, 0, -0.008);
 
   for (const side of [-1, 1] as const) {
-    const rwEnd = new THREE.Mesh(rwEndGeo, rearWingAccentMat);
+    const rwEnd = new THREE.Mesh(rwEndGeo, frontWingEndplateMat);
     rwEnd.position.copy(toThree(L + 0.38, side * (rwSpan * 0.5), 0.78));
     rwEnd.castShadow = true;
     rearWingGroup.add(rwEnd);
@@ -862,7 +1053,7 @@ export function buildF1Car2026(
   registerExplode(rearWingGroup, 0.68, 0.16, 0);
 
   // ---------------------------------------------------------------------------
-  // 7. DOUBLE-WISHBONE SUSPENSION (PUSH/PULL-ROD) & WHEEL WAKE DEFLECTORS
+  // 7. DOUBLE-WISHBONE SUSPENSION (TEAM WISHBONE FINISH) & WHEEL WAKE DEFLECTORS
   // ---------------------------------------------------------------------------
   const suspGroup = new THREE.Group();
   suspGroup.name = 'SuspensionAndBrakes';
@@ -880,10 +1071,10 @@ export function buildF1Car2026(
   for (const side of [-1, 1] as const) {
     const fUprightTop = toThree(0, side * (fHalfT - 0.11), 0.44);
     const fUprightBot = toThree(0, side * (fHalfT - 0.11), 0.24);
-    addWishboneLink(toThree(-0.14, side * 0.18, 0.42), fUprightTop, 0.013, carbonMat);
-    addWishboneLink(toThree(0.22, side * 0.21, 0.41), fUprightTop, 0.013, carbonMat);
-    addWishboneLink(toThree(-0.12, side * 0.16, 0.18), fUprightBot, 0.014, carbonMat);
-    addWishboneLink(toThree(0.24, side * 0.19, 0.18), fUprightBot, 0.014, carbonMat);
+    addWishboneLink(toThree(-0.14, side * 0.18, 0.42), fUprightTop, 0.013, wishboneMat);
+    addWishboneLink(toThree(0.22, side * 0.21, 0.41), fUprightTop, 0.013, wishboneMat);
+    addWishboneLink(toThree(-0.12, side * 0.16, 0.18), fUprightBot, 0.014, wishboneMat);
+    addWishboneLink(toThree(0.24, side * 0.19, 0.18), fUprightBot, 0.014, wishboneMat);
 
     if (params.suspensionFront === 'pushrod') {
       addWishboneLink(toThree(0.05, side * 0.19, 0.46), fUprightBot, 0.011, titaniumMat);
@@ -891,7 +1082,6 @@ export function buildF1Car2026(
       addWishboneLink(toThree(0.05, side * 0.18, 0.17), fUprightTop, 0.011, titaniumMat);
     }
 
-    // 2026 Front Wheel Wake Deflector (Eyebrow Winglet) arching over inboard shoulder
     const wakeCurve = new THREE.CatmullRomCurve3([
       toThree(-0.22, side * (fHalfT - 0.18), 0.56),
       toThree(-0.02, side * (fHalfT - 0.15), 0.72),
@@ -906,10 +1096,10 @@ export function buildF1Car2026(
 
     const rUprightTop = toThree(L, side * (rHalfT - 0.12), 0.44);
     const rUprightBot = toThree(L, side * (rHalfT - 0.12), 0.23);
-    addWishboneLink(toThree(L - 0.28, side * 0.14, 0.43), rUprightTop, 0.014, carbonMat);
-    addWishboneLink(toThree(L + 0.14, side * 0.10, 0.42), rUprightTop, 0.014, carbonMat);
-    addWishboneLink(toThree(L - 0.26, side * 0.15, 0.19), rUprightBot, 0.015, carbonMat);
-    addWishboneLink(toThree(L + 0.15, side * 0.11, 0.19), rUprightBot, 0.015, carbonMat);
+    addWishboneLink(toThree(L - 0.28, side * 0.14, 0.43), rUprightTop, 0.014, wishboneMat);
+    addWishboneLink(toThree(L + 0.14, side * 0.10, 0.42), rUprightTop, 0.014, wishboneMat);
+    addWishboneLink(toThree(L - 0.26, side * 0.15, 0.19), rUprightBot, 0.015, wishboneMat);
+    addWishboneLink(toThree(L + 0.15, side * 0.11, 0.19), rUprightBot, 0.015, wishboneMat);
 
     if (params.suspensionRear === 'pushrod') {
       addWishboneLink(toThree(L - 0.05, side * 0.13, 0.47), rUprightBot, 0.011, titaniumMat);
@@ -921,7 +1111,7 @@ export function buildF1Car2026(
   root.add(suspGroup);
 
   // ---------------------------------------------------------------------------
-  // 8. 18-INCH WHEELS, LATHE-SCULPTED PIRELLI TIRES, AERO COVERS & BRAKE DISCS
+  // 8. 18-INCH WHEELS, PIRELLI TIRES, CUSTOM AERO SPOKE COVERS & CALIPERS
   // ---------------------------------------------------------------------------
   const createTireGeometry = (radiusM: number, widthM: number) => {
     const hw = widthM * 0.5;
@@ -941,10 +1131,11 @@ export function buildF1Car2026(
   const frontTireGeo = createTireGeometry(0.36, 0.305);
   const rearTireGeo = createTireGeometry(0.36, 0.385);
   const wheelCoverGeo = regGeo(new THREE.CircleGeometry(0.232, 36));
-  const rimAccentRingGeo = regGeo(new THREE.RingGeometry(0.215, 0.232, 36));
+  const rimAccentRingGeo = regGeo(new THREE.RingGeometry(0.214, 0.232, 36));
   const brakeDiscGeo = regGeo(new THREE.CylinderGeometry(0.165, 0.165, 0.032, 24));
   brakeDiscGeo.rotateX(Math.PI / 2);
   const caliperGeo = regGeo(new THREE.BoxGeometry(0.08, 0.14, 0.055));
+  const spokeBladeGeo = regGeo(new THREE.BoxGeometry(0.022, 0.16, 0.014));
 
   const brakeDiscMat = regMat(
     new THREE.MeshStandardMaterial({
@@ -963,9 +1154,16 @@ export function buildF1Car2026(
   );
   const caliperMat = regMat(
     new THREE.MeshStandardMaterial({
-      color: 0xdc2626,
+      color: new THREE.Color(aero.caliperHex || '#dc2626'),
       roughness: 0.28,
       metalness: 0.65,
+    })
+  );
+  const spokeAlloyMat = regMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x262a34,
+      roughness: 0.32,
+      metalness: 0.72,
     })
   );
 
@@ -975,6 +1173,13 @@ export function buildF1Car2026(
     { name: 'WheelRL', xM: L, yM: -rHalfT, isRear: true, side: -1 },
     { name: 'WheelRR', xM: L, yM: rHalfT, isRear: true, side: 1 },
   ];
+
+  const spokeCount =
+    aero.wheelCoverStyle === 'spoke_5_open'
+      ? 5
+      : aero.wheelCoverStyle === 'turbine_10'
+      ? 10
+      : 0;
 
   for (const w of wheelDefs) {
     const wGroup = new THREE.Group();
@@ -997,7 +1202,22 @@ export function buildF1Car2026(
     if (w.side < 0) outerAccentRing.rotation.y = Math.PI;
     wGroup.add(outerAccentRing);
 
-    const nutMesh = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.032, 0.038, 0.025, 16)), rimRingMat);
+    if (spokeCount > 0) {
+      for (let sp = 0; sp < spokeCount; sp += 1) {
+        const ang = (sp / spokeCount) * Math.PI * 2;
+        const spoke = new THREE.Mesh(spokeBladeGeo, spokeAlloyMat);
+        const rMid = 0.125;
+        spoke.position.set(
+          Math.cos(ang) * rMid,
+          Math.sin(ang) * rMid,
+          w.side * (widthM * 0.5 + 0.005)
+        );
+        spoke.rotation.z = ang - Math.PI / 2;
+        wGroup.add(spoke);
+      }
+    }
+
+    const nutMesh = new THREE.Mesh(regGeo(new THREE.CylinderGeometry(0.032, 0.038, 0.026, 16)), rimRingMat);
     nutMesh.rotation.x = Math.PI / 2;
     nutMesh.position.z = w.side * (widthM * 0.5 + 0.008);
     wGroup.add(nutMesh);

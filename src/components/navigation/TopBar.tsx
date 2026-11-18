@@ -119,7 +119,7 @@ export const TopBar: React.FC = () => {
       {/* Red F1 Signature Baseline Line */}
       <div className="h-[2px] w-full bg-gradient-to-r from-[#E10600] via-[#E10600] to-transparent" />
 
-      <div className="max-w-[1440px] mx-auto px-3 lg:px-5 h-16 flex items-center justify-between gap-3">
+      <div className="max-w-[1440px] mx-auto px-3 lg:px-5 min-h-16 py-2 flex flex-wrap xl:flex-nowrap items-center justify-between gap-2.5">
         {/* Zone 1: Brand Wordmark & Main Menu Return */}
         <div className="flex items-center gap-2.5 shrink-0">
           <button
@@ -142,7 +142,7 @@ export const TopBar: React.FC = () => {
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-0.5 lg:gap-1 min-w-0">
+        <nav className="hidden md:flex items-center gap-0.5 xl:gap-1 min-w-0 flex-1 justify-center overflow-x-auto">
           {navItems.map(item => {
             const isActive = activeTab === item.id;
             return (
@@ -152,10 +152,10 @@ export const TopBar: React.FC = () => {
                   setActiveTab(item.id);
                   playRadioSound();
                 }}
-                className={`px-2 xl:px-2.5 py-1.5 text-[11px] xl:text-xs font-f1-wide uppercase tracking-wider transition-colors relative whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`px-2 xl:px-2.5 py-2 text-[11px] xl:text-xs font-f1-wide uppercase tracking-wider transition-colors relative whitespace-nowrap shrink-0 cursor-pointer border-b-2 ${
                   isActive
-                    ? 'text-white font-bold'
-                    : 'text-zinc-400 hover:text-white'
+                    ? 'text-white font-bold border-[#E10600]'
+                    : 'text-zinc-400 hover:text-white border-transparent'
                 }`}
               >
                 <span>{item.label}</span>
@@ -164,16 +164,13 @@ export const TopBar: React.FC = () => {
                     {item.badge}
                   </span>
                 )}
-                {isActive && (
-                  <span className="absolute bottom-[-14px] left-0 right-0 h-[3px] bg-[#E10600]" />
-                )}
               </button>
             );
           })}
         </nav>
 
         {/* Zone 3: Quick Save, Language, Sound & Primary Action */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 xl:gap-2 shrink-0 ml-auto">
           {/* Quick Save Button (Local) */}
           <button
             onClick={handleManualSave}
@@ -280,12 +277,12 @@ export const TopBar: React.FC = () => {
               playRadioSound();
             }}
             title={language === 'pt' ? 'Abrir modo Grandes Prêmios & Todos os Circuitos' : 'Open Grands Prix & Circuits Explorer'}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 hover:border-[#E10600]/60 text-xs font-f1-mono text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
+            className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-[#1C1C26] hover:bg-[#252533] border border-white/10 hover:border-[#E10600]/60 text-xs font-f1-mono text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Calendar className="w-3.5 h-3.5 text-[#E10600]" />
             <span>S{currentWeek}</span>
-            <span className="text-zinc-500">·</span>
-            <span className="text-white font-bold max-w-[110px] truncate">{currentCircuit.city}</span>
+            <span className="hidden xl:inline text-zinc-500">·</span>
+            <span className="hidden xl:inline text-white font-bold max-w-[100px] truncate">{currentCircuit.city}</span>
           </button>
 
           {/* Primary Action Button */}

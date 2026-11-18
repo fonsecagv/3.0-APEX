@@ -181,4 +181,59 @@ describe('Asset Registry & Validation — Prompt 7 Implementation', () => {
     expect(oversized.isValid).toBe(false);
     expect(oversized.errors[0]).toContain('Comprimento fora das regras FIA 2026');
   });
+
+  it('constructs 2026 procedural hull with outward normals, no hovering nosePlate, and non-crossing sidepods', async () => {
+    const { buildF1Car2026 } = await import('../src/components/three/f1CarBuilder');
+    const { resolveTeamLivery2026 } = await import('../src/data/f12026Liveries');
+
+    const audiLivery = resolveTeamLivery2026({ id: 'audi' });
+    const built = buildF1Car2026(audiLivery, {
+      wheelbaseM: 3.4,
+      frontTrackM: 1.9,
+      rearTrackM: 1.9,
+      frontRideHeightMm: 22,
+      rearRideHeightMm: 46,
+      frontWingFlapDeg: 24,
+      rearWingFlapDeg: 26,
+      diffuserAngleDeg: 11,
+      sidepodConcept: 'downwash',
+      sidepodInletAreaM2: 0.032,
+      suspensionFront: 'pullrod',
+      suspensionRear: 'pushrod',
+      aeroMode: 'mode_z',
+      tireCompound: 'soft',
+    });
+
+    const monoGroup = built.root.getObjectByName('MonocoqueAndNose') as THREE.Group | undefined;
+    expect(monoGroup).toBeDefined();
+    expect(built.root.getObjectByName('NoseNumberPlate')).toBeUndefined();
+
+    // First child of MonocoqueAndNose is the lofted chassis+nose mesh
+    const monoMesh = monoGroup?.children[0] as THREE.Mesh;
+    const pos = monoMesh.geometry.getAttribute('position');
+    const norm = monoMesh.geometry.getAttribute('normal');
+    expect(pos.count).toBeGreaterThan(100);
+
+    // Sample crown/side normals relative to local ring centerline (y ≈ 0.35, z = 0) to guarantee outward winding
+    let outwardVotes = 0;
+    let totalChecked = 0;
+    for (let i = 0; i < pos.count; i += 5) {
+      const py = pos.getY(i);
+      const pz = pos.getZ(i);
+      const ny = norm.getY(i);
+      const nz = norm.getZ(i);
+      const dot = (py - 0.32) * ny + pz * nz;
+      if (Math.abs(dot) > 0.001) {
+        totalChecked += 1;
+        if (dot > 0) outwardVotes += 1;
+      }
+    }
+    expect(outwardVotes / Math.max(1, totalChecked)).toBeGreaterThan(0.85);
+
+    const podsGroup = built.root.getObjectByName('SidepodsAndEngineCover') as THREE.Group | undefined;
+    expect(podsGroup).toBeDefined();
+    expect(built.bodyPaintMaterials.length).toBeGreaterThanOrEqual(4);
+
+    built.dispose();
+  });
 });

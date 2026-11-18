@@ -15,7 +15,7 @@ import {
   Wrench,
   RotateCcw,
 } from 'lucide-react';
-import type { StaffMember } from '../../types/f1';
+import type { Driver, StaffMember, Team } from '../../types/f1';
 import type { VehicleEngineeringParameters } from '../../types/physics';
 import { FIA_2026_DEFAULT_EDITION } from '../../engine/modules/m03Packaging';
 import { evaluateGate03 } from '../../engine/modules/m03Packaging';
@@ -65,6 +65,10 @@ interface OnboardingCarConceptionLabProps {
   committedCarCostUsd?: number;
   costCapCommittedUsd?: number;
   costCapLimitUsd?: number;
+  playerTeam?: Partial<Team> | null;
+  allTeams?: Team[];
+  drivers?: Driver[];
+  isLaunchModalOpen?: boolean;
 }
 
 export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProps> = ({
@@ -95,6 +99,10 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
   committedCarCostUsd = 15_000_000,
   costCapCommittedUsd = 53_000_000,
   costCapLimitUsd = 135_000_000,
+  playerTeam = null,
+  allTeams,
+  drivers,
+  isLaunchModalOpen = false,
 }) => {
   const [selectedGearProbe, setSelectedGearProbe] = useState<number>(6);
   const [draggingGearNum, setDraggingGearNum] = useState<number | null>(null);
@@ -829,9 +837,9 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                         <span className="font-bold text-white">
                           {g.gearNumber}ª <span className="text-zinc-400 font-normal">({g.z2Gear}/{g.z1Pinion} · i={g.ratio.toFixed(2)})</span>
                         </span>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2 shrink-0">
                           {idx > 0 && (
-                            <span className={`text-[9px] ${stepDelta < 18 ? 'text-amber-300' : 'text-zinc-400'}`}>
+                            <span className={`text-[9px] min-w-[54px] text-right tabular-nums shrink-0 ${stepDelta < 18 ? 'text-amber-300' : 'text-zinc-400'}`}>
                               +{stepDelta.toFixed(0)} km/h
                             </span>
                           )}
@@ -841,19 +849,19 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                               e.stopPropagation();
                               updateSingleGearSpeed(g.gearNumber, speedKmh - 4);
                             }}
-                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
+                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer shrink-0"
                             title="Encurtar marcha (-4 km/h)"
                           >
                             -
                           </button>
-                          <span className="text-cyan-300 font-bold w-14 text-right">{speedKmh.toFixed(0)} km/h</span>
+                          <span className="text-cyan-300 font-bold w-14 text-right tabular-nums shrink-0">{speedKmh.toFixed(0)} km/h</span>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               updateSingleGearSpeed(g.gearNumber, speedKmh + 4);
                             }}
-                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
+                            className="w-4 h-4 bg-[#1C1C26] border border-white/15 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer shrink-0"
                             title="Alongar marcha (+4 km/h)"
                           >
                             +
@@ -1166,7 +1174,14 @@ export const OnboardingCarConceptionLab: React.FC<OnboardingCarConceptionLabProp
                   Clique em qualquer subsistema para inspecionar massa e impacto no CG
                 </span>
               </div>
-              <Packaging3DViewport packaging={pkg} vehicleParams={effectiveVehicleParams} />
+              <Packaging3DViewport
+                packaging={pkg}
+                vehicleParams={effectiveVehicleParams}
+                playerTeam={playerTeam}
+                allTeams={allTeams}
+                drivers={drivers}
+                suspended={isLaunchModalOpen}
+              />
             </div>
           </div>
 

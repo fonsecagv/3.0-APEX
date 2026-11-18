@@ -208,14 +208,6 @@ export interface StaffAttributes {
   visaoEstrategica?: number; // 0‑100 – visão de estratégia e gestão de orçamento
   resiliencia?: number; // 0‑100 – capacidade de reação sob pressão e recuperação
 }
-  tecnica: number;
-  criatividade: number;
-  rigorValidacao: number;
-  lideranca: number;
-  comunicacao: number;
-  gestaoPrazo: number;
-  adaptacao: number;
-}
 
 export interface StaffMember {
   id: string;
@@ -439,6 +431,7 @@ export interface OnboardingResult {
   teamName: string;
   teamShort: string;
   teamColor: string;
+  teamSecondaryColor?: string;
   principalName: string;
   principalBackground: PrincipalBackgroundId;
   engineOrigin: EngineOrigin;
@@ -574,5 +567,26 @@ export interface PuClientContract {
   engineFailureCount: number;
   consecutiveSlowestRaces: number;
   status: 'active' | 'terminated';
+}
+
+export interface TrackFeedbackEntry {
+  id: string;
+  round: number;
+  circuitName: string;
+  session: 'TL1' | 'TL2' | 'TL3' | 'CORRIDA' | 'SIM';
+  driverId: string;
+  driverName: string;
+  feedbackRating: number;
+  confidencePct: number;
+  quote: string;
+  setupHint?: string;
+  createdAtWeek: number;
+}
+
+export interface CarUpgradeMilestone {
+  gpRound: number;
+  label: string;
+  componentType: ComponentSpec['type'];
+  level: number;
 }
 

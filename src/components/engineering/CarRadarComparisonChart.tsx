@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import type { ComponentSpec, Team } from '../../types/f1';
+import type { CarUpgradeMilestone, ComponentSpec, Team } from '../../types/f1';
 import type { VehicleEngineeringParameters, VehiclePhysicsOutputs } from '../../types/physics';
 import {
   computeCarRadarProfile,
@@ -15,6 +15,7 @@ interface CarRadarComparisonChartProps {
   components: ComponentSpec[];
   correlationErrorPct?: number;
   leadDriverFeedback?: number;
+  upgradeTimeline?: CarUpgradeMilestone[];
 }
 
 export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = ({
@@ -25,6 +26,7 @@ export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = (
   components,
   correlationErrorPct = 8.5,
   leadDriverFeedback = 80,
+  upgradeTimeline,
 }) => {
   const rivals = useMemo(
     () =>
@@ -96,10 +98,32 @@ export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = (
   const rivalColor = activeRival.color || '#38BDF8';
   const pilotColor = '#22D3EE';
 
+  const milestoneByRound = useMemo(() => {
+    const map = new Map<number, CarUpgradeMilestone[]>();
+    const list =
+      upgradeTimeline && upgradeTimeline.length > 0
+        ? upgradeTimeline
+        : [
+            {
+              gpRound: 1,
+              label: 'Especificação de Homologação Inicial',
+              componentType: 'chassis' as const,
+              level: 1,
+            },
+          ];
+    for (const item of list) {
+      const round = Math.max(1, Math.min(24, Math.round(item.gpRound)));
+      const prev = map.get(round) || [];
+      prev.push(item);
+      map.set(round, prev);
+    }
+    return map;
+  }, [upgradeTimeline]);
+
   return (
     <div className="space-y-3">
       {/* Rival selector & Legend */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#15151E] p-2.5 border border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#15151E] p-2.5 border border-white/10">
         <div className="flex items-center gap-2 text-[11px] font-f1-mono">
           <span className="text-zinc-400 uppercase whitespace-nowrap">Comparar contra:</span>
           <select
@@ -272,16 +296,16 @@ export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = (
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 bg-emerald-400 inline-block shrink-0" />
             <span className="font-f1-wide font-black text-xs text-white uppercase tracking-wider truncate">
-              {playerTeam.carModelName || 'DUM-01-EVO'} · TIMELINE DE HOMOLOGAÇÃO (24 GPs)
+              {playerTeam.carModelName || 'APX-01'} · TIMELINE DE HOMOLOGAÇÃO (24 GPs)
             </span>
           </div>
           <span className="text-[10px] font-f1-mono text-zinc-400 shrink-0">
-            {components.length} Componentes Ativos
+            {components.length} Componentes Ativos · {milestoneByRound.size} Marco(s)
           </span>
         </div>
 
         {/* 24-GP Horizontal Timeline Bar */}
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <div className="flex justify-between text-[9px] font-f1-mono text-zinc-400">
             <span>GP 01 (BHR)</span>
             <span>GP 12 (GBR)</span>
@@ -289,18 +313,35 @@ export const CarRadarComparisonChart: React.FC<CarRadarComparisonChartProps> = (
           </div>
           <div className="w-full bg-black/60 h-2.5 border border-white/10 relative flex items-center overflow-hidden">
             {Array.from({ length: 24 }).map((_, gpIdx) => {
-              const hasUpgrade = gpIdx === 0 || gpIdx === 4 || gpIdx === 9 || gpIdx === 15 || gpIdx === 20;
+              const roundNum = gpIdx + 1;
+              const roundMilestones = milestoneByRound.get(roundNum);
+              const hasUpgrade = Boolean(roundMilestones && roundMilestones.length > 0);
+              const tooltip = hasUpgrade
+                ? `GP ${roundNum} · ${roundMilestones!.map(m => `${m.label} (Nv.${m.level})`).join(' | ')}`
+                : `GP ${roundNum} · Sem pacotes homologados`;
               return (
                 <div
                   key={gpIdx}
                   className={`flex-1 h-full border-r border-white/5 ${
                     hasUpgrade ? 'bg-emerald-500' : 'bg-transparent'
                   }`}
-                  title={`GP ${gpIdx + 1} ${hasUpgrade ? '· Pacote de Upgrades Homologado' : ''}`}
+                  title={tooltip}
                 />
               );
             })}
           </div>
+          {upgradeTimeline && upgradeTimeline.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {upgradeTimeline.slice(-4).map((m, i) => (
+                <span
+                  key={`${m.gpRound}_${m.componentType}_${i}`}
+                  className="text-[9px] font-f1-mono px-1.5 py-0.5 bg-emerald-950/50 border border-emerald-500/30 text-emerald-300"
+                >
+                  GP {String(m.gpRound).padStart(2, '0')} · {m.label} (Nv.{m.level})
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Components Grid with clean truncation to prevent overflow */}

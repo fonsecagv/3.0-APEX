@@ -2178,6 +2178,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
         teamName: careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name || 'Scuderia Ferrari HP'),
         teamShort: careerPath === 'custom_team' ? customTeamShort : (realTeamObj?.shortName || 'FER'),
         teamColor: careerPath === 'custom_team' ? customColor : (realTeamObj?.color || '#E8002D'),
+        teamSecondaryColor: careerPath === 'custom_team' ? customSecondaryColor : (realTeamObj?.secondaryColor || '#FFFFFF'),
         principalName,
         principalBackground,
         engineOrigin: isEmergencyActive ? 'customer' : engineChoice,
@@ -2258,10 +2259,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
           suspensionRear: vehicleParamsDraft.rearSuspensionType
         },
         vehicleParams: vehicleParamsDraft,
-        chassisName: chassisName || getDefaultChassisSuggestions(
-          careerPath === 'custom_team' ? customTeamShort : (realTeamObj?.shortName || 'FER'),
-          careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name || 'Scuderia Ferrari HP')
-        )[0],
+        chassisName: chassisLaunchConfirmed
+          ? chassisName
+          : (careerPath === 'real_team' && realTeamObj?.carModelName
+              ? realTeamObj.carModelName
+              : getDefaultChassisSuggestions(
+                  careerPath === 'custom_team' ? customTeamShort : (realTeamObj?.shortName || 'FER'),
+                  careerPath === 'custom_team' ? customTeamName : (realTeamObj?.name || 'Scuderia Ferrari HP')
+                )[0]),
         customEngineName: (() => {
           const baseName = customEngineName.trim() || (
             isEmergencyActive
@@ -8941,6 +8946,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onCa
               committedCarCostUsd={committedCarCostUsd}
               costCapCommittedUsd={costCapCommittedBeforePendingPhase7}
               costCapLimitUsd={135_000_000}
+              playerTeam={{
+                id: careerPath === 'custom_team' ? 'apex' : selectedRealTeamId,
+                name: careerPath === 'custom_team' ? customTeamName : (allTeams.find(t => t.id === selectedRealTeamId)?.name || customTeamName),
+                shortName: careerPath === 'custom_team' ? customTeamShort : (allTeams.find(t => t.id === selectedRealTeamId)?.shortName || customTeamShort),
+                carModelName: chassisLaunchConfirmed ? chassisName : (careerPath === 'real_team' ? (allTeams.find(t => t.id === selectedRealTeamId)?.carModelName || 'F1-26') : `${customTeamShort.toUpperCase()}-01`),
+                color: careerPath === 'custom_team' ? customColor : (allTeams.find(t => t.id === selectedRealTeamId)?.color || customColor),
+                secondaryColor: careerPath === 'custom_team' ? customSecondaryColor : (allTeams.find(t => t.id === selectedRealTeamId)?.secondaryColor || customSecondaryColor),
+                isPlayer: true,
+                drivers: [selectedDriver1 || '', selectedDriver2 || ''],
+                engineSupplier: engineFullName,
+              }}
+              allTeams={allTeams}
+              drivers={drivers}
+              isLaunchModalOpen={showCarLaunchModal}
             />
           );
         })()}

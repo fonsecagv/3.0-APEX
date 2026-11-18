@@ -399,7 +399,7 @@ export const DashboardTab: React.FC = () => {
           ? 'bg-[#1C1C26] border-emerald-500/40 text-zinc-300'
           : Math.max(0, semanasParaTeste * 7) > 0
           ? 'bg-[#1C1C26] border-white/10 text-zinc-300'
-          : 'bg-red-950/40 border-[#E10600] text-red-300 animate-pulse'
+          : 'bg-red-950/40 border-[#E10600] text-red-300'
       }`}>
         <div className="flex items-center gap-2.5">
           <Clock className={`w-5 h-5 shrink-0 ${motorHomologadoFIA ? 'text-emerald-400' : Math.max(0, semanasParaTeste * 7) > 0 ? 'text-cyan-400' : 'text-[#E10600]'}`} />
@@ -659,7 +659,7 @@ export const DashboardTab: React.FC = () => {
 
       {/* 9. A MORAL DA FÁBRICA (O Efeito Dominó) */}
       {isMoraleCrisis && (
-        <div className="p-4 bg-red-950/50 border-2 border-[#E10600] flex items-start gap-3.5 animate-pulse">
+        <div className="p-4 bg-red-950/50 border-2 border-[#E10600] flex items-start gap-3.5">
           <AlertOctagon className="w-6 h-6 text-[#E10600] shrink-0 mt-0.5" />
           <div className="text-xs font-f1-mono">
             <span className="font-f1-wide font-black text-red-300 uppercase text-sm block mb-1">

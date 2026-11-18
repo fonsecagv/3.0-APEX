@@ -24,6 +24,7 @@ import { GrandsPrixExplorer } from '../circuits/GrandsPrixExplorer';
 
 export const StartScreen: React.FC = () => {
   const {
+    careerInitialized,
     setShowStartScreen,
     setShowOnboarding,
     language,
@@ -42,6 +43,9 @@ export const StartScreen: React.FC = () => {
     startNewGame,
     resetGameState,
     allTeams,
+    playerTeam,
+    currentWeek,
+    seasonYear,
     importCareerStatePayload
   } = useGame();
 
@@ -203,35 +207,48 @@ export const StartScreen: React.FC = () => {
 
           {/* Right Action Menu Stack (5 cols) */}
           <div className="lg:col-span-5 space-y-3">
-            {/* Continue Recent Game */}
-            <button
-              disabled={!hasRecentSave}
-              onClick={() => {
-                if (hasRecentSave) {
-                  loadRecentSave();
-                }
-              }}
-              className={`w-full p-4 font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-between group shadow-lg ${
-                hasRecentSave
-                  ? 'bg-[#E10600] hover:bg-[#c20500] text-white cursor-pointer'
-                  : 'bg-[#1C1C26] border border-white/10 text-zinc-500 cursor-not-allowed opacity-50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Play className={`w-5 h-5 ${hasRecentSave ? 'fill-current text-white' : 'text-zinc-600'}`} />
-                <div className="text-left">
-                  <div>{t.continueGame}</div>
-                  <div className="text-[10px] font-f1-mono font-normal lowercase">
-                    {hasRecentSave
-                      ? (language === 'pt' ? 'retomar do último salvamento' : 'resume latest checkpoint')
-                      : (language === 'pt' ? 'nenhuma carreira salva disponível' : 'no saved career available')}
+            {/* Continue Recent / Active Career */}
+            {(() => {
+              const canContinue = careerInitialized || hasRecentSave;
+              const activeTeamLabel = playerTeam?.name || 'APEX Grand Prix Team';
+              const activeChassisLabel = playerTeam?.carModelName || 'CHASSI 2026';
+              return (
+                <button
+                  disabled={!canContinue}
+                  onClick={() => {
+                    if (!canContinue) return;
+                    if (!loadRecentSave() && careerInitialized) {
+                      setShowStartScreen(false);
+                      playRadioSound();
+                    }
+                  }}
+                  className={`w-full p-4 font-f1-wide font-black text-sm uppercase tracking-wider f1-tab-chamfer transition-all flex items-center justify-between group shadow-lg ${
+                    canContinue
+                      ? 'bg-[#E10600] hover:bg-[#c20500] text-white cursor-pointer'
+                      : 'bg-[#1C1C26] border border-white/10 text-zinc-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Play className={`w-5 h-5 ${canContinue ? 'fill-current text-white' : 'text-zinc-600'}`} />
+                    <div className="text-left">
+                      <div>
+                        {canContinue
+                          ? `${language === 'pt' ? 'Continuar Carreira' : 'Continue Career'} (${activeTeamLabel})`
+                          : t.continueGame}
+                      </div>
+                      <div className="text-[10px] font-f1-mono font-normal lowercase">
+                        {canContinue
+                          ? `${activeChassisLabel} · ${language === 'pt' ? `temporada ${seasonYear} · semana ${currentWeek}` : `season ${seasonYear} · week ${currentWeek}`}`
+                          : (language === 'pt' ? 'nenhuma carreira salva disponível' : 'no saved career available')}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              {hasRecentSave && (
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              )}
-            </button>
+                  {canContinue && (
+                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  )}
+                </button>
+              );
+            })()}
 
             {/* New Game Button - 7-Stage Official Onboarding Journey with Total Reset */}
             <button

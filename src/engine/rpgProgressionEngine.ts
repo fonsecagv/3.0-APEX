@@ -363,7 +363,10 @@ export function computeStaffXpGain(params: {
     synergyBonus += 12;
   } else if (
     (params.principalBackground === 'born_strategist' || params.principalBackground === 'data_strategist' || params.principalBackground === 'ex_driver') &&
-    (params.staffMember.role === 'sporting_director' || params.staffMember.role === 'chief_mechanic')
+    (params.staffMember.role === 'sporting_director' ||
+      params.staffMember.role === 'head_management' ||
+      params.staffMember.role === 'chief_mechanic' ||
+      params.staffMember.role === 'head_mechanics')
   ) {
     synergyBonus += 10;
   }
@@ -465,6 +468,8 @@ export function getStaffFacilityLimitFeedback(
     tech_director: 'coordenar simulações multifísicas sem gargalos de equipe',
     chief_engineer: 'elevar a rigidez metodológica entre projeto e pista',
     race_engineer: 'refinar a janela de telemetria corrida a corrida',
+    head_management: 'otimizar alocação de pessoal e governança operacional de fábrica',
+    head_mechanics: 'padronizar montagens de box e reduzir falhas mecânicas em pista',
   };
 
   if (isLimited) {

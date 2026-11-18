@@ -104,12 +104,17 @@ export const CarLaunchModal: React.FC<CarLaunchModalProps> = ({
   const [chassisInput, setChassisInput] = useState<string>(
     initialChassisName || suggestions[0] || 'APX-01'
   );
+  const [debouncedChassisName, setDebouncedChassisName] = useState<string>(
+    initialChassisName || suggestions[0] || 'APX-01'
+  );
   const [fiaStamped, setFiaStamped] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
+      const initial = initialChassisName || suggestions[0] || 'APX-01';
       setFiaStamped(false);
-      setChassisInput(initialChassisName || suggestions[0] || 'APX-01');
+      setChassisInput(initial);
+      setDebouncedChassisName(initial);
       playRevealFanfare(soundEnabled);
     }
   }, [isOpen, initialChassisName, suggestions, soundEnabled]);
@@ -118,18 +123,25 @@ export const CarLaunchModal: React.FC<CarLaunchModalProps> = ({
 
   const previewCarModel = validation.normalized || 'APX-01';
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedChassisName(previewCarModel);
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [previewCarModel]);
+
   const previewTeam: Partial<Team> = useMemo(
     () => ({
       id: teamId,
       name: teamName,
       shortName: teamShort,
-      carModelName: previewCarModel,
+      carModelName: debouncedChassisName,
       color: teamColor,
       secondaryColor: teamSecondaryColor,
       isPlayer: true,
       engineSupplier: 'In-House',
     }),
-    [teamId, teamName, teamShort, previewCarModel, teamColor, teamSecondaryColor]
+    [teamId, teamName, teamShort, debouncedChassisName, teamColor, teamSecondaryColor]
   );
 
   if (!isOpen) return null;

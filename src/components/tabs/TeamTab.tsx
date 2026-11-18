@@ -24,11 +24,22 @@ import { PRINCIPAL_BACKGROUNDS } from '../../data/principalBackgroundsData';
 import { evaluatePitAndGarageOperations } from '../../engine/simulationEngine';
 import { PersonAvatar } from '../common/PersonAvatar';
 import type { EngineeringAvatarRole } from '../../engine/engineeringFeedbackEngine';
+import {
+  computeDriverAttributeTrends,
+  getDriverRpgLevel,
+  getDriverXpProgress,
+  getStaffFacilityLimitFeedback,
+  getStaffMaxLevelForCentral,
+  getStaffRpgLevel,
+  getStaffXpProgress,
+  type AttributeTrend,
+} from '../../engine/rpgProgressionEngine';
 
 export const TeamTab: React.FC = () => {
   const {
     drivers,
     staff,
+    facilities,
     playerTeam,
     principalProfile,
     signDriver,
@@ -43,9 +54,25 @@ export const TeamTab: React.FC = () => {
 
   const activeBg = PRINCIPAL_BACKGROUNDS.find(b => b.id === principalProfile.background) || PRINCIPAL_BACKGROUNDS[0];
 
-  const [selectedDriver, setSelectedDriver] = useState<Driver>(
-    drivers.find(d => d.teamId === playerTeam.id && !d.isAffiliate) || drivers[0]
-  );
+  const starter1 =
+    drivers.find(d => d.id === playerTeam.drivers?.[0]) ||
+    drivers.find(d => d.teamId === playerTeam.id && !d.isAffiliate) ||
+    drivers[0];
+  const starter2 =
+    drivers.find(d => d.id === playerTeam.drivers?.[1]) ||
+    drivers.filter(d => d.teamId === playerTeam.id && !d.isAffiliate && d.id !== starter1?.id)[0];
+  const reserveDriver =
+    (playerTeam.affiliateDriverId ? drivers.find(d => d.id === playerTeam.affiliateDriverId) : undefined) ||
+    drivers.find(d => d.teamId === playerTeam.id && d.isAffiliate);
+
+  const playerDrivers = [starter1, starter2].filter((d): d is Driver => Boolean(d));
+  const rosterEntries: Array<{ roleLabel: string; isReserve: boolean; driver: Driver }> = [
+    ...(starter1 ? [{ roleLabel: 'Titular 1', isReserve: false, driver: starter1 }] : []),
+    ...(starter2 ? [{ roleLabel: 'Titular 2', isReserve: false, driver: starter2 }] : []),
+    ...(reserveDriver ? [{ roleLabel: 'Piloto Reserva', isReserve: true, driver: reserveDriver }] : []),
+  ];
+
+  const [selectedDriver, setSelectedDriver] = useState<Driver>(starter1 || drivers[0]);
   const [activeSubTab, setActiveSubTab] = useState<'roster' | 'academy' | 'staff' | 'market'>('roster');
 
   // Marketing Modal State
@@ -53,11 +80,76 @@ export const TeamTab: React.FC = () => {
   const [marketingSelectedDriverId, setMarketingSelectedDriverId] = useState<string>('');
   const [marketingFeedback, setMarketingFeedback] = useState<string | null>(null);
 
-  const playerDrivers = drivers.filter(d => d.teamId === playerTeam.id && !d.isAffiliate);
-  const activeSelectedDriver = playerDrivers.find(d => d.id === selectedDriver.id) || playerDrivers[0] || selectedDriver;
+  const activeSelectedDriver =
+    rosterEntries.find(e => e.driver.id === selectedDriver.id)?.driver ||
+    playerDrivers[0] ||
+    selectedDriver;
   const affiliateDrivers = drivers.filter(d => d.isAffiliate);
   const marketDrivers = drivers.filter(d => d.teamId !== playerTeam.id && !d.isAffiliate);
   const [replacingDriverId, setReplacingDriverId] = useState<string | null>(null);
+
+  const teamCentralLevel = facilities.find(f => f.id === 'fac_team_hq')?.level || 1;
+  const simFacilityLevel = facilities.find(f => f.id === 'fac_simulator')?.level || 1;
+  const centralCapInfo = getStaffMaxLevelForCentral(teamCentralLevel);
+
+  const matchesStaffRoleAlias = (staffRole: StaffMember['role'], targetRole: StaffMember['role']) => {
+    if (staffRole === targetRole) return true;
+    if (targetRole === 'sporting_director' && staffRole === 'head_management') return true;
+    if (targetRole === 'chief_mechanic' && staffRole === 'head_mechanics') return true;
+    return false;
+  };
+
+  const resolveTeamChief = (targetRole: StaffMember['role'], teamNamedMember?: string) => {
+    const byTeamField = teamNamedMember
+      ? staff.find(s => matchesStaffRoleAlias(s.role, targetRole) && s.name === teamNamedMember)
+      : undefined;
+    const byCurrentTeam = staff.find(
+      s =>
+        matchesStaffRoleAlias(s.role, targetRole) &&
+        (s.currentTeam === playerTeam.name ||
+          (playerTeam.name === 'APEX Grand Prix Team' && s.currentTeam === 'APEX Grand Prix Team'))
+    );
+    const byStarter = staff.find(
+      s =>
+        matchesStaffRoleAlias(s.role, targetRole) &&
+        (s.id.startsWith('staff_head') || s.id === 'staff_sporting_dir' || s.id === 'staff_chief_mechanic')
+    );
+    return byTeamField || byCurrentTeam || byStarter || staff.find(s => matchesStaffRoleAlias(s.role, targetRole));
+  };
+
+  const diretoriaSummary = (
+    [
+      { role: 'head_aero', label: 'Chefe de Aero', named: playerTeam.headOfAero },
+      { role: 'head_pu', label: 'Chefe de PU', named: playerTeam.headOfPowerUnit },
+      { role: 'sporting_director', label: 'Chefe de Gerenciamento', named: playerTeam.sportingDirector },
+      { role: 'chief_mechanic', label: 'Chefe Mecânico', named: playerTeam.chiefMechanic },
+    ] as const
+  ).map(item => ({
+    ...item,
+    member: resolveTeamChief(item.role, item.named),
+  }));
+
+  const renderTrendBadge = (trend?: AttributeTrend) => {
+    if (trend === 'up') {
+      return (
+        <span className="text-emerald-400 font-black ml-1.5" title="Em evolução">
+          ↑
+        </span>
+      );
+    }
+    if (trend === 'down') {
+      return (
+        <span className="text-red-400 font-black ml-1.5" title="Declínio natural / baixa moral">
+          ↓
+        </span>
+      );
+    }
+    return (
+      <span className="text-zinc-500 font-bold ml-1.5" title="Estável">
+        →
+      </span>
+    );
+  };
 
   const getMentalityColor = (m: number) => {
     if (m >= 85) return 'text-emerald-400';
@@ -228,12 +320,15 @@ export const TeamTab: React.FC = () => {
               </button>
             </div>
 
-            {playerDrivers.map((driver, idx) => {
+            {rosterEntries.map(({ roleLabel, isReserve, driver }, idx) => {
               const isSelected = activeSelectedDriver.id === driver.id;
+              const drvLevel = getDriverRpgLevel(driver);
+              const drvXp = getDriverXpProgress(driver);
+              const reserveReady = isReserve && (driver.attributes.pace >= 72 || drvLevel >= 3);
 
               return (
                 <div
-                  key={driver.id}
+                  key={`${roleLabel}_${driver.id}`}
                   onClick={() => setSelectedDriver(driver)}
                   className={`p-4 border cursor-pointer transition-all ${
                     isSelected
@@ -241,27 +336,77 @@ export const TeamTab: React.FC = () => {
                       : 'bg-[#1C1C26] border-white/10 hover:border-white/20'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-[#15151E] border border-white/10 flex items-center justify-center font-f1-wide font-black text-lg text-white">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-[#15151E] border border-white/10 flex items-center justify-center font-f1-wide font-black text-lg text-white shrink-0">
                         {driver.number}
                       </div>
-                      <div>
-                        <div className="font-f1-wide font-black text-sm text-white uppercase">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`text-[9px] font-f1-mono px-1.5 py-0.5 font-bold uppercase border ${
+                              isReserve
+                                ? 'bg-cyan-950/60 border-cyan-500/40 text-cyan-300'
+                                : 'bg-[#E10600]/20 border-[#E10600]/50 text-white'
+                            }`}
+                          >
+                            {roleLabel}
+                          </span>
+                          <span className="text-[9px] font-f1-mono px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold">
+                            NV. {drvLevel}/10
+                          </span>
+                        </div>
+                        <div className="font-f1-wide font-black text-sm text-white uppercase truncate mt-0.5">
                           {driver.name}
                         </div>
                         <div className="text-[11px] font-f1-mono text-zinc-400">
-                          {driver.nationality} · Age {driver.age} · Car # {idx + 1}
+                          {driver.nationality} · {driver.age} anos · {isReserve ? (driver.series || 'RESERVA') : `Carro #${idx + 1}`}
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">OVERALL PACE</span>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">PACE</span>
                       <span className="font-f1-wide font-black text-lg text-[#E10600] tabular-nums">
                         {driver.attributes.pace}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Driver XP & Reserve Readiness */}
+                  <div className="mt-3 space-y-1.5 bg-[#15151E] p-2 border border-white/5">
+                    <div className="flex justify-between items-center text-[10px] font-f1-mono tabular-nums">
+                      <span className="text-zinc-400 uppercase">Experiência (XP) · Simulador Nv.{simFacilityLevel}</span>
+                      <span className="text-cyan-300 font-bold">
+                        {drvXp}/100 XP {driver.lastXpDelta ? `(+${driver.lastXpDelta})` : ''}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                      <div className="h-full bg-cyan-400" style={{ width: `${drvXp}%` }} />
+                    </div>
+                    {isReserve && (
+                      <div className="pt-1 flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[9px] font-f1-mono font-bold px-1.5 py-0.5 border ${
+                            reserveReady
+                              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                              : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                          }`}
+                        >
+                          {reserveReady ? '[ PRONTO PARA SUBSTITUIR ]' : '[ EM DESENVOLVIMENTO NO SIMULADOR ]'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            promoteAffiliateToFP1(driver.id);
+                          }}
+                          className="text-[9px] font-f1-mono px-2 py-0.5 bg-[#252533] hover:bg-cyan-700 border border-white/10 text-white uppercase font-bold cursor-pointer"
+                        >
+                          Treino TL1 (+XP)
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Mentality & Trust bars */}
@@ -323,7 +468,8 @@ export const TeamTab: React.FC = () => {
                     <span>Buyout: ${(driver.buyoutClause / 1000000).toFixed(1)}M</span>
                   </div>
 
-                  {/* In-season Driver Dismissal & Replacement */}
+                  {/* In-season Driver Dismissal & Replacement (only for race starters) */}
+                  {!isReserve && (
                   <div className="mt-3 pt-2.5 border-t border-white/10">
                     {replacingDriverId === driver.id ? (
                       <div className="space-y-2">
@@ -375,23 +521,86 @@ export const TeamTab: React.FC = () => {
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {/* 14 Attributes Radar View (7 cols) */}
-          <div className="lg:col-span-7">
+          {/* Right Column: Driver Telemetry Profile + Resumo da Diretoria (7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            {/* Resumo da Diretoria Técnica */}
+            <F1TabBucket
+              title="RESUMO DA DIRETORIA TÉCNICA (CHEFES CONTRATADOS)"
+              badge={`CENTRAL NV.${teamCentralLevel} (TETO STAFF NV.${centralCapInfo.maxStaffLevel})`}
+            >
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {diretoriaSummary.map(item => {
+                    const stfLvl = item.member ? getStaffRpgLevel(item.member) : 1;
+                    return (
+                      <div key={item.role} className="bg-[#15151E] border border-white/10 p-2.5 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {item.member && (
+                            <PersonAvatar
+                              role={item.role as EngineeringAvatarRole}
+                              name={item.member.name}
+                              sizeClass="w-8 h-8"
+                              accentColor="#E10600"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-f1-mono text-zinc-400 uppercase block">{item.label}</span>
+                            <span className="text-xs font-f1-wide font-bold text-white uppercase truncate block">
+                              {item.member?.name || 'Cargo Vago'}
+                            </span>
+                          </div>
+                        </div>
+                        {item.member && (
+                          <div className="text-right font-f1-mono shrink-0">
+                            <span className="text-[10px] text-amber-400 font-bold block">{'★'.repeat(stfLvl)}</span>
+                            <span className="text-[10px] text-emerald-400 font-bold tabular-nums">OVR {item.member.rating}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('staff')}
+                    className="text-[10px] font-f1-mono text-cyan-300 hover:text-white uppercase font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Gerenciar Evolução do Staff Técnico</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </F1TabBucket>
+
+            {(() => {
+              const attrTrends = computeDriverAttributeTrends(activeSelectedDriver, simFacilityLevel);
+              return (
             <F1TabBucket
               title={`DRIVER TELEMETRY PROFILE: ${activeSelectedDriver.name.toUpperCase()}`}
-              badge={`#${activeSelectedDriver.number} · ${activeSelectedDriver.shortCode}`}
+              badge={`#${activeSelectedDriver.number} · ${activeSelectedDriver.shortCode} · NV.${getDriverRpgLevel(activeSelectedDriver)}`}
             >
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="bg-[#15151E] p-2.5 border border-white/5">
+                    <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">RITMO / PACE</span>
+                    <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
+                      {activeSelectedDriver.attributes.pace} / 99
+                      {renderTrendBadge(attrTrends.pace)}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#15151E] p-2.5 border border-white/5">
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">CORNERING</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.cornering} / 99
+                      {renderTrendBadge(attrTrends.cornering)}
                     </span>
                   </div>
 
@@ -399,6 +608,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">BRAKING</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.braking} / 99
+                      {renderTrendBadge(attrTrends.braking)}
                     </span>
                   </div>
 
@@ -406,6 +616,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">TIRE PRESERVATION</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.tireManagement} / 99
+                      {renderTrendBadge(attrTrends.tireManagement)}
                     </span>
                   </div>
 
@@ -413,6 +624,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">WET WEATHER MASTERY</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.wetWeather} / 99
+                      {renderTrendBadge(attrTrends.wetWeather)}
                     </span>
                   </div>
 
@@ -420,6 +632,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">REACTION TIME</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.reactionTime} / 99
+                      {renderTrendBadge(attrTrends.reactionTime)}
                     </span>
                   </div>
 
@@ -427,6 +640,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">COMPOSURE UNDER FIRE</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.composure} / 99
+                      {renderTrendBadge(attrTrends.composure)}
                     </span>
                   </div>
 
@@ -434,13 +648,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">OVERTAKING AGGRESSION</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.overtaking} / 99
-                    </span>
-                  </div>
-
-                  <div className="bg-[#15151E] p-2.5 border border-white/5">
-                    <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">DEFENSIVE RACECRAFT</span>
-                    <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
-                      {activeSelectedDriver.attributes.defending} / 99
+                      {renderTrendBadge(attrTrends.overtaking)}
                     </span>
                   </div>
 
@@ -448,6 +656,7 @@ export const TeamTab: React.FC = () => {
                     <span className="text-[10px] font-f1-mono text-zinc-400 uppercase block">TECHNICAL SETUP FEEDBACK</span>
                     <span className="font-f1-mono font-bold text-sm text-white tabular-nums">
                       {activeSelectedDriver.attributes.feedback} / 99
+                      {renderTrendBadge(attrTrends.feedback)}
                     </span>
                   </div>
                 </div>
@@ -474,6 +683,8 @@ export const TeamTab: React.FC = () => {
                 </div>
               </div>
             </F1TabBucket>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -573,37 +784,48 @@ export const TeamTab: React.FC = () => {
           role: StaffMember['role'];
           title: string;
           scope: string;
+          named?: string;
         }> = [
           {
             role: 'head_aero',
             title: '1. Chefe de Aerodinâmica',
-            scope: 'Conceito aero, CFD, Túnel de Vento e redução do erro de correlação'
+            scope: 'Conceito aero, CFD, Túnel de Vento e redução do erro de correlação',
+            named: playerTeam.headOfAero
           },
           {
             role: 'head_pu',
             title: '2. Chefe de PU e Componentes',
-            scope: 'Unidade de Potência, Transmissão, Sistemas e manufatura de peças'
+            scope: 'Unidade de Potência, Transmissão, Sistemas e manufatura de peças',
+            named: playerTeam.headOfPowerUnit
           },
           {
             role: 'sporting_director',
             title: '3. Chefe de Gerenciamento',
-            scope: 'Organização, Pilotos, Estratégia de corrida e regulamento FIA'
+            scope: 'Organização, Pilotos, Estratégia de corrida e regulamento FIA',
+            named: playerTeam.sportingDirector
           },
           {
             role: 'chief_mechanic',
             title: '4. Chefe Mecânico · Equipe de Pista & Garagem',
-            scope: 'Montagem, Manutenção preventiva, Preparação dos carros e Pit Stops'
+            scope: 'Montagem, Manutenção preventiva, Preparação dos carros e Pit Stops',
+            named: playerTeam.chiefMechanic
           }
         ];
 
         const activeChiefs = chiefRoles.map(cr => ({
           ...cr,
-          member:
-            staff.find(s => s.role === cr.role && (s.currentTeam === playerTeam.name || s.currentTeam === 'APEX Grand Prix Team')) ||
-            staff.find(s => s.role === cr.role && (s.id.startsWith('staff_head') || s.id === 'staff_sporting_dir' || s.id === 'staff_chief_mechanic')) ||
-            staff.find(s => s.role === cr.role)
+          member: resolveTeamChief(cr.role, cr.named)
         }));
-        const activeChiefIds = new Set(activeChiefs.map(c => c.member?.id).filter(Boolean));
+        const teamRaceEngineers = staff.filter(
+          s =>
+            s.role === 'race_engineer' &&
+            (s.currentTeam === playerTeam.name ||
+              (playerTeam.name === 'APEX Grand Prix Team' && s.currentTeam === 'APEX Grand Prix Team'))
+        );
+        const activeChiefIds = new Set([
+          ...activeChiefs.map(c => c.member?.id).filter(Boolean),
+          ...teamRaceEngineers.map(e => e.id),
+        ]);
         const otherStaff = staff.filter(s => !activeChiefIds.has(s.id));
 
         return (
@@ -638,11 +860,15 @@ export const TeamTab: React.FC = () => {
                       })
                     : null;
 
+                const staffLevel = member ? getStaffRpgLevel(member) : 1;
+                const staffXp = member ? getStaffXpProgress(member) : 0;
+                const limitInfo = member ? getStaffFacilityLimitFeedback(member, teamCentralLevel) : null;
+
                 return (
                   <F1TabBucket
                     key={role}
                     title={title.toUpperCase()}
-                    badge={member ? `NOTA: ${member.rating}` : 'VAGO'}
+                    badge={member ? `NV.${staffLevel}/5 · NOTA ${member.rating}` : 'VAGO'}
                   >
                     {member ? (
                       <div className="space-y-3">
@@ -655,7 +881,13 @@ export const TeamTab: React.FC = () => {
                               accentColor={(member.trust ?? 75) < 40 ? '#E10600' : '#10B981'}
                             />
                             <div className="min-w-0">
-                              <h3 className="font-f1-wide font-black text-sm text-white uppercase truncate">{member.name}</h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-f1-wide font-black text-sm text-white uppercase truncate">{member.name}</h3>
+                                <span className="text-amber-400 text-xs shrink-0" title={`Nível ${staffLevel}/5`}>
+                                  {'★'.repeat(staffLevel)}
+                                  <span className="text-zinc-600">{'★'.repeat(Math.max(0, 5 - staffLevel))}</span>
+                                </span>
+                              </div>
                               <div className="text-xs font-f1-mono text-zinc-400">
                                 DNA: <span className="text-[#E10600] font-bold">{member.teamOrigin}</span> · Moral {member.morale ?? member.mentality}%
                               </div>
@@ -665,6 +897,33 @@ export const TeamTab: React.FC = () => {
                             <span className="text-[10px] text-zinc-500 uppercase block">SALÁRIO</span>
                             <span className="text-white font-bold tabular-nums">${(member.salary / 1000000).toFixed(2)}M/ano</span>
                           </div>
+                        </div>
+
+                        {/* Staff XP Bar + Central Cap */}
+                        <div className="bg-[#15151E] p-2.5 border border-white/5 space-y-1.5">
+                          <div className="flex justify-between text-[10px] font-f1-mono tabular-nums">
+                            <span className="text-zinc-400 uppercase">
+                              Evolução Técnica (Teto Central Nv.{teamCentralLevel}: Nv.{centralCapInfo.maxStaffLevel})
+                            </span>
+                            <span className="text-cyan-300 font-bold">
+                              {staffXp}/100 XP {member.lastXpDelta ? `(+${member.lastXpDelta})` : ''}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                            <div
+                              className={`h-full ${limitInfo?.isLimited ? 'bg-amber-400' : 'bg-cyan-400'}`}
+                              style={{ width: `${staffXp}%` }}
+                            />
+                          </div>
+                          {limitInfo && (
+                            <p
+                              className={`text-[10px] font-f1-mono leading-relaxed italic pt-1 ${
+                                limitInfo.isLimited ? 'text-amber-300' : 'text-zinc-400'
+                              }`}
+                            >
+                              {limitInfo.quote}
+                            </p>
+                          )}
                         </div>
 
                         {(() => {
@@ -710,6 +969,67 @@ export const TeamTab: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Hired Race Radio Engineers (Carro #1 & Carro #2) */}
+            {teamRaceEngineers.length > 0 && (
+              <F1TabBucket
+                title="ENGENHEIROS DE CORRIDA (RÁDIO DE PISTA)"
+                badge={`${teamRaceEngineers.length}/2 ENGENHEIROS ATIVOS`}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {teamRaceEngineers.map((eng, engIdx) => {
+                    const pairedDriver = playerDrivers[engIdx];
+                    const engLvl = getStaffRpgLevel(eng);
+                    const engXp = getStaffXpProgress(eng);
+                    return (
+                      <div key={eng.id} className="bg-[#15151E] border border-cyan-500/30 p-3.5 space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <PersonAvatar
+                              role="race_engineer"
+                              name={eng.name}
+                              sizeClass="w-10 h-10"
+                              accentColor="#06B6D4"
+                            />
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-f1-mono text-cyan-400 font-bold uppercase block">
+                                RÁDIO CARRO #{engIdx + 1}{pairedDriver ? ` · ${pairedDriver.name.toUpperCase()}` : ''}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <h3 className="font-f1-wide font-black text-sm text-white uppercase truncate">{eng.name}</h3>
+                                <span className="text-amber-400 text-[10px]">
+                                  {'★'.repeat(engLvl)}
+                                </span>
+                              </div>
+                              <div className="text-[10px] font-f1-mono text-zinc-400">
+                                {eng.teamOrigin} · OVR {eng.rating} · Moral {eng.morale ?? eng.mentality}%
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-f1-mono text-zinc-300 font-bold shrink-0 tabular-nums">
+                            ${(eng.salary / 1000000).toFixed(2)}M/ano
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] font-f1-mono text-zinc-300 bg-[#1C1C26] p-2 border border-white/5">
+                          {eng.specialty}
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-f1-mono tabular-nums">
+                            <span className="text-zinc-400 uppercase">XP Operacional</span>
+                            <span className="text-cyan-300 font-bold">{engXp}/100 XP</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-white/10 overflow-hidden">
+                            <div className="h-full bg-cyan-400" style={{ width: `${engXp}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </F1TabBucket>
+            )}
 
             {/* Paddock Directory / Candidates */}
             {otherStaff.length > 0 && (

@@ -401,6 +401,7 @@ export async function loadOrBuildF1Car(
 
       const metadata: CarModelMetadata = {
         ...entry.metadata,
+        modelName: `${livery.carModelName} 3D Spec`,
         source: detectedSource,
       };
 
@@ -449,7 +450,7 @@ export async function loadOrBuildF1Car(
   }
 
   // Procedural Fallback Engine
-  const proceduralCar = buildF1Car2026(livery, params, maxAnisotropy, driverIndex);
+  const proceduralCar = buildF1Car2026(livery, params, maxAnisotropy, driverIndex === 1 ? 1 : 0);
   const geomAnalysis = analyzeModelGeometry(proceduralCar.root);
 
   const proceduralMetadata: CarModelMetadata = {
